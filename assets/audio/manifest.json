@@ -1,0 +1,53 @@
+{
+ "crowd": {
+  "amb_high": 1,
+  "amb_low": 1,
+  "boo": 2,
+  "chant": 2,
+  "cheer": 3,
+  "finisher_roar": 2,
+  "gasp": 3,
+  "roar": 3
+ },
+ "gore": {
+  "behead": 3,
+  "blood_spatter_sand": 5,
+  "gut": 3,
+  "run_through": 3,
+  "sever": 3,
+  "spurt_hiss": 3
+ },
+ "impact": {
+  "armor_clank": 4,
+  "bat_crack": 4,
+  "bat_tink": 4,
+  "body_thud": 5,
+  "bone_crack": 4,
+  "clang_steel": 5,
+  "drop_sand": 4,
+  "drop_sand_metal": 4,
+  "fist_punch": 4,
+  "flesh_cut": 5,
+  "flesh_pierce": 4,
+  "helm_knock": 3,
+  "leather_slap": 4,
+  "mail_jingle": 4,
+  "ring_steel": 3,
+  "thunk_wood": 4
+ },
+ "move": {
+  "armor_rattle": 4,
+  "body_fall_sand": 4,
+  "footstep_sand": 6,
+  "sand_impact": 5,
+  "whoosh_fast": 5,
+  "whoosh_mid": 5,
+  "whoosh_slow": 5
+ },
+ "voice": {
+  "death_gurgle": 3,
+  "grunt": 5,
+  "pain_heavy": 4,
+  "pain_light": 4
+ }
+}
