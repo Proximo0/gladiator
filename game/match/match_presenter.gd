@@ -24,6 +24,7 @@ const SPRAY_HEIGHT: float = 0.6
 const MAX_DRAGS_PER_TICK: int = 4
 const FOLLOW_MODE: String = "follow"
 const WIDE_MODE: String = "wide"
+const RUMBLE_GAP_S: float = 0.05  ## min game seconds between rumble pulses (a flurry does not re-trigger every tick)
 const WIDE_FOV: float = 55.0  ## tighter than the default so two fighters fill more of the frame
 
 var arena: Arena = null
@@ -33,6 +34,7 @@ var sfx: SfxDirector = null
 var hud: HUD = null
 var camera: FightCamera = null
 var panel: TuningPanel = null
+var hit_fx: HitFx = null
 
 var _fighters: Array = []
 var _foot_down: Dictionary = {}
@@ -43,6 +45,8 @@ var _tip_valid: Array = [false, false]
 var _spray_clock: float = 0.0
 var _last_spray: float = -10.0
 var _drags: int = 0
+var _player_side: int = 0
+var _last_rumble: float = -10.0
 
 
 func build(camera_mode: String) -> void:
@@ -63,6 +67,9 @@ func build(camera_mode: String) -> void:
 	hud = HUD.new()
 	hud.name = "HUD"
 	add_child(hud)
+	hit_fx = HitFx.new()
+	hit_fx.name = "HitFx"
+	add_child(hit_fx)
 	camera = FightCamera.new()
 	camera.name = "FightCamera"
 	camera.arena_radius = Tuning.shared().arena_radius
@@ -87,6 +94,7 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 		blood.track(f)
 		sfx.track(f)
 	var human: int = clampi(player_side, 0, 1)
+	_player_side = human
 	hud.track((fighters[human] as Fighter).health, (fighters[1 - human] as Fighter).health,
 			str(names[human]), str(names[1 - human]))
 	camera.target = (fighters[human] as Fighter).parts["pelvis"]
@@ -112,6 +120,7 @@ func announce(text: String) -> void:
 
 ## Called with every resolved hit: ground sprays for low blows.
 func on_hit(ev: Dictionary) -> void:
+	_feel(ev)
 	var p: Vector3 = ev.get("point", Vector3.ZERO)
 	if p.y > SPRAY_HEIGHT or _spray_clock - _last_spray < SPRAY_GAP_S:
 		return
@@ -121,6 +130,51 @@ func on_hit(ev: Dictionary) -> void:
 	_last_spray = _spray_clock
 	var rel: Vector3 = ev.get("rel_vel", Vector3.ZERO)
 	_spray(Vector3(p.x, 0.0, p.z), rel * 0.4, clampf(total / 40.0, 0.2, 1.2))
+
+
+## Combat feel for one hit, all scaled by the hit's impact: camera kick, shake and finisher zoom, the flash on the
+## struck part, sparks for metal, pad rumble and phone vibration. Presentation only.
+func _feel(ev: Dictionary) -> void:
+	var tun: Tuning = Tuning.shared()
+	var imp: float = FeelLogic.impact(ev, tun)
+	var tgt: int = int(ev.get("target", -1))
+	var victim: Object = _fighters[tgt] if tgt >= 0 and tgt < _fighters.size() and is_instance_valid(_fighters[tgt]) else null
+	if hit_fx != null:
+		hit_fx.on_hit(ev, victim, imp)
+	if camera != null:
+		var strength: float = FeelLogic.camera_strength(imp, tun) * (1.0 if tgt == _player_side else 0.8)
+		var fin: bool = FeelLogic.is_finisher(ev)
+		camera.hit_impact(FeelLogic.blow_dir(ev), strength, fin, FeelOptions.motion_scale(tun))
+	_rumble(ev, imp, tun)
+
+
+## Gamepad rumble for the fighter who landed the blow and the one who took it, and phone vibration for the human side.
+func _rumble(ev: Dictionary, imp: float, tun: Tuning) -> void:
+	if Flags.is_scripted_run() or _spray_clock - _last_rumble < RUMBLE_GAP_S:
+		return
+	var scale: float = FeelOptions.rumble_scale(tun)
+	var pads: Array[int] = []
+	for d: int in Input.get_connected_joypads():
+		pads.append(d)
+	var atk: int = int(ev.get("attacker", -1))
+	var tgt: int = int(ev.get("target", -1))
+	var any: bool = false
+	for side: int in [atk, tgt]:
+		var taken: bool = side == tgt
+		var r: Dictionary = FeelLogic.rumble(imp, taken, tun, scale)
+		if float(r["dur"]) <= 0.0:
+			continue
+		var dev: int = FeelLogic.pad_for_side(side, _player_side, pads)
+		if dev >= 0:
+			Input.start_joy_vibration(dev, float(r["weak"]), float(r["strong"]), float(r["dur"]))
+			any = true
+		if side == _player_side and (OS.has_feature("android") or OS.has_feature("ios")):
+			var v: Dictionary = FeelLogic.vibrate(imp, taken, tun, scale)
+			if int(v["ms"]) > 0:
+				Input.vibrate_handheld(int(v["ms"]), float(v["amp"]))
+				any = true
+	if any:
+		_last_rumble = _spray_clock
 
 
 func _spray(pos: Vector3, vel: Vector3, amount: float) -> void:

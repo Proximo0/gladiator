@@ -93,7 +93,8 @@ func test_flesh_hits_by_contact() -> void:
 
 func test_armor_layers() -> void:
 	var plate: Array = _keys(SfxLogic.impact_plan(_ev({"total": 0.5}), "steel", "", "plate"))
-	assert_eq(plate, ["impact/armor_clank"], "plate eats the cut")
+	assert_true(plate.has("impact/armor_clank") and not plate.has("impact/flesh_cut"), "plate eats the cut")
+	assert_true(plate.has("impact/ring_steel"), "steel on plate rings")
 	var through: Array = _keys(SfxLogic.impact_plan(_ev({"total": 9.0}), "steel", "", "plate"))
 	assert_true(through.has("impact/armor_clank") and through.has("impact/flesh_cut"))
 	assert_true(_keys(SfxLogic.impact_plan(_ev(), "steel", "", "mail")).has("impact/mail_jingle"))

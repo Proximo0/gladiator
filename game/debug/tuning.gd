@@ -122,6 +122,27 @@ const FIELDS: Array = [
 	["match_pause_s", 4.0, 1.0, 15.0, 0.5, "Match", "Pause after a match before the next bot match starts, s."],
 	["match_slowmo_scale", 0.4, 0.1, 1.0, 0.05, "Match", "Time scale during the finisher slow motion."],
 	["match_slowmo_s", 1.0, 0.0, 5.0, 0.1, "Match", "Length of the finisher slow motion, game seconds."],
+	["feel_shake_scale", 1.0, 0.0, 2.0, 0.05, "Feel", "Master scale of camera kick, shake and zoom punch. 0 turns them all off (reduced motion forces 0)."],
+	["feel_impact_energy_ref", 90.0, 10.0, 400.0, 5.0, "Feel", "Hit energy (J) at which the impact reads about 63 percent."],
+	["feel_impact_total_ref", 25.0, 5.0, 100.0, 1.0, "Feel", "Damage points at which the impact reads about 63 percent."],
+	["feel_shake_min", 0.15, 0.0, 0.8, 0.01, "Feel", "Impact below which a hit does no camera kick or shake."],
+	["feel_kick_m", 0.14, 0.0, 0.6, 0.01, "Feel", "Camera kick distance at full impact, m (toward the blow)."],
+	["feel_kick_freq", 16.0, 6.0, 40.0, 0.5, "Feel", "Spring stiffness of the camera kick, rad/s."],
+	["feel_shake_m", 0.035, 0.0, 0.2, 0.005, "Feel", "High-frequency shake amplitude at full impact, m."],
+	["feel_shake_roll_deg", 1.6, 0.0, 6.0, 0.1, "Feel", "Camera roll shake at full impact, degrees."],
+	["feel_shake_decay", 7.0, 1.0, 20.0, 0.5, "Feel", "How fast shake dies away, 1/s."],
+	["feel_zoom_deg", 7.0, 0.0, 20.0, 0.5, "Feel", "Field-of-view punch-in on a finisher, degrees."],
+	["feel_zoom_hit_deg", 1.2, 0.0, 6.0, 0.1, "Feel", "Field-of-view punch-in on a full-impact ordinary hit, degrees."],
+	["feel_zoom_decay", 5.0, 1.0, 20.0, 0.5, "Feel", "How fast the zoom punch relaxes, 1/s."],
+	["feel_flash_s", 0.08, 0.0, 0.4, 0.01, "Feel", "Hit-flash length on the struck part, s (real time)."],
+	["feel_flash_min", 0.08, 0.0, 0.8, 0.01, "Feel", "Impact below which a hit does not flash."],
+	["feel_spark_max", 26.0, 0.0, 80.0, 1.0, "Feel", "Sparks per metal-on-metal hit at full impact."],
+	["feel_spark_min", 0.1, 0.0, 0.8, 0.01, "Feel", "Impact below which metal hits make no sparks."],
+	["feel_rumble_scale", 1.0, 0.0, 1.0, 0.05, "Feel", "Gamepad rumble and phone vibration strength (the options toggle also gates it)."],
+	["feel_rumble_s", 0.3, 0.0, 1.0, 0.02, "Feel", "Rumble length at full impact, s."],
+	["feel_rumble_min", 0.2, 0.0, 0.8, 0.01, "Feel", "Impact below which a hit does not rumble."],
+	["feel_frame_pull_max", 5.0, 0.0, 12.0, 0.5, "Feel", "Most the follow camera pulls back to keep both fighters on screen, m."],
+	["feel_frame_margin", 0.82, 0.4, 1.0, 0.01, "Feel", "Share of the half field of view both fighters must stay inside."],
 	["blood_faint", 3.5, 2.6, 5.0, 0.1, "Health", "Blood (L) below which consciousness is capped; zero at blood_death."],
 	["health_head_ko", 0.04, 0.0, 0.2, 0.005, "Health", "Consciousness lost per blunt point on the head (0.04: a solid club blow dazes into the finisher window, only a huge one knocks out)."],
 	["health_stagger_ko", 0.05, 0.0, 0.5, 0.01, "Health", "Consciousness lost per unit of stagger on any part."],
@@ -245,6 +266,27 @@ var knockback_scale: float
 var match_pause_s: float
 var match_slowmo_scale: float
 var match_slowmo_s: float
+var feel_shake_scale: float
+var feel_impact_energy_ref: float
+var feel_impact_total_ref: float
+var feel_shake_min: float
+var feel_kick_m: float
+var feel_kick_freq: float
+var feel_shake_m: float
+var feel_shake_roll_deg: float
+var feel_shake_decay: float
+var feel_zoom_deg: float
+var feel_zoom_hit_deg: float
+var feel_zoom_decay: float
+var feel_flash_s: float
+var feel_flash_min: float
+var feel_spark_max: float
+var feel_spark_min: float
+var feel_rumble_scale: float
+var feel_rumble_s: float
+var feel_rumble_min: float
+var feel_frame_pull_max: float
+var feel_frame_margin: float
 var blood_faint: float
 var health_head_ko: float
 var health_stagger_ko: float

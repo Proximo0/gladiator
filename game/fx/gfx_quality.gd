@@ -41,6 +41,10 @@ const SAND_DETAIL: Array[int] = [0, 1, 2]
 const SAND_UPLOAD_S: Array[float] = [1.0 / 15.0, 1.0 / 20.0, 1.0 / 30.0]
 const SAND_POOL_STEP_S: Array[float] = [1.0 / 12.0, 1.0 / 20.0, 1.0 / 30.0]
 
+## Hit sparks (HitFx): share of the spark count kept, particles per burst pool, and the spark flash light (off on low).
+const SPARK_MULT: Array[float] = [0.5, 0.8, 1.0]
+const SPARK_LIGHT: Array[bool] = [false, true, true]
+
 static var level: int = default_level()
 
 

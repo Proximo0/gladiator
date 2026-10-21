@@ -257,6 +257,9 @@ static func impact_plan(ev: Dictionary, atk_mat: String, other_mat: String, armo
 				l["gain_db"] = float(l["gain_db"]) + flesh_db
 				layers.append(l)
 		layers.append_array(armor)
+		# Steel on plate rings as well as clanks (the sparks in FeelLogic fire for the same pair).
+		if armor_kind == "plate" and atk_mat == "steel" and inten >= RING_INTENSITY and not glanced:
+			layers.append(_layer("impact/ring_steel", -6.0, impact_pitch(inten), 0.01))
 		var blunt: float = float(ev.get("blunt", 0.0))
 		var bone_min: float = BONE_BLUNT_CORE if _is_core(part) else BONE_BLUNT_LIMB
 		if not glanced and blunt >= bone_min and not bool(ev.get("sever", false)):
