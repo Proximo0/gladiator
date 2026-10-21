@@ -20,6 +20,8 @@ const RAY_BUDGETS: Array[int] = [50, 140, 260]
 ## Ground decals (spots and pools) and body/weapon stains per quality.
 const DECAL_BUDGETS: Array[int] = [160, 420, 900]
 const STAIN_BUDGETS: Array[int] = [14, 30, 48]
+## Most ground splats per frame that are turned into decals and sand stains (each repaints sand texels).
+const SPLAT_CALLS: Array[int] = [12, 24, 48]
 ## Presentation multiplier: pools on the ground read as this many times the blood that really left the fighter.
 const POOL_VISUAL_MULT: float = 2.5
 ## Seconds for fresh arterial red to dry to dark brown.
@@ -44,6 +46,10 @@ static func ray_budget(level: int) -> int:
 
 static func decal_budget(level: int) -> int:
 	return DECAL_BUDGETS[clampi(level, 0, 2)]
+
+
+static func splat_calls(level: int) -> int:
+	return SPLAT_CALLS[clampi(level, 0, 2)]
 
 
 static func stain_budget(level: int) -> int:

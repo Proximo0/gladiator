@@ -3,11 +3,11 @@ render_mode cull_back;
 // Spectator crowd. Vertex colour masks: R clothing, G skin, B hair. Per-instance data (INSTANCE_CUSTOM):
 // xyz clothing colour, w a small integer seed (0..2047) from which skin, hair, phase and cheer threshold derive.
 // mode: 0 standing calm, 1 standing cheering, 2 seated, 3 noble. A standing seat owns a calm and a cheering twin
-// with the same seed; the cheering twin shows once `excitement` passes the seat's threshold, the calm one until then.
+// with the same seed. Which twin is drawn is decided on the CPU (crowd_cull.gd: a hidden twin would still cost its
+// vertices), so this shader only animates.
 uniform float excitement : hint_range(0.0, 1.0) = 0.08;
 uniform int mode = 0;
 uniform int dbg = 0;
-uniform float ring_inner = 11.6;
 uniform vec3 rest_tint : source_color = vec3(0.45, 0.34, 0.24);
 
 varying flat vec3 v_cloth;
@@ -23,19 +23,11 @@ void vertex() {
 	float phase = fract(seed * 0.61803399);
 	float skin_u = fract(seed * 0.75487767);
 	float hair_u = fract(seed * 0.56984029);
-	float thr_u = fract(seed * 0.41421356);
-	float out_r = length(MODEL_MATRIX[3].xz);
-	float thr = min(mix(0.18, 0.92, thr_u) + (out_r - ring_inner) * 0.012, 0.97);
 	v_cloth = INSTANCE_CUSTOM.xyz;
 	v_skin = SKINS[int(skin_u * 4.0) % 4] * mix(0.9, 1.05, fract(seed * 0.3247179));
 	v_hair = HAIRS[int(hair_u * 6.0) % 6];
 	if (mode == 3) {
 		v_skin = SKINS[3];
-	}
-	float cheer = step(thr + 0.0001, excitement);
-	float shown = (mode == 1) ? cheer : 1.0 - cheer;
-	if (mode >= 2) {
-		shown = 1.0;
 	}
 	v_y = VERTEX.y;
 	float e = excitement;
@@ -59,7 +51,6 @@ void vertex() {
 		float h = smoothstep(0.45, 1.0, VERTEX.y);
 		VERTEX.x += w * 0.006 * h;
 	}
-	VERTEX *= shown;
 }
 
 void fragment() {

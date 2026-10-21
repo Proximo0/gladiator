@@ -97,3 +97,9 @@ func test_stain_bucket_and_pool_radius() -> void:
 	assert_true(BloodMath.pool_radius(500.0) <= 1.15)
 	assert_true(BloodMath.decal_budget(2) > BloodMath.decal_budget(0))
 	assert_true(BloodMath.stain_budget(2) > BloodMath.stain_budget(0))
+
+
+func test_splat_calls_grow_with_quality() -> void:
+	assert_true(BloodMath.splat_calls(0) < BloodMath.splat_calls(1))
+	assert_true(BloodMath.splat_calls(1) < BloodMath.splat_calls(2))
+	assert_eq(BloodMath.splat_calls(9), BloodMath.splat_calls(2))

@@ -28,3 +28,4 @@ Sandblood build guide: https://claude.ai/artifact/LBNp22258n18mRFtk2ke4i (Skate 
 | Round 4 started from round 3's numbers (126 hits/min), but the arena-footwork brain change had already moved them to 95 | Re-measure the baseline on the current tree before tuning; numbers go stale after any brain or physics change |
 | Closing the ENet peer from inside its own `poll()` (a disconnect signal handler) crashed with signal 11 | Never close a MultiplayerPeer from its own signal; defer the close to the next idle frame |
 | ENet's packet throttle silently dropped about half the unreliable snapshots after a frame hitch | Switch the ENet throttle off on connect (deceleration 0) for snapshot streams |
+| A shader-hidden crowd twin (`VERTEX *= 0`) still cost its vertices, and Godot's primitive counter ignores MultiMesh instances, so the crowd looked cheap | Cut instances with `visible_instance_count`; count MultiMesh triangles yourself and time script cost separately |

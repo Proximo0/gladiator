@@ -11,7 +11,6 @@ const MAX_WOUNDS: int = 40
 const MAX_SPURTS: int = 14
 const MAX_SPURT_EMIT: int = 40
 const SPLAT_CELL: float = 0.07
-const MAX_SPLAT_CALLS: int = 48
 const STUMP_PARENT: Dictionary = {
 	"head": "torso", "upper_arm_l": "torso", "upper_arm_r": "torso",
 	"forearm_l": "upper_arm_l", "forearm_r": "upper_arm_r",
@@ -89,6 +88,8 @@ var sand: Node = null:  ## duck-typed SandSurface: add_blood(pos, radius, litres
 		if sand != null and sand.has_method("height_at"):
 			_height_fn = Callable(sand, "height_at")
 var quality: int = 1
+var profile_on: bool = false
+var prof: Dictionary = {}
 var auto_step: bool = true  ## false: the owner calls step(dt) (render scripts, tests)
 var gravity: float = 9.8
 var sim: BloodSim = null
@@ -513,24 +514,41 @@ func step(dt_in: float) -> void:
 		return
 	gravity = Tuning.shared().gravity
 	var before: int = sim.count
+	var t0: int = _mark(0)
 	_update_tracked(dt)
 	_update_jets(dt)
 	_update_spurts(dt)
 	_update_wounds(dt)
 	_refresh_reach()
+	var t1: int = _mark(t0, "emit")
 	var grace: float = 0.05
 	var r2: float = 1.9 * 1.9
 	sim.step(dt, gravity, _height_fn, _reach, r2, grace)
+	var t2: int = _mark(t1, "sim")
 	_process_rays()
 	_process_impacts()
+	var t3: int = _mark(t2, "rays")
 	sim.compact()
 	mist.step(dt)
 	_flush_splats()
 	decals.step(dt)
+	var t4: int = _mark(t3, "splats")
 	_clock += dt
 	_sweep_stains()
 	stat_emitted = maxi(sim.count - before, 0)
+	var t5: int = _mark(t4, "stains")
 	_upload()
+	_mark(t5, "upload")
+
+
+## Profiling aid for tests/perf: with profile_on, step() adds each section's milliseconds to `prof`.
+func _mark(since: int, key: String = "") -> int:
+	if not profile_on:
+		return 0
+	var now: int = Time.get_ticks_usec()
+	if key != "":
+		prof[key] = float(prof.get(key, 0.0)) + float(now - since) / 1000.0
+	return now
 
 
 func _upload() -> void:
@@ -929,8 +947,9 @@ func _flush_splats() -> void:
 	if _splat.is_empty():
 		return
 	var has_sand: bool = sand != null and sand.has_method("add_blood")
+	var max_calls: int = BloodMath.splat_calls(quality)
 	for cell: Vector2i in _splat.keys():
-		if stat_splat_calls >= MAX_SPLAT_CALLS:
+		if stat_splat_calls >= max_calls:
 			break
 		var a: Vector4 = _splat[cell]
 		_splat.erase(cell)
@@ -941,7 +960,7 @@ func _flush_splats() -> void:
 		if has_sand:
 			sand.call("add_blood", at, BloodMath.splat_radius(a.w), a.w)
 		stat_splat_calls += 1
-	if _splat.size() > 4 * MAX_SPLAT_CALLS:
+	if _splat.size() > 4 * max_calls:
 		_splat.clear()
 
 

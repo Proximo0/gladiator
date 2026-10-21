@@ -59,3 +59,24 @@ func test_effects_throw_grains() -> void:
 	s.drag(Vector3(0, 0, 0), Vector3(0.1, 0, 0), 0.025, 0.012)
 	assert_true(s._fx.count > 0, "a fast tip drag throws sand")
 	s.free()
+
+
+func test_pool_spreading_is_throttled_but_keeps_time() -> void:
+	var s: SandSurface = _make()
+	s.add_blood(Vector3(0.5, 0, 0.5), 0.3, 0.5)
+	assert_eq(s._pools.size(), 1)
+	s._spread_pools(0.001)
+	assert_near(float(s._pools[0]["t"]), 0.0, 0.0001, "a tiny step waits")
+	s._spread_pools(0.2)
+	assert_near(float(s._pools[0]["t"]), 0.201, 0.0001, "the waiting time is not lost")
+	s.free()
+
+
+func test_quality_sizes_the_grain_pool() -> void:
+	var old: int = GfxQuality.level
+	GfxQuality.set_level(GfxQuality.LOW)
+	var s: SandSurface = SandSurface.new()
+	s.setup(4.0, 20.0, 0.5)
+	assert_eq(s._fx.capacity, GfxQuality.SAND_GRAINS[0])
+	s.free()
+	GfxQuality.set_level(old)

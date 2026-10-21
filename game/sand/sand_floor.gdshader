@@ -27,6 +27,8 @@ uniform float sparkle_gain = 1.0;
 uniform float pebble_gain = 1.0;
 uniform float arena_radius = 11.0;
 uniform vec3 sand_ambient = vec3(0.52, 0.43, 0.38);
+// Quality: 0 cheap (no fine grain slopes or rake lines either), 1 no pebbles, speckle or glints, 2 full.
+uniform int detail = 2;
 
 varying vec3 lpos;
 varying float v_sparkle;
@@ -82,18 +84,28 @@ void fragment() {
 
 	// Procedural detail.
 	vec4 n1 = texture(noise_tex, wp * 14.0);
-	float n1x = texture(noise_tex, wp * 14.0 + vec2(1.0 / 256.0, 0.0)).r;
-	float n1z = texture(noise_tex, wp * 14.0 + vec2(0.0, 1.0 / 256.0)).r;
 	vec4 n2 = texture(noise_tex, wp * 2.3 + vec2(0.37, 0.11));
-	float n2x = texture(noise_tex, wp * 2.3 + vec2(0.37 + 1.0 / 256.0, 0.11)).g;
-	float n2z = texture(noise_tex, wp * 2.3 + vec2(0.37, 0.11 + 1.0 / 256.0)).g;
+	float n1x = n1.r;
+	float n1z = n1.r;
+	float n2x = n2.g;
+	float n2z = n2.g;
+	if (detail >= 1) {
+		n1x = texture(noise_tex, wp * 14.0 + vec2(1.0 / 256.0, 0.0)).r;
+		n1z = texture(noise_tex, wp * 14.0 + vec2(0.0, 1.0 / 256.0)).r;
+		n2x = texture(noise_tex, wp * 2.3 + vec2(0.37 + 1.0 / 256.0, 0.11)).g;
+		n2z = texture(noise_tex, wp * 2.3 + vec2(0.37, 0.11 + 1.0 / 256.0)).g;
+	}
 	vec4 n3 = texture(noise_tex, wp * 0.31);
 	vec4 n4 = texture(noise_tex, wp * 0.071 + vec2(0.5, 0.2));
 
-	float bc = base_h(wp);
 	float rake_fade = 1.0 - smoothstep(3.0, 10.0, dist);
-	vec2 bg = rake_fade * vec2(base_h(wp + vec2(0.012, 0.0)) - bc, base_h(wp + vec2(0.0, 0.012)) - bc) / 0.012;
-	float rake = clamp(bc * 220.0, -1.0, 1.0) * rake_fade;
+	vec2 bg = vec2(0.0);
+	float rake = 0.0;
+	if (detail >= 1) {
+		float bc = base_h(wp);
+		bg = rake_fade * vec2(base_h(wp + vec2(0.012, 0.0)) - bc, base_h(wp + vec2(0.0, 0.012)) - bc) / 0.012;
+		rake = clamp(bc * 220.0, -1.0, 1.0) * rake_fade;
+	}
 
 	// Blood coverage: soft map, crisp irregular edge from noise.
 	float b = bt.r;
@@ -114,7 +126,7 @@ void fragment() {
 	vec2 pgrad = vec2(0.0);
 	vec3 pcol = vec3(0.4, 0.33, 0.26);
 	float pvis = fade * pebble_gain * (1.0 - smoothstep(0.003, 0.012, abs(hc))) * (1.0 - smoothstep(0.02, 0.06, hb)) * (1.0 - cov);
-	if (pvis > 0.01) {
+	if (detail >= 2 && pvis > 0.01) {
 		vec2 cell = floor(wp / 0.42);
 		if (hash12(cell + 71.0) > 0.72) {
 			vec2 pc = (cell + 0.14 + 0.72 * vec2(hash12(cell + 3.1), hash12(cell + 8.7))) * 0.42;
@@ -145,12 +157,14 @@ void fragment() {
 	sand = mix(sand, sand_buff, smoothstep(0.52, 0.8, n4.b * 0.75 + n3.b * 0.25) * 0.35);
 	sand *= 0.92 + 0.16 * n1.r;
 	sand *= 0.96 + 0.08 * n2.r;
-	float cell2 = hash12(floor(wp * 190.0));
-	vec2 gf = fract(wp * 190.0) - 0.5;
-	float dot_mask = 1.0 - smoothstep(0.18, 0.42, length(gf));
-	sand *= mix(1.0, 0.72, step(0.985, cell2) * dot_mask * fade);
-	vec2 gf2 = fract(wp * 260.0) - 0.5;
-	sand *= mix(1.0, 1.14, step(0.97, hash12(floor(wp * 260.0) + 3.0)) * (1.0 - smoothstep(0.2, 0.45, length(gf2))) * fade);
+	if (detail >= 2) {
+		float cell2 = hash12(floor(wp * 190.0));
+		vec2 gf = fract(wp * 190.0) - 0.5;
+		float dot_mask = 1.0 - smoothstep(0.18, 0.42, length(gf));
+		sand *= mix(1.0, 0.72, step(0.985, cell2) * dot_mask * fade);
+		vec2 gf2 = fract(wp * 260.0) - 0.5;
+		sand *= mix(1.0, 1.14, step(0.97, hash12(floor(wp * 260.0) + 3.0)) * (1.0 - smoothstep(0.2, 0.45, length(gf2))) * fade);
+	}
 	float ao = 1.0 - clamp(lap / 0.02, 0.0, 1.0) * 0.35;
 	float compact = clamp(-hc * 9.0, 0.0, 0.3);
 	sand *= ao * (1.0 - compact * 0.5);
@@ -178,9 +192,13 @@ void fragment() {
 	SPECULAR = 0.0;
 	v_gloss = gloss;
 	// Sparkle: rare glints from single grains, stable per grain.
+	v_jit = vec2(0.0);
+	v_sparkle = 0.0;
+	if (detail >= 2) {
 	float sp = hash12(floor(wp * 230.0) + 17.0);
 	v_jit = vec2(hash12(floor(wp * 230.0) + 5.0), hash12(floor(wp * 230.0) + 9.0)) - vec2(0.5);
 	v_sparkle = step(0.993, sp) * (1.0 - smoothstep(0.15, 0.4, length(fract(wp * 230.0) - 0.5))) * (1.0 - cov) * (1.0 - wet * 0.6) * (1.0 - smoothstep(4.0, 14.0, dist)) * sparkle_gain;
+	}
 }
 
 void light() {

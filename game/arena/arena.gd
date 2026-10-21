@@ -15,9 +15,8 @@ const SPAWN_DISTANCE: float = 4.0
 const SUN_AZIMUTH: float = 3.75
 const SUN_ELEVATION: float = 0.62
 const CROWD_SEED: int = 20260721
-## Metres per spectator along each tier (wider at the back: fewer triangles where they are small).
-const CROWD_LITE_SPACING: float = 1.7
-const CROWD_LITE_TIER: int = 3
+## From this tier out the spectators are small and far: GfxQuality spaces them wider.
+const CROWD_BACK_TIER: int = 3
 const CROWD_SPACING: Array[float] = [0.62, 0.62, 0.66, 0.8, 0.9, 1.0]
 const ATTIC_HEIGHT: float = 2.0
 const BOX_ANGLE: float = 4.71238898
@@ -28,8 +27,6 @@ var radius: float = 11.0
 var sand: Node3D
 var sun: DirectionalLight3D
 var crowd: Crowd
-## Fewer spectators and no cheering twins in the back tiers (default on phones); set before add_child.
-var crowd_lite: bool = OS.has_feature("mobile")
 var _flames: Array[MeshInstance3D] = []
 var _flame_time: float = 0.0
 var _torch_positions: PackedVector3Array = PackedVector3Array()
@@ -56,6 +53,8 @@ static func ring_basis(a: float) -> Basis:
 
 func _ready() -> void:
 	radius = Tuning.shared().arena_radius
+	if get_viewport() != null:
+		get_viewport().msaa_3d = GfxQuality.pick_i(GfxQuality.MSAA) as Viewport.MSAA
 	_torch_positions = PackedVector3Array()
 	for k: int in 6:
 		var ta: float = deg_to_rad(30.0 + float(k) * 60.0)
@@ -106,7 +105,7 @@ func _build_floor() -> void:
 		sand = script.new() as Node3D
 		sand.name = "Sand"
 		add_child(sand)
-		sand.call("setup", radius)
+		sand.call("setup", radius, GfxQuality.pick_f(GfxQuality.SAND_TEXELS_PER_M), GfxQuality.pick_f(GfxQuality.SAND_MESH_CELL))
 	else:
 		var mi := MeshInstance3D.new()
 		mi.name = "Sand"
@@ -365,11 +364,16 @@ func _build_crowd() -> void:
 	var low: Array[Color] = [Color(0.93, 0.9, 0.82), Color(0.9, 0.86, 0.76), Color(0.93, 0.9, 0.82), Color(0.62, 0.17, 0.14), Color(0.84, 0.64, 0.18), Color(0.3, 0.1, 0.27)]
 	var high: Array[Color] = [Color(0.72, 0.62, 0.46), Color(0.58, 0.46, 0.32), Color(0.62, 0.2, 0.16), Color(0.8, 0.6, 0.2), Color(0.8, 0.74, 0.62), Color(0.45, 0.4, 0.3), Color(0.5, 0.36, 0.22)]
 	crowd = Crowd.new()
+	crowd.sectors = GfxQuality.pick_i(GfxQuality.CROWD_SECTORS)
 	crowd.name = "Crowd"
 	add_child(crowd)
 	for t: int in TIER_COUNT:
 		var rr: float = _tier_inner(t) + TIER_DEPTH * 0.5
-		var count: int = int(TAU * rr / (CROWD_SPACING[t] * (CROWD_LITE_SPACING if crowd_lite and t >= 2 else 1.0)))
+		var spacing: float = CROWD_SPACING[t] * GfxQuality.pick_f(GfxQuality.CROWD_SPACING_MULT)
+		if t >= CROWD_BACK_TIER:
+			spacing *= GfxQuality.pick_f(GfxQuality.CROWD_BACK_SPACING)
+		var count: int = int(TAU * rr / spacing)
+		var lod: int = GfxQuality.tier_lod(t)
 		var fill: float = 0.95 - 0.05 * float(t)
 		var palette: Array[Color] = low if t < 2 else high
 		var seated_share: float = 0.7 if t < 2 else 0.4
@@ -386,15 +390,15 @@ func _build_crowd() -> void:
 			tc.a = 1.0
 			var seated: bool = rng.randf() < seated_share
 			var variants: PackedStringArray = CrowdMood.pick_variants(seated, rng.randf() < 0.35, rng.randf())
-			if crowd_lite and t >= CROWD_LITE_TIER and variants[1] != "":
+			if t >= GfxQuality.pick_i(GfxQuality.CROWD_CHEER_TIER):
 				variants[1] = ""
-			crowd.add_spectator(Transform3D(facing.scaled_local(Vector3(1.0, h, 1.0)), pos), variants, tc, rng.randi() % CrowdMood.SEED_COUNT)
+			crowd.add_spectator(Transform3D(facing.scaled_local(Vector3(1.0, h, 1.0)), pos), variants, tc, rng.randi() % CrowdMood.SEED_COUNT, lod)
 	# The emperor and his consort in the box, in imperial purple, on the gilded seats.
 	var bb: Basis = ring_basis(BOX_ANGLE)
 	var floor_y: float = _tier_top(1) + 0.02
 	for sx: float in [-0.5, 0.5]:
 		var p: Vector3 = Vector3((radius + 1.7) * cos(BOX_ANGLE), floor_y, (radius + 1.7) * sin(BOX_ANGLE)) + bb.x * sx
-		crowd.add_spectator(Transform3D(bb, p), PackedStringArray([CrowdMood.NOBLE, ""]), RomanDecor.PURPLE, 7 if sx > 0.0 else 12)
+		crowd.add_spectator(Transform3D(bb, p), PackedStringArray([CrowdMood.NOBLE, ""]), RomanDecor.PURPLE, 7 if sx > 0.0 else 12, -1)
 	crowd.build()
 
 
@@ -590,7 +594,7 @@ func _build_velarium() -> void:
 		var dir: Vector3 = (low - tip)
 		var rope_basis := Basis.looking_at(dir.normalized(), Vector3.UP)
 		RomanDecor.box(wood, Transform3D(rope_basis, (tip + low) * 0.5), Vector3(0.05, 0.05, dir.length()), Color(0.4, 0.33, 0.22))
-	_add_mesh("Velarium", st, _vertex_material(true, 0.95, true), true)
+	_add_mesh("Velarium", st, _vertex_material(true, 0.95, true), GfxQuality.level >= GfxQuality.HIGH)  # its shadow only falls on the stands
 	_add_mesh("Masts", wood, _vertex_material(false, 0.9, true), false)
 
 
@@ -604,9 +608,10 @@ func _build_environment() -> void:
 	sun.light_color = Color(1.0, 0.8, 0.55)
 	sun.light_energy = 0.95
 	sun.shadow_enabled = true
-	sun.shadow_blur = 2.0
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 52.0
+	sun.shadow_blur = GfxQuality.pick_f(GfxQuality.SHADOW_BLUR)
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if GfxQuality.pick_i(GfxQuality.SHADOW_SPLITS) >= 2 \
+			else DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_max_distance = GfxQuality.pick_f(GfxQuality.SHADOW_DISTANCE)
 	sun.shadow_bias = 0.05
 	sun.shadow_normal_bias = 0.5
 	add_child(sun)

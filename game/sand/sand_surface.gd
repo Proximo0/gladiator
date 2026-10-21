@@ -6,13 +6,10 @@ extends Node3D
 ## Maps: height R16F (metres), blood RGBA8 (R blood, G damp, B dryness).
 
 const TILE: int = 16
-const UPLOAD_INTERVAL: float = 1.0 / 30.0
 const SWEEP_TILES_PER_FRAME: int = 4
 const WET_DECAY: float = 1.0 / 240.0  ## damp fraction lost per second
 const DRY_RATE: float = 1.0 / 120.0  ## dryness gained per second
 const MAX_DRAG_STAMPS: int = 80
-const PUFF_POOL: int = 10
-const GRAIN_CAPACITY: int = 520
 const BASE_SEED: int = 7
 const FOOT_RADIUS_MAX: float = 0.075  ## drag radii up to this count as a foot, the rest as a body or weapon
 const TICK_S: float = 1.0 / 60.0
@@ -27,6 +24,9 @@ var extent: float = 11.6
 var n: int = 0
 var texels_per_m: float = 40.0
 var rim_gain: float = 1.0
+## Perf harness: with profile_on, _process adds its sections' milliseconds to `prof` (pools, grains, sweep, flush).
+var profile_on: bool = false
+var prof: Dictionary = {}
 
 var _h: PackedFloat32Array = PackedFloat32Array()
 var _base: PackedFloat32Array = PackedFloat32Array()  ## permanent piles (wall drifts, heaps), metres
@@ -56,7 +56,11 @@ var _pools: Array[Dictionary] = []
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _puffs: Array[CPUParticles3D] = []
 var _next_puff: int = 0
-var _fx: SandFx = SandFx.new(GRAIN_CAPACITY)
+var _fx: SandFx = SandFx.new(1)
+var _grain_capacity: int = 1
+var _pool_step_s: float = 0.0
+var _upload_interval: float = 1.0 / 30.0
+var _pool_acc: float = 0.0
 var _fx_mm: MultiMesh
 var _fx_buf: PackedFloat32Array = PackedFloat32Array()
 var _fx_shown: int = 0
@@ -66,8 +70,17 @@ var _ambient_clock: float = 99.0
 
 
 ## Builds maps, mesh and material. radius = arena radius in metres. texels_per_m 40 gives 2.5 cm texels
-## (use about 28 on weak phones); mesh_cell is the vertex spacing of the floor mesh in metres.
-func setup(arena_radius: float = 11.0, tpm: float = 40.0, mesh_cell: float = 0.1) -> void:
+## (use about 28 on weak phones); mesh_cell is the vertex spacing of the floor mesh in metres. Negative tpm or
+## mesh_cell take the GfxQuality level's value. Grain, puff and shader detail counts always follow GfxQuality.
+func setup(arena_radius: float = 11.0, tpm: float = -1.0, mesh_cell: float = -1.0) -> void:
+	if tpm < 0.0:
+		tpm = GfxQuality.pick_f(GfxQuality.SAND_TEXELS_PER_M)
+	if mesh_cell < 0.0:
+		mesh_cell = GfxQuality.pick_f(GfxQuality.SAND_MESH_CELL)
+	_grain_capacity = GfxQuality.pick_i(GfxQuality.SAND_GRAINS)
+	_fx = SandFx.new(_grain_capacity)
+	_pool_step_s = GfxQuality.pick_f(GfxQuality.SAND_POOL_STEP_S)
+	_upload_interval = GfxQuality.pick_f(GfxQuality.SAND_UPLOAD_S)
 	radius = arena_radius
 	texels_per_m = tpm
 	extent = SandMap.map_extent(radius)
@@ -105,6 +118,7 @@ func setup(arena_radius: float = 11.0, tpm: float = 40.0, mesh_cell: float = 0.1
 	_material.set_shader_parameter("extent", extent)
 	_material.set_shader_parameter("map_n", float(n))
 	_material.set_shader_parameter("arena_radius", radius)
+	_material.set_shader_parameter("detail", GfxQuality.pick_i(GfxQuality.SAND_DETAIL))
 	_mesh_node = MeshInstance3D.new()
 	_mesh_node.name = "SandMesh"
 	_mesh_node.mesh = build_disc_mesh(radius + 0.35, mesh_cell)
@@ -300,15 +314,25 @@ func _process(delta: float) -> void:
 		return
 	_time += delta
 	_since_upload += delta
+	var t0: int = Time.get_ticks_usec() if profile_on else 0
 	_spread_pools(delta)
+	var t1: int = Time.get_ticks_usec() if profile_on else 0
 	_update_grains(delta)
+	var t2: int = Time.get_ticks_usec() if profile_on else 0
 	_ambient_clock += delta
 	if _ambient_clock >= AMBIENT_REFRESH_S:
 		_ambient_clock = 0.0
 		refresh_ambient()
 	_sweep_blood()
-	if _since_upload >= UPLOAD_INTERVAL:
+	var t3: int = Time.get_ticks_usec() if profile_on else 0
+	if _since_upload >= _upload_interval:
 		flush()
+	if profile_on:
+		var t4: int = Time.get_ticks_usec()
+		prof["pools"] = float(prof.get("pools", 0.0)) + float(t1 - t0) / 1000.0
+		prof["grains"] = float(prof.get("grains", 0.0)) + float(t2 - t1) / 1000.0
+		prof["sweep"] = float(prof.get("sweep", 0.0)) + float(t3 - t2) / 1000.0
+		prof["flush"] = float(prof.get("flush", 0.0)) + float(t4 - t3) / 1000.0
 
 
 ## Warm shade fill from the scene's ambient energy (the engine's own ambient is off for the sand).
@@ -419,6 +443,13 @@ func _mark_b(rect: Rect2i) -> void:
 
 
 func _spread_pools(delta: float) -> void:
+	if _pools.is_empty():
+		return
+	_pool_acc += delta  # a step repaints every texel of every pool: do it at a lower rate on weak devices
+	if _pool_acc < _pool_step_s:
+		return
+	delta = _pool_acc
+	_pool_acc = 0.0
 	var i: int = _pools.size() - 1
 	while i >= 0:
 		var p: Dictionary = _pools[i]
@@ -508,11 +539,11 @@ func _build_particles() -> void:
 	var grow: Curve = Curve.new()
 	grow.add_point(Vector2(0.0, 0.35))
 	grow.add_point(Vector2(1.0, 1.6))
-	for i in range(PUFF_POOL):
+	for i in range(GfxQuality.pick_i(GfxQuality.SAND_PUFFS)):
 		var p: CPUParticles3D = CPUParticles3D.new()
 		p.emitting = false
 		p.one_shot = true
-		p.amount = 9
+		p.amount = GfxQuality.pick_i(GfxQuality.SAND_PUFF_AMOUNT)
 		p.lifetime = 1.1
 		p.explosiveness = 0.95
 		p.local_coords = false
@@ -541,9 +572,9 @@ func _build_particles() -> void:
 	_fx_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_fx_mm.use_colors = true
 	_fx_mm.mesh = box
-	_fx_mm.instance_count = GRAIN_CAPACITY
+	_fx_mm.instance_count = _grain_capacity
 	_fx_mm.visible_instance_count = 0
-	_fx_buf.resize(GRAIN_CAPACITY * SandFx.FLOATS_PER_GRAIN)
+	_fx_buf.resize(_grain_capacity * SandFx.FLOATS_PER_GRAIN)
 	var mmi: MultiMeshInstance3D = MultiMeshInstance3D.new()
 	mmi.name = "Grains"
 	mmi.multimesh = _fx_mm

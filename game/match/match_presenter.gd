@@ -54,7 +54,7 @@ func build(camera_mode: String) -> void:
 	blood.name = "BloodFx"
 	blood.sand = sand
 	add_child(blood)
-	blood.set_quality(0 if OS.has_feature("mobile") else 2)
+	blood.set_quality(GfxQuality.blood_level())
 	sfx = SfxDirector.new()
 	sfx.name = "SfxDirector"
 	add_child(sfx)

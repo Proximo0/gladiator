@@ -1,0 +1,38 @@
+extends TestCase
+
+
+func test_tables_have_one_entry_per_level() -> void:
+	for t: Array in [GfxQuality.CROWD_SPACING_MULT, GfxQuality.CROWD_BACK_SPACING, GfxQuality.SHADOW_DISTANCE,
+			GfxQuality.SAND_TEXELS_PER_M, GfxQuality.SAND_MESH_CELL, GfxQuality.SAND_POOL_STEP_S, GfxQuality.SAND_UPLOAD_S]:
+		assert_eq(t.size(), 3)
+	for t: Array in [GfxQuality.CROWD_CHEER_TIER, GfxQuality.CROWD_SECTORS, GfxQuality.SHADOW_SPLITS, GfxQuality.MSAA,
+			GfxQuality.SAND_GRAINS, GfxQuality.SAND_PUFFS, GfxQuality.SAND_PUFF_AMOUNT, GfxQuality.SAND_DETAIL,
+			GfxQuality.CROWD_TIER_LOD]:
+		assert_eq(t.size(), 3)
+
+
+func test_low_is_cheaper_than_high() -> void:
+	assert_true(GfxQuality.pick_f(GfxQuality.CROWD_SPACING_MULT, 0) > GfxQuality.pick_f(GfxQuality.CROWD_SPACING_MULT, 2))
+	assert_true(GfxQuality.pick_i(GfxQuality.SAND_GRAINS, 0) < GfxQuality.pick_i(GfxQuality.SAND_GRAINS, 2))
+	assert_true(GfxQuality.pick_f(GfxQuality.SAND_TEXELS_PER_M, 0) < GfxQuality.pick_f(GfxQuality.SAND_TEXELS_PER_M, 2))
+	assert_true(GfxQuality.pick_f(GfxQuality.SAND_MESH_CELL, 0) > GfxQuality.pick_f(GfxQuality.SAND_MESH_CELL, 2))
+	assert_true(GfxQuality.pick_i(GfxQuality.CROWD_SECTORS, 0) < GfxQuality.pick_i(GfxQuality.CROWD_SECTORS, 2))
+	for tier: int in 6:
+		assert_true(GfxQuality.tier_lod(tier, 0) >= GfxQuality.tier_lod(tier, 2), "lower quality never uses a finer mesh")
+
+
+func test_lod_never_gets_finer_with_distance() -> void:
+	for l: int in 3:
+		for tier: int in range(1, 6):
+			assert_true(GfxQuality.tier_lod(tier, l) >= GfxQuality.tier_lod(tier - 1, l))
+
+
+func test_level_is_clamped_and_named() -> void:
+	var old: int = GfxQuality.level
+	GfxQuality.set_level(9)
+	assert_eq(GfxQuality.level, GfxQuality.HIGH)
+	GfxQuality.set_level(-4)
+	assert_eq(GfxQuality.level, GfxQuality.LOW)
+	assert_eq(GfxQuality.name_of(1), "medium")
+	assert_eq(GfxQuality.blood_level(), 0)
+	GfxQuality.set_level(old)
