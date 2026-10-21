@@ -1019,7 +1019,17 @@ func _process_contacts() -> void:
 		var st: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(w.get_rid())
 		if st == null:
 			continue
+		# Jolt reports contacts in a thread-dependent order and the debounce keeps the first contact per key, so
+		# visit them in a stable order (collider name, then point) or same-seed fights diverge.
+		var order: Array = []
 		for i: int in range(st.get_contact_count()):
+			var o: Object = st.get_contact_collider_object(i)
+			var nm: String = str((o as Node).name) if o is Node else ""
+			var lp: Vector3 = st.get_contact_local_position(i)
+			order.append([nm, lp.x, lp.y, lp.z, i])
+		order.sort()
+		for entry: Array in order:
+			var i: int = int(entry[4])
 			var obj: Object = st.get_contact_collider_object(i)
 			if not obj is RigidBody3D:
 				continue

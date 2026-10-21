@@ -103,6 +103,9 @@ const FIELDS: Array = [
 	["hit_debounce", 0.25, 0.05, 1.0, 0.05, "Damage", "Min time between hits by the same weapon on the same part, s."],
 	["grab_radius", 0.3, 0.1, 1.0, 0.05, "Arms", "GRAB pickup radius from the hand, m."],
 	["knockback_scale", 1.0, 0.0, 3.0, 0.05, "Damage", "Multiplier on hit knockback impulses."],
+	["match_pause_s", 4.0, 1.0, 15.0, 0.5, "Match", "Pause after a match before the next bot match starts, s."],
+	["match_slowmo_scale", 0.4, 0.1, 1.0, 0.05, "Match", "Time scale during the finisher slow motion."],
+	["match_slowmo_s", 1.0, 0.0, 5.0, 0.1, "Match", "Length of the finisher slow motion, game seconds."],
 	["blood_faint", 3.5, 2.6, 5.0, 0.1, "Health", "Blood (L) below which consciousness is capped; zero at blood_death."],
 	["health_head_ko", 0.03, 0.0, 0.2, 0.005, "Health", "Consciousness lost per blunt point on the head."],
 	["health_stagger_ko", 0.05, 0.0, 0.5, 0.01, "Health", "Consciousness lost per unit of stagger on any part."],
@@ -207,6 +210,9 @@ var offhand_hand_speed: float
 var hit_debounce: float
 var grab_radius: float
 var knockback_scale: float
+var match_pause_s: float
+var match_slowmo_scale: float
+var match_slowmo_s: float
 var blood_faint: float
 var health_head_ko: float
 var health_stagger_ko: float
