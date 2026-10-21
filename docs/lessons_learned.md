@@ -1,6 +1,6 @@
 # Lessons learned (read before starting work)
 
-The full build guide is a Claude Doc: https://claude.ai/artifact/WtmrkVRtizP8oJBRwhxdWW. Add a row here whenever something goes wrong.
+Sandblood build guide: https://claude.ai/artifact/LBNp22258n18mRFtk2ke4i (Skate Park playbook: https://claude.ai/artifact/WtmrkVRtizP8oJBRwhxdWW). Add a row here whenever something goes wrong.
 
 | What happened | Rule |
 | --- | --- |
@@ -18,3 +18,5 @@ The full build guide is a Claude Doc: https://claude.ai/artifact/WtmrkVRtizP8oJB
 | Feel bugs were found by the player, not by us | Build the debug layer and the bot before content: tunables, debug frame, snapshot/replay, recorder, overlay, lab, bot. |
 | Ramps had knife-edge side walls under 0.3 m | Piece rule: no collision edge under the skater's radius, side walls run below ground, no coplanar floors. |
 | Shader compile failed: `MODELVIEW_MATRIX` used in a fragment shader; a disc rendered culled | `MODELVIEW_MATRIX` is vertex-only (use `VIEW_MATRIX * MODEL_MATRIX` in fragment); Godot front faces wind clockwise |
+| The brief said finishers start at `blood / 5.0 < 0.4`, but death is at 2.5 L, so it could never fire | Normalise between the death line and full (`health.blood_frac()`); check a new threshold against the existing ones |
+| Thin poles and an awning cast hard streaks across the sand | Only fighters, walls and big shapes cast shadows; thin decorative meshes don't |
