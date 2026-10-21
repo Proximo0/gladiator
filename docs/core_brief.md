@@ -196,3 +196,70 @@ otherwise free-for-commercial-use only, every file credited in `docs/audio_credi
   disarm, armor knocked off, KO, and a huge roar plus chant on a finisher. `func crowd_excitement() -> float`.
 - Spatial 3D players (`AudioStreamPlayer3D`), pooled, random pitch/variant per play, a bus layout of Master > SFX,
   Crowd, Voice (Music reserved).
+
+# Step 2: the bot vs bot match and the debug layer
+
+Everything from step 1 has landed (Fighter, Weapon, DamageModel, FighterHealth, CombatData, FighterInput,
+InputReader, TouchControls, FighterBrain, Arena, FightCamera, SandSurface, BloodFx, BloodMeter/HUD, SfxDirector,
+TuningPanel). Read their files; this section is the contract for step 2. Sims now run with `--fixed-fps 60`.
+Replay rule (measured): a fresh start with the same seed, loadouts and per-tick inputs is bit-identical; a
+mid-fight restore diverges. So recordings are seed + loadouts + inputs from tick 0.
+
+## Match (`game/match/`, owner: match worker)
+`class_name Match extends Node3D`, built in code.
+- `func setup(config: Dictionary) -> void`, config keys (all optional, defaults in brackets): `mode`
+  ("bot_vs_bot" | "player_vs_cpu" | "local_2p") ["bot_vs_bot"], `seed` [Flags.seed_value()], `loadouts`
+  (Array of 2 Fighter loadouts) [random from `MatchConfig.random_loadout(rng)`], `personalities` (Array of 2 brain
+  presets) [random], `presentation` (bool: arena visuals, sand, blood, sfx, HUD, camera) [true], `time_limit_s` [180].
+- Owns two `Fighter`s (side 0 at spawn 0, side 1 at spawn 1), `opponent` links, two `FighterBrain`s for bot sides,
+  `InputReader`s for human sides. Every physics tick, in this order: collect one `FighterInput` per side, emit
+  `inputs_applied(tick: int, inputs: Array)` with their `to_array()`s, then `apply_input` on each fighter.
+- `var tick: int`, `var fighters: Array`, `var seed: int`, `signal match_over(result: Dictionary)`.
+  result = `{winner: 0|1|-1, reason: "blood_loss"|"behead"|"gut"|"run_through"|"skull_crush"|"ko"|"time",
+  ticks, seed, loadouts, personalities, stats: MatchStats.to_dict()}`.
+- `func force_inputs(tick_inputs: Array) -> void`: replay mode, the next ticks use these recorded inputs
+  (Array of per-tick [[5 ints], [5 ints]]) instead of brains/readers.
+- Presentation wiring (only when `presentation`): Arena + SandSurface, BloodFx (sand, track both), SfxDirector,
+  HUD (blood meters, announce on finishers/KO/victory with Latin/English), FightCamera (bot vs bot: "wide" mode
+  following both), TuningPanel, sand footprints from the fighters' feet (`stamp_ellipse` when a shin's foot end
+  touches down), body falls (stamps), dragged weapon tips (`drag`), hit sprays near the ground (`spray`).
+- Bot vs bot loops: after `match_over`, a 4 s pause (slow motion on a finisher), then a new match with seed + 1.
+- `class_name MatchStats extends RefCounted` (pure): fed from fighter hit/gore/died signals and debug_frames each
+  tick; `to_dict()` gives `hits, hits_by_side, contact_kinds {edge,point,flat,blunt}, max_tip_speed, mean_tip_speed
+  when swinging, severs, finisher, disarms, armor_dislodged, self_hits, knockdowns, time_down_s, stuck_s (both
+  fighters' pelvis speed < 0.2 m/s and no swing for > 3 s), explosions (any body speed > 40 m/s or NaN),
+  wall_time_s, blood_left [a, b]`.
+
+## Flight recorder and replay (`game/debug/flight_recorder.gd`, `tools/replay.sh`, `tests/replay/`, owner: recorder worker)
+- `class_name FlightRecorder extends Node`: `func attach(m: Match)` listens to `inputs_applied`; keeps the whole
+  match (seed, loadouts, personalities, Tuning diff, inputs per tick) in memory; F12 or `match_over` with
+  `--record` saves `user://recordings/<time>_<seed>.json` (never in a scripted run unless `--record` is given).
+- Format: `{version: 1, seed, loadouts, personalities, tuning: {diff}, ticks: N, inputs: [[[5 ints],[5 ints]], ...],
+  result}`.
+- `tools/replay.sh <file> [--tune=preset.json] [--render]`: replays headless from tick 0 with `force_inputs`,
+  compares the result and per-tick state hashes, prints `REPLAY ticks=N divergence=<m> result_match=yes|no`.
+  `--render` writes PNG frames every N ticks for review.
+
+## Bot match runner (`tests/bot/`, `tools/bot_match.sh`, owner: recorder worker)
+- `tests/bot/bot.tscn` (the starter kit's check_all and CI pick it up): runs seeded headless bot vs bot matches
+  with `presentation=false`, `--shard=i --nshards=n --matches=M`, and prints one line per match
+  `BOT match seed=.. winner=.. reason=.. ticks=.. hits=.. stuck_s=.. explosions=.. ms_per_tick=.. PASS|FAIL`
+  and a final `BOT score=..`. FAIL when: explosions > 0, stuck_s > 20, no hits at all, or the match ends by
+  time limit with both fighters untouched. Writes `out/bot/<seed>.json` (MatchStats) and records every FAIL.
+- `tools/bot_match.sh [--matches=N] [--seed=S]`: runs it and prints an aggregate table (outcomes mix, mean match
+  length, hits/min, finisher kinds, disarms, armor off, self hits, knockdowns, ms per tick).
+
+## Debug overlay (`game/debug/fight_overlay.gd`, owner: overlay worker)
+- `class_name FightOverlay extends CanvasLayer` + a 3D immediate-mesh helper: `func track(f: Fighter)`.
+  F1 toggles: per fighter a readout (state, balance, stamina, consciousness, blood, tip speed, weapon, grip,
+  brain state if a `brain` is set), the hand target and hand position, a 0.5 s tip trail colored by speed, contact
+  points flashing (color by contact kind), knockback arrows, the guard plane. F2 slow motion (0.25x), F3 freeze,
+  `.` single physics step while frozen. Never changes gameplay.
+
+## Files and owners (step 2)
+| Worker | Model | Owns |
+| --- | --- | --- |
+| match | Sonnet | `game/match/*`, `tests/unit/test_match_*.gd`, `tests/sim/sim_match_*.gd` |
+| recorder | Sonnet | `game/debug/flight_recorder.gd`, `tools/replay.sh`, `tools/bot_match.sh`, `tests/replay/*`, `tests/bot/*`, `tests/unit/test_flight_recorder.gd` |
+| overlay | Haiku | `game/debug/fight_overlay.gd`, `game/debug/overlay_draw.gd`, `tests/unit/test_fight_overlay.gd` |
+Lead: `game/main.gd` (it will just build a `Match` from Flags), `project.godot`, `tuning.gd`, `sim_suite.gd`, CI.
