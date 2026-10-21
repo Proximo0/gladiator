@@ -53,3 +53,15 @@ func test_banners() -> void:
 	assert_eq(MatchJudge.finisher_banner("sever"), "")
 	assert_eq(MatchJudge.result_banner({"winner": 1}, ["A", "B"]), "VICTOR / B")
 	assert_true(MatchJudge.result_banner({"winner": -1}, ["A", "B"]).contains("/"))
+
+
+func test_faint_from_blood_loss_is_blood_loss() -> void:
+	var j := MatchJudge.new(100.0, 0.25)
+	var r: Dictionary = {}
+	for i: int in 4:
+		r = j.update([_fr("standing"), _fr("ko", 2.65)], i, 0.1)
+	assert_eq(r, {"winner": 0, "reason": "blood_loss"})
+	var k := MatchJudge.new(100.0, 0.25)
+	for i: int in 4:
+		r = k.update([_fr("ko", 4.5), _fr("standing", 1.0)], i, 0.1)
+	assert_eq(r, {"winner": 1, "reason": "ko"}, "a blow knock-out with plenty of blood stays a ko")

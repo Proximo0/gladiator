@@ -461,3 +461,16 @@ func test_stalemate_ends_the_footwork_and_presses() -> void:
 
 func test_footwork_is_deterministic() -> void:
 	assert_eq(_footwork_ticks({"preset": "duelist"}, 1.4, 1200, 11), _footwork_ticks({"preset": "duelist"}, 1.4, 1200, 11))
+
+
+func test_heavy_short_weapons_do_not_swing_low_on_the_weapon_side() -> void:
+	assert_eq(FighterBrain.heavy_low_limit(0.75, false), FighterBrain.AIM_LOW_LIMIT, "swords keep the normal floor")
+	assert_eq(FighterBrain.heavy_low_limit(0.0, true), FighterBrain.AIM_LOW_LIMIT, "leg attacks in front stay")
+	assert_eq(FighterBrain.heavy_low_limit(0.75, true), FighterBrain.HEAVY_LOW_LIMIT, "axe low right is capped")
+	for w: String in ["axe", "club"]:
+		var b := _brain({"preset": "berserker", "preferred_attacks": ["low"]})
+		var f: Array = _pair(1.0, w)
+		for i in 400:
+			var inp: FighterInput = b.think(f[0], f[1], DT)
+			var lim: float = FighterBrain.heavy_low_limit(float(inp.aim_x) / 1000.0, true)
+			assert_true(float(inp.aim_y) / 1000.0 >= lim - 0.002 or inp.aim_y == -1000, "%s aim %d,%d" % [w, inp.aim_x, inp.aim_y])

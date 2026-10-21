@@ -19,6 +19,10 @@ const FINISH_STRIKE_SCALE: float = 0.8  ## finisher strikes sweep this much fast
 const SLEW_NEUTRAL: float = 0.07  ## max aim travel per tick when returning to the neutral guard (no whip-back through the body)
 const AIM_LEFT_LIMIT: float = -0.55  ## aim x below this sweeps the weapon through the own offhand arm (self hits)
 const AIM_LOW_LIMIT: float = -0.75
+const HEAVY_SHORT_SHAPES: PackedStringArray = ["axe", "club"]
+const HEAVY_LOW_LIMIT: float = -0.3  ## axe/club aim floor on the weapon side: the head swings down through the own shin
+const HEAVY_LOW_X0: float = 0.35  ## the floor eases in between these aim x values (leg attacks on a foe in front stay)
+const HEAVY_LOW_X1: float = 0.6
 const SLEW_RECOVER: float = 0.045
 const SLEW_GUARD: float = 0.2
 const DISARM_SCALE: float = 0.3  ## share of the personality's disarm_aim actually used (round 1 over-disarmed: 57 per 24 matches)
@@ -102,6 +106,7 @@ var _reflex_ok: bool = true
 var _grab_ticks: int = 0
 var _weapon_giveup: int = 0  ## tick before which the brain does not go for a prop again (a grab that never worked)
 var _main_weapon: String = ""
+var _heavy_short: bool = false  ## the held weapon is an axe or club (see HEAVY_LOW_LIMIT)
 var _last_aim: Vector2 = Vector2(0.0, 0.15)  ## aim sent last tick (the hand is eased, not snapped, after a strike)
 var _stale_ticks: int = 0  ## ticks since either fighter lost blood, consciousness or core hp (a stalemate clock)
 var _stale_prev: Dictionary = {}
@@ -177,6 +182,7 @@ func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 	var obs: Dictionary = _lagged(_delay)
 	if _main_weapon == "":
 		_main_weapon = str(me.get("weapon_id", "fists"))
+	_heavy_short = HEAVY_SHORT_SHAPES.has(str(CombatData.weapon(str(me.get("weapon_id", "fists"))).get("shape", "fist")))
 	var my_state: String = str(me.get("state", "standing"))
 	if my_state == "down" or my_state == "getting_up" or my_state == "ko" or my_state == "dead":
 		_enter(ST_APPROACH, 0)
@@ -1025,10 +1031,20 @@ func _clamp_aim(v: Vector2) -> Vector2:
 func _set_aim(out: FighterInput, v: Vector2) -> void:
 	var c: Vector2 = _clamp_aim(v)
 	c.x = maxf(c.x, AIM_LEFT_LIMIT)
-	c.y = maxf(c.y, AIM_LOW_LIMIT)  # a hand driven to the lowest aim drags the blade through the own thigh and pelvis  # the weapon hand stays off the offhand arm/shield side of the body
+	c.y = maxf(c.y, heavy_low_limit(c.x, _heavy_short))
+	# a hand driven to the lowest aim drags the blade through the own thigh and pelvis  # the weapon hand stays off the offhand arm/shield side of the body
 	_last_aim = c
 	out.aim_x = roundi(c.x * 1000.0)
 	out.aim_y = roundi(c.y * 1000.0)
+
+
+## Lowest aim y allowed at aim x. Axes and clubs aimed low on the weapon side swing the head through the own shin
+## (seed 7000: aim 750, -450); aimed low in front, at the foe's legs, they keep the normal floor.
+static func heavy_low_limit(x: float, heavy_short: bool) -> float:
+	if not heavy_short:
+		return AIM_LOW_LIMIT
+	var u: float = smoothstep(HEAVY_LOW_X0, HEAVY_LOW_X1, x)
+	return lerpf(AIM_LOW_LIMIT, HEAVY_LOW_LIMIT, u)
 
 
 func _neutral_aim(out: FighterInput, step: float = SLEW_NEUTRAL) -> void:

@@ -174,10 +174,12 @@ func uncut(n: String) -> void:
 
 ## Armor fit over the body art: per part, the shape that sits just outside the skin (placeholder armor meshes are
 ## still primitives). "cyl" is an elliptical (rx, rz) tapered cylinder, "sphere" an ellipsoid, "capsule" a limb sleeve.
+const HELM_CLEAR: float = 0.006  ## helmet shell clearance over the head collider hull (m)
+const HELM_BOTTOM: float = -0.03  ## lowest hull ring the helmet covers (part frame y)
 const ARMOR_FIT: Dictionary = {
 	"pelvis": {"shape": "cyl", "rx": 0.185, "rz": 0.135, "h": 0.19, "pos": Vector3(0, -0.01, 0), "taper": 1.0},
 	"torso": {"shape": "cyl", "rx": 0.205, "rz": 0.125, "h": 0.40, "pos": Vector3(0, -0.03, 0), "taper": 0.83},
-	"head": {"shape": "sphere", "r": 0.112, "h": 0.19, "pos": Vector3(0, 0.02, 0)},
+	"head": {"shape": "helm", "clear": HELM_CLEAR, "bottom": HELM_BOTTOM, "pos": Vector3.ZERO},
 	"upper_arm_l": {"shape": "capsule", "r": 0.072, "h": 0.27, "pos": Vector3(0, 0.0, 0)},
 	"upper_arm_r": {"shape": "capsule", "r": 0.072, "h": 0.27, "pos": Vector3(0, 0.0, 0)},
 	"forearm_l": {"shape": "capsule", "r": 0.058, "h": 0.26, "pos": Vector3(0, 0.035, 0)},
@@ -206,6 +208,8 @@ static func armor_fit(pn: String) -> Dictionary:
 			var st := SurfaceTool.new()
 			st.append_from(cm, 0, Transform3D(Basis.from_scale(Vector3(float(f["rx"]), 1.0, float(f["rz"]))), Vector3.ZERO))
 			mesh = st.commit()
+		"helm":
+			mesh = helm_mesh(float(f["clear"]), float(f["bottom"]))
 		"sphere":
 			var sm := SphereMesh.new()
 			sm.radius = float(f["r"])
@@ -217,3 +221,43 @@ static func armor_fit(pn: String) -> Dictionary:
 			pm.height = float(f["h"])
 			mesh = pm
 	return {"mesh": mesh, "pos": f["pos"]}
+
+
+## Helmet shell: the head collider's rings (`Fighter.HEAD_PROFILE`) pushed out by `clear`, from the ring at `bottom` up
+## over the crown, closed underneath. Part frame, so it hugs the collider and a blow that clips it also hits the head.
+static func helm_mesh(clear: float, bottom: float) -> Mesh:
+	var rings: Array = []
+	for row: Array in Fighter.HEAD_PROFILE:
+		if float(row[0]) >= bottom - 0.0001:
+			rings.append(row)
+	var seg: int = 24
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var pts: Array = []
+	for row: Array in rings:
+		var ring := PackedVector3Array()
+		for k: int in seg:
+			var a: float = TAU * float(k) / float(seg)
+			var cz: float = cos(a)
+			var depth: float = (float(row[3]) if cz > 0.0 else -float(row[2])) + clear
+			ring.append(Vector3(sin(a) * (float(row[1]) + clear), float(row[0]), cz * depth))
+		pts.append(ring)
+	var top: Vector3 = Vector3(0.0, float((rings[rings.size() - 1] as Array)[0]) + clear, 0.0)
+	var low_c := Vector3(0.0, float((rings[0] as Array)[0]) - clear * 0.5, 0.0)
+	for r: int in range(pts.size() - 1):
+		for k: int in seg:
+			var k2: int = (k + 1) % seg
+			var a0: Vector3 = (pts[r] as PackedVector3Array)[k]
+			var a1: Vector3 = (pts[r] as PackedVector3Array)[k2]
+			var b0: Vector3 = (pts[r + 1] as PackedVector3Array)[k]
+			var b1: Vector3 = (pts[r + 1] as PackedVector3Array)[k2]
+			for v: Vector3 in [a0, b0, a1, a1, b0, b1]:
+				st.add_vertex(v)
+	var last: PackedVector3Array = pts[pts.size() - 1]
+	var first: PackedVector3Array = pts[0]
+	for k: int in seg:
+		var k2: int = (k + 1) % seg
+		for v: Vector3 in [last[k], top, last[k2], first[k], first[k2], low_c]:
+			st.add_vertex(v)
+	st.generate_normals()
+	return st.commit()
