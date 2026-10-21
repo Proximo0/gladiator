@@ -2,7 +2,7 @@ class_name TitleScreen
 extends Control
 ## SANDBLOOD title and main menu over the arena backdrop. Fight (vs CPU) is first and focused.
 
-signal chosen(id: String)  ## "fight", "local_2p", "bots", "options", "quit"
+signal chosen(id: String)  ## "fight", "local_2p", "online", "bots", "options", "quit"
 
 var _title: Label
 var _sub: Label
@@ -38,7 +38,7 @@ func _init() -> void:
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0.0, 30.0)
 	_col.add_child(gap)
-	var entries: Array = [["fight", "Fight  (vs CPU)"], ["local_2p", "Local 2 players"], ["bots", "Watch bots"],
+	var entries: Array = [["fight", "Fight  (vs CPU)"], ["local_2p", "Local 2 players"], ["online", "Online 1v1"], ["bots", "Watch bots"],
 			["options", "Options"]]
 	if not OS.has_feature("mobile") and not OS.has_feature("web"):
 		entries.append(["quit", "Quit"])

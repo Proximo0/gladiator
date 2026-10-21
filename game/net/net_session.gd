@@ -1,0 +1,345 @@
+class_name NetSession
+extends Node
+## One online 1v1 connection over ENet (direct IP and port, default 7777). The host listens for one client; the
+## client joins by address. Owns the peer, polls it every physics tick (before Match runs), counts bytes both ways,
+## runs the lobby (HELLO / LOBBY / LOADOUT / START) and routes match traffic to the NetHostDriver or NetClientDriver
+## hung on the current Match. The host is side 0 and simulates both fighters; the client is side 1 and only
+## renders. See docs/online_brief.md.
+## Dev flags: --net-lag=<ms one way> --net-jitter=<ms> --net-loss=<0..1> fake a bad link on what this side sends.
+
+signal status_changed(text: String)
+signal lobby_changed  ## the other side joined, left or changed its loadout
+signal match_requested(start: Dictionary)  ## build the match now (both sides; host: after start_match())
+signal match_result(result: Dictionary)  ## client: the host's result arrived
+signal closed(reason: String)  ## the connection is gone (left, refused, timed out, failed)
+
+const ROLE_HOST: String = "host"
+const ROLE_CLIENT: String = "client"
+const HOST_PEER: int = 1
+
+var role: String = ""
+var local_name: String = "Gladiator"
+var local_loadout: Dictionary = {}
+var remote_name: String = ""
+var remote_loadout: Dictionary = {}
+var remote_joined: bool = false  ## host: a client said hello; client: the host accepted us
+var local_tick: int = 0
+var bw_out: NetBandwidth = NetBandwidth.new()
+var bw_in: NetBandwidth = NetBandwidth.new()
+var link: NetLinkSim = NetLinkSim.new()
+var host_driver: NetHostDriver = null
+var client_driver: NetClientDriver = null
+var last_start: Dictionary = {}
+var close_reason: String = ""
+
+var _peer: ENetMultiplayerPeer = null
+var _remote_id: int = 0
+var _last_heard: int = 0
+var _connect_started: int = 0
+var _closed: bool = false
+
+
+func _init() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	process_physics_priority = -20
+
+
+## Fakes a bad link on everything this side sends (tests and --net-lag).
+func set_link(latency_ticks: int, jitter_ticks: int, loss: float, seed_value: int) -> void:
+	link = NetLinkSim.new(latency_ticks, jitter_ticks, loss, seed_value)
+
+
+func _ready() -> void:
+	if Flags.args.has("net-lag") or Flags.args.has("net-loss") or Flags.args.has("net-jitter"):
+		var ms_per_tick: float = 1000.0 / float(NetConfig.TICK_HZ)
+		set_link(roundi(float(Flags.get_arg("net-lag", "0")) / ms_per_tick),
+			roundi(float(Flags.get_arg("net-jitter", "0")) / ms_per_tick), float(Flags.get_arg("net-loss", "0")),
+			Flags.seed_value() + (0 if role == ROLE_HOST else 1))
+
+
+func host(port: int = NetConfig.DEFAULT_PORT, bind_ip: String = "*") -> Error:
+	_reset()
+	_peer = ENetMultiplayerPeer.new()
+	_peer.set_bind_ip(bind_ip)
+	var err: Error = _peer.create_server(port, 1)
+	if err != OK:
+		_peer = null
+		_fail("Could not listen on port %d (%s)" % [port, error_string(err)])
+		return err
+	role = ROLE_HOST
+	_peer.peer_connected.connect(_on_peer_connected)
+	_peer.peer_disconnected.connect(_on_peer_disconnected)
+	status_changed.emit("Waiting on port %d" % port)
+	return OK
+
+
+func join(address: String, port: int = NetConfig.DEFAULT_PORT) -> Error:
+	_reset()
+	_peer = ENetMultiplayerPeer.new()
+	var err: Error = _peer.create_client(address, port)
+	if err != OK:
+		_peer = null
+		_fail("Could not reach %s:%d (%s)" % [address, port, error_string(err)])
+		return err
+	role = ROLE_CLIENT
+	_remote_id = HOST_PEER
+	_connect_started = local_tick
+	_peer.peer_connected.connect(_on_peer_connected)
+	_peer.peer_disconnected.connect(_on_peer_disconnected)
+	status_changed.emit("Connecting to %s:%d" % [address, port])
+	return OK
+
+
+func is_open() -> bool:
+	return _peer != null and not _closed
+
+
+func connected() -> bool:
+	return is_open() and _remote_id != 0 and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
+
+
+## Round trip time to the other side in ms, from ENet (0 until known).
+func rtt_ms() -> int:
+	if not connected():
+		return 0
+	var p: ENetPacketPeer = _peer.get_peer(_remote_id)
+	return int(p.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)) if p != null else 0
+
+
+func set_local(player_name: String, loadout: Dictionary) -> void:
+	local_name = NetLobby.clean_name(player_name)
+	local_loadout = LoadoutRules.sanitize(loadout)
+	if not connected() or not remote_joined:
+		return
+	if role == ROLE_CLIENT:
+		send(NetLobby.loadout_msg(local_loadout), true)
+	else:
+		send(NetLobby.lobby(local_name, local_loadout, true), true)
+
+
+## Host: send START and build the match here too. `time_limit_s` <= 0 keeps the default.
+func start_match(seed_value: int, time_limit_s: float = 0.0) -> bool:
+	if role != ROLE_HOST or not remote_joined:
+		return false
+	var bytes: PackedByteArray = NetLobby.start(seed_value, [local_loadout, remote_loadout], time_limit_s, [local_name, remote_name])
+	send(bytes, true)
+	last_start = NetLobby.decode(bytes)
+	match_requested.emit(last_start)
+	return true
+
+
+## Hang the host or client driver on a freshly set-up Match (call right after Match.setup()).
+func attach_match(m: Match) -> void:
+	detach_match()
+	if role == ROLE_HOST:
+		host_driver = NetHostDriver.new()
+		host_driver.name = "NetHost"
+		host_driver.session = self
+		m.add_child(host_driver)
+		host_driver.attach(m)
+	else:
+		client_driver = NetClientDriver.new()
+		client_driver.name = "NetClient"
+		client_driver.session = self
+		m.add_child(client_driver)
+		client_driver.attach(m)
+
+
+func detach_match() -> void:
+	host_driver = null
+	client_driver = null
+
+
+func leave(reason: String = "left") -> void:
+	if connected():
+		send(NetLobby.leave(reason), true)
+		_peer.poll()
+	_close(reason)
+
+
+func _exit_tree() -> void:
+	if _peer != null:
+		_peer.close()
+		_peer = null
+
+
+## Sends to the other side through the fake link (when active) and counts the bytes.
+func send(bytes: PackedByteArray, reliable: bool) -> void:
+	if not is_open() or _remote_id == 0:
+		return
+	bw_out.add(local_tick, bytes.size())
+	if link.active():
+		link.send(local_tick, _tag(bytes, reliable), reliable)
+	else:
+		_put(bytes, reliable)
+
+
+func _tag(bytes: PackedByteArray, reliable: bool) -> PackedByteArray:
+	var out := PackedByteArray([1 if reliable else 0])
+	out.append_array(bytes)
+	return out
+
+
+func _put(bytes: PackedByteArray, reliable: bool) -> void:
+	_peer.set_target_peer(_remote_id)
+	_peer.transfer_channel = 0
+	_peer.transfer_mode = MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
+	_peer.put_packet(bytes)
+
+
+func _physics_process(_delta: float) -> void:
+	local_tick += 1
+	if _peer == null or _closed:
+		return
+	for tagged: PackedByteArray in link.receive(local_tick):
+		if connected():
+			_put(tagged.slice(1), tagged[0] == 1)
+	_peer.poll()
+	if _peer == null:
+		return  # a handler closed us during the poll
+	while _peer != null and _peer.get_available_packet_count() > 0:
+		var from: int = _peer.get_packet_peer()
+		var bytes: PackedByteArray = _peer.get_packet()
+		if from != _remote_id:
+			continue
+		_last_heard = local_tick
+		bw_in.add(local_tick, bytes.size())
+		_route(bytes)
+	if _peer == null or _closed:
+		return
+	if role == ROLE_CLIENT and _remote_id != 0 and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTING \
+			and local_tick - _connect_started > NetConfig.CONNECT_TIMEOUT_TICKS:
+		_fail("No answer from the host")
+	elif remote_joined and local_tick - _last_heard > NetConfig.DISCONNECT_TICKS and (host_driver != null or client_driver != null):
+		_fail("Connection lost")
+
+
+func _route(bytes: PackedByteArray) -> void:
+	var t: int = NetConfig.msg_type(bytes)
+	match t:
+		NetConfig.MSG_INPUT:
+			if host_driver != null and is_instance_valid(host_driver):
+				host_driver.on_input(bytes)
+		NetConfig.MSG_SNAP:
+			if client_driver != null and is_instance_valid(client_driver):
+				client_driver.on_snapshot(bytes)
+		NetConfig.MSG_EVENTS:
+			if client_driver != null and is_instance_valid(client_driver):
+				client_driver.on_events(bytes)
+		_:
+			_on_control(NetLobby.decode(bytes))
+
+
+func _on_control(d: Dictionary) -> void:
+	if d.is_empty():
+		return
+	match int(d["_type"]):
+		NetConfig.MSG_HELLO:
+			if role != ROLE_HOST:
+				return
+			var why: String = NetLobby.check_hello(d)
+			if why != "":
+				send(NetLobby.lobby(local_name, local_loadout, false, why), true)
+				return
+			remote_name = NetLobby.clean_name(str(d.get("name", "")))
+			remote_loadout = LoadoutRules.sanitize(d.get("loadout", {}))
+			remote_joined = true
+			send(NetLobby.lobby(local_name, local_loadout, true), true)
+			status_changed.emit("%s joined" % remote_name)
+			lobby_changed.emit()
+		NetConfig.MSG_LOADOUT:
+			if role == ROLE_HOST and remote_joined:
+				remote_loadout = LoadoutRules.sanitize(d.get("loadout", {}))
+				lobby_changed.emit()
+		NetConfig.MSG_LOBBY:
+			if role != ROLE_CLIENT:
+				return
+			if not bool(d.get("accepted", false)):
+				_fail("Host refused: %s" % str(d.get("reason", "")))
+				return
+			remote_name = NetLobby.clean_name(str(d.get("name", "")))
+			remote_loadout = LoadoutRules.sanitize(d.get("loadout", {}))
+			if not remote_joined:
+				status_changed.emit("In %s's lobby" % remote_name)
+			remote_joined = true
+			lobby_changed.emit()
+		NetConfig.MSG_START:
+			if role == ROLE_CLIENT:
+				last_start = d
+				match_requested.emit(d)
+		NetConfig.MSG_OVER:
+			if role == ROLE_CLIENT:
+				if client_driver != null and is_instance_valid(client_driver):
+					client_driver.on_over(d)
+				match_result.emit(d)
+		NetConfig.MSG_LEAVE:
+			_close("%s left" % (remote_name if remote_name != "" else "The other player"))
+
+
+func _on_peer_connected(id: int) -> void:
+	if role == ROLE_HOST:
+		if _remote_id != 0 and _remote_id != id:
+			_peer.disconnect_peer.call_deferred(id)  # one opponent only
+			return
+		_remote_id = id
+		_last_heard = local_tick
+		status_changed.emit("Player connecting")
+	elif id == HOST_PEER:
+		_last_heard = local_tick
+		send(NetLobby.hello(local_name, local_loadout), true)
+		status_changed.emit("Connected, waiting for the host")
+
+
+func _on_peer_disconnected(id: int) -> void:
+	if id != _remote_id:
+		return
+	if role == ROLE_HOST and host_driver == null:
+		# Back to waiting in the lobby.
+		_remote_id = 0
+		remote_joined = false
+		remote_name = ""
+		status_changed.emit("Player left; waiting")
+		lobby_changed.emit()
+		return
+	_close("%s disconnected" % (remote_name if remote_name != "" else "The other player"))
+
+
+func _reset() -> void:
+	if _peer != null:
+		_close_later.call_deferred(_peer)
+	_peer = null
+	_closed = false
+	close_reason = ""
+	_remote_id = 0
+	remote_joined = false
+	remote_name = ""
+	remote_loadout = {}
+	role = ""
+
+
+func _fail(reason: String) -> void:
+	status_changed.emit(reason)
+	_close(reason)
+
+
+func _close(reason: String) -> void:
+	if _closed:
+		return
+	_closed = true
+	close_reason = reason
+	if _peer != null:
+		# Often called from a signal inside _peer.poll(): closing the ENet host there frees it mid-service and
+		# crashes, so it closes on the next idle frame.
+		_close_later.call_deferred(_peer)
+	_peer = null
+	closed.emit(reason)
+
+
+func _close_later(p: ENetMultiplayerPeer) -> void:
+	p.close()
+
+
+## One line for the debug overlay and the sims.
+func stats_line() -> String:
+	return "%s rtt=%dms out=%.1fKB/s in=%.1fKB/s" % [role, rtt_ms(), bw_out.per_second(local_tick) / 1000.0,
+		bw_in.per_second(local_tick) / 1000.0]

@@ -4,13 +4,16 @@ extends Node
 ## the Match lifecycle. Add it as a child of the main scene and call setup(host). It builds each Match under `host`
 ## and announces them with match_started so the host can hang debug tools on it. `adopt()` takes over a match the
 ## host started itself (command-line --mode) so Esc pause and the end-of-match menu still work.
+## Online 1v1: the Online screen owns nothing itself; MenuFlow keeps the NetSession (alive from host/join until
+## the player leaves) and builds each online Match from the host's START like any other, then hangs the session's
+## host or client driver on it. Online matches never pause the tree (the other side keeps playing).
 ## Everything is laid out in units: on a landscape screen a unit is a 1920x1080 design pixel, on a portrait phone the
 ## layer is scaled up so the columns stay readable.
 
 signal match_started(match_node: Match)
 signal match_closed
 
-enum Screen { TITLE, LOADOUT, OPTIONS, FIGHT, PAUSED, RESULT }
+enum Screen { TITLE, LOADOUT, OPTIONS, FIGHT, PAUSED, RESULT, ONLINE }
 
 const LAYER: int = 60
 const RESULT_DELAY_S: float = 3.4
@@ -18,6 +21,7 @@ const PORTRAIT_UNITS: float = 1000.0  ## layout width on a portrait screen
 const ORBIT_RATE: float = 0.1
 const ORBIT_RADIUS: float = 9.0
 const ORBIT_HEIGHT: float = 3.4
+const ONLINE_MODE: String = "online"
 
 var state: MenuState = MenuState.new()
 var settings: MenuSettings = MenuSettings.new()
@@ -30,6 +34,8 @@ var _root: Control
 var _title: TitleScreen
 var _loadout: LoadoutScreen
 var _options: OptionsScreen
+var _online: OnlineScreen
+var _net: NetSession = null
 var _pause: MenuPanel = null
 var _pause_dim: ColorRect
 var _hint: ControlsHint
@@ -86,6 +92,10 @@ func _build_ui() -> void:
 	_options = OptionsScreen.new(settings)
 	_options.back.connect(_show_title)
 	_root.add_child(_options)
+	_online = OnlineScreen.new(state)
+	_online.back.connect(_show_title)
+	_online.start_pressed.connect(_on_online_start)
+	_root.add_child(_online)
 	_pause_dim = MenuTheme.dim_rect()
 	_pause_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_pause_dim.visible = false
@@ -128,6 +138,7 @@ func _hide_screens() -> void:
 	_title.visible = false
 	_loadout.visible = false
 	_options.visible = false
+	_online.visible = false
 	_pause_dim.visible = false
 	_hint.hide_now()
 	_pause_btn.visible = false
@@ -138,6 +149,7 @@ func _hide_screens() -> void:
 
 func _show_title() -> void:
 	_close_match()
+	_end_session()
 	_hide_screens()
 	_ensure_backdrop()
 	screen = Screen.TITLE
@@ -160,6 +172,8 @@ func _on_title(id: String) -> void:
 			_open_loadout("player_vs_cpu")
 		"local_2p":
 			_open_loadout("local_2p")
+		"online":
+			_open_online()
 		"bots":
 			_begin_fight("bot_vs_bot")
 		"options":
@@ -241,6 +255,8 @@ func _enter_fight() -> void:
 
 
 func _close_match() -> void:
+	if _net != null:
+		_net.detach_match()
 	get_tree().paused = false
 	Engine.time_scale = 1.0
 	_fight_token += 1
@@ -252,6 +268,79 @@ func _close_match() -> void:
 		match_closed.emit()
 	current_match = null
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+# --- online ------------------------------------------------------------------------------------------------------
+
+func _is_online() -> bool:
+	return state.last_mode == ONLINE_MODE and _net != null
+
+
+func _open_online() -> void:
+	_close_match()
+	_hide_screens()
+	_ensure_backdrop()
+	if _net == null:
+		_net = NetSession.new()
+		_net.name = "NetSession"
+		add_child(_net)
+		_net.match_requested.connect(_begin_online)
+		_net.closed.connect(_on_net_closed)
+	screen = Screen.ONLINE
+	_online.visible = true
+	_online.open(_net)
+
+
+func _end_session() -> void:
+	if _net == null:
+		return
+	_net.closed.disconnect(_on_net_closed)
+	_net.leave("left")
+	_net.queue_free()
+	_net = null
+
+
+func _on_online_start() -> void:
+	if _net != null:
+		_net.start_match(_new_seed())
+
+
+## Both sides: the host pressed FIGHT (or Rematch). Build the match from the START message.
+func _begin_online(start: Dictionary) -> void:
+	_close_match()
+	_hide_screens()
+	_free_backdrop()
+	state.last_mode = ONLINE_MODE
+	var m := Match.new()
+	m.name = "Match"
+	_host.add_child(m)
+	m.setup(NetLobby.match_config(start, true))
+	if m.presenter != null and m.presenter.blood != null:
+		m.presenter.blood.set_quality(settings.blood_quality)
+	_net.attach_match(m)
+	current_match = m
+	_hook_match(m)
+	match_started.emit(m)
+	_enter_fight()
+
+
+func _on_net_closed(reason: String) -> void:
+	if _net != null:
+		_net.queue_free()
+		_net = null
+	if screen == Screen.ONLINE:
+		_open_online()
+		_online.show_status(reason)
+		return
+	if screen == Screen.FIGHT or screen == Screen.PAUSED or screen == Screen.RESULT:
+		get_tree().paused = false
+		Engine.time_scale = 1.0
+		screen = Screen.RESULT
+		_hint.hide_now()
+		_pause_btn.visible = false
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_pause_dim.visible = true
+		_show_panel("VALE", "Connection closed", reason, [["online", "Online"], ["title", "Title"]])
 
 
 func _on_match_over(result: Dictionary, token: int) -> void:
@@ -271,6 +360,9 @@ func _show_result(result: Dictionary, token: int) -> void:
 	var names: Array = current_match.names
 	var w: int = int(result.get("winner", -1))
 	var mode: String = str(current_match.config.get("mode", ""))
+	if _is_online():
+		_show_online_result(w, names)
+		return
 	var latin: String = "AEQVO MARTE"
 	var english: String = "Evenly matched"
 	if w >= 0:
@@ -280,8 +372,29 @@ func _show_result(result: Dictionary, token: int) -> void:
 	_show_panel(latin, english, "", [["rematch", "Rematch"], ["loadout", "Change loadout"], ["title", "Title"]])
 
 
+func _show_online_result(w: int, names: Array) -> void:
+	var me: int = 0 if _net.role == NetSession.ROLE_HOST else 1
+	var latin: String = "AEQVO MARTE"
+	var english: String = "Evenly matched"
+	if w >= 0:
+		latin = "VICTORIA" if w == me else "MORS"
+		english = "You won" if w == me else "%s wins" % str(names[w])
+	_pause_dim.visible = true
+	var entries: Array = [["online", "Back to lobby"], ["title", "Leave"]]
+	if _net.role == NetSession.ROLE_HOST:
+		entries.push_front(["net_rematch", "Rematch"])
+	_show_panel(latin, english, "" if _net.role == NetSession.ROLE_HOST else "The host picks a rematch", entries)
+
+
 func _pause_game() -> void:
 	if screen != Screen.FIGHT or current_match == null:
+		return
+	if _is_online():
+		# The fight goes on for the other player: a menu over it, no pause.
+		screen = Screen.PAUSED
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_pause_btn.visible = false
+		_show_panel("PAVSA", "Online: the fight goes on", "", [["resume", "Resume"], ["title", "Leave match"]])
 		return
 	screen = Screen.PAUSED
 	get_tree().paused = true
@@ -325,8 +438,12 @@ func _on_panel(id: String) -> void:
 	match id:
 		"resume":
 			_resume()
+		"online":
+			_open_online()
+		"net_rematch":
+			_on_online_start()
 		"rematch":
-			_begin_fight(state.last_mode)
+			_begin_fight(state.last_mode if state.last_mode != ONLINE_MODE else "player_vs_cpu")
 		"loadout":
 			_open_loadout(mode)
 		"title":

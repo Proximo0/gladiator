@@ -30,6 +30,8 @@ func _ready() -> void:
 	else:
 		_flow = _new_flow()
 		_flow.setup(self)
+		if Flags.args.has("online"):
+			_flow.call("_open_online")
 
 
 func _new_flow() -> MenuFlow:

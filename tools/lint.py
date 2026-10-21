@@ -23,7 +23,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = "game"
 DEBUG_PREFIX = "game/debug/"
 # Folders of pure game logic that must not read the wall clock. Edit to match your layout.
-PURE_PREFIXES = ("game/logic/",)
+PURE_PREFIXES = ("game/logic/", "game/net/")
 
 PRINT_RE = re.compile(r"(?<![\w.])print\s*\(")
 RANDOM_RE = re.compile(r"(?<![\w.])(randf|randi|randomize|randf_range|randi_range)\s*\(")
