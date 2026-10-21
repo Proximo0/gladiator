@@ -70,7 +70,7 @@ static func stain_bucket(age: float, count: int) -> int:
 
 ## Pool radius (m) for the visual litres collected under it.
 static func pool_radius(litres: float) -> float:
-	return minf(0.022 + sqrt(maxf(litres, 0.0)) * 0.30, 1.15)
+	return minf(0.022 + sqrt(maxf(litres, 0.0)) * 0.38, 1.15)
 
 
 ## Velocity damping factor for one step (semi-implicit, always stable).
@@ -142,7 +142,7 @@ static func droplet_litres(radius: float) -> float:
 
 
 static func splat_radius(litres: float) -> float:
-	return 0.018 + sqrt(maxf(litres, 0.0)) * 0.22
+	return 0.018 + sqrt(maxf(litres, 0.0)) * 0.28
 
 
 ## How much a contact type sprays relative to a clean edge cut.

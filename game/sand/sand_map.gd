@@ -152,7 +152,7 @@ static func blood_spread_radius(litres: float, radius: float) -> float:
 ## Blood strength 0..1 for litres over a circle of radius r (m): about 3 mm of liquid saturates the sand.
 static func blood_strength(litres: float, r: float) -> float:
 	var depth_m: float = maxf(litres, 0.0) * 0.001 / (PI * maxf(r * r, 0.000001))
-	return clampf(depth_m / 0.003, 0.12, 1.0)
+	return clampf(depth_m / 0.003, 0.2, 1.0)
 
 
 ## Soaks blood into the maps around c (texel coords, radius r_texel). R: blood, wet: damp halo, dry: 0 fresh .. 1

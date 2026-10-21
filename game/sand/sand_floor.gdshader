@@ -8,7 +8,7 @@ render_mode cull_back, ambient_light_disabled;
 // times orange sand is olive green in shadow, so the shader never uses the engine's ambient.
 // Colour rules: every tint is a multiplier on warm sand, never an additive or sky term. SPECULAR = 0 keeps the
 // sky's blue reflection off the sand (it turned shaded and dim sand teal-green); damp sand darkens toward warm
-// brown and blood-soaked sand toward red-brown.
+// brown and blood-soaked sand is red (fresh 0.45,0.02,0.03 drying to 0.20,0.04,0.03).
 
 uniform sampler2D height_tex : filter_linear, repeat_disable;
 uniform sampler2D base_tex : filter_linear, repeat_disable;  // R height, G dh/dx, B dh/dz of the permanent piles
@@ -20,8 +20,8 @@ uniform vec3 sand_light : source_color = vec3(0.60, 0.54, 0.45);
 uniform vec3 sand_dark : source_color = vec3(0.52, 0.46, 0.37);
 uniform vec3 sand_buff : source_color = vec3(0.68, 0.62, 0.50);
 uniform vec3 sand_ochre : source_color = vec3(0.58, 0.45, 0.31);
-uniform vec3 blood_fresh : source_color = vec3(0.30, 0.008, 0.012);
-uniform vec3 blood_dried : source_color = vec3(0.13, 0.03, 0.02);
+uniform vec3 blood_fresh : source_color = vec3(0.45, 0.02, 0.03);
+uniform vec3 blood_dried : source_color = vec3(0.20, 0.04, 0.03);
 uniform float grain_gain = 1.0;
 uniform float sparkle_gain = 1.0;
 uniform float pebble_gain = 1.0;
@@ -161,11 +161,13 @@ void fragment() {
 	sand *= mix(0.62, 1.0, smoothstep(0.0, 0.55, arena_radius - dist));
 	sand = mix(sand, pcol, pmask);
 	// Damp sand: darker and warmer (never a squared term: that only pushes the hue around).
-	sand = mix(sand, sand * vec3(0.62, 0.48, 0.37), wet * 0.85);
-	// Soaked stain, then pooled blood on top.
-	vec3 soaked = sand * mix(vec3(0.50, 0.15, 0.10), vec3(0.34, 0.13, 0.09), dry);
-	vec3 col = mix(sand, soaked, stain * 0.9);
+	sand = mix(sand, sand * vec3(0.62, 0.48, 0.37), wet * 0.85 * (1.0 - stain));
+	// Soaked stain, then pooled blood on top. The stain is the blood colour itself, lit by the sand's grain
+	// (a multiplier on a red, never sand * orange: that read brown-olive and pink).
 	vec3 bcol = mix(blood_fresh, blood_dried, smoothstep(0.0, 1.0, dry));
+	float sand_lum = dot(sand, vec3(0.35, 0.45, 0.2));
+	vec3 soaked = bcol * (0.55 + 0.9 * sand_lum);
+	vec3 col = mix(sand, soaked, stain * (0.4 + 0.55 * smoothstep(0.05, 0.5, b)));
 	bcol *= 0.9 + 0.2 * n2.r;
 	col = mix(col, bcol, cov);
 	ALBEDO = col;
