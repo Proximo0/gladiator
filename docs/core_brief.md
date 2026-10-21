@@ -122,3 +122,29 @@ All three schemes (mouse, stick, touch) produce the same FighterInput, so nothin
 | tuning-panel | Haiku | `game/debug/tuning_panel.gd`, `tests/unit/test_tuning_panel.gd` |
 Lead: `game/main.gd`, `game/main.tscn`, `project.godot`, `game/debug/tuning.gd`, `tests/sim/sim_suite.gd`, docs, git.
 Report lines for lead-owned files (for example a sim name for `SIM_FILES`) in your final message.
+
+## Sand and blood (the title is Sandblood: these are headline features)
+Both are presentation: never part of `snapshot()` or the state hash, and they never change fight outcomes.
+
+`class_name SandSurface extends Node3D` (`game/sand/`, owner: sand worker). Owns the arena floor's visual mesh and
+material (the arena builds only the flat collider at y = 0 and calls `SandSurface.new()` / `setup(radius)`).
+- A deformation heightmap plus a wetness/blood map covering the arena disc (about 2 to 3 cm per texel), applied in
+  the floor shader (vertex displacement on a dense-enough mesh, normals from the map, darker damp sand where wet,
+  red-brown blood that soaks in and darkens over time).
+- `func stamp(pos: Vector3, radius: float, depth: float, push: Vector3 = Vector3.ZERO) -> void`: press a footprint,
+  knee, fallen body or weapon tip into the sand, pushing a small rim up (and sideways along `push`).
+- `func drag(from: Vector3, to: Vector3, radius: float, depth: float) -> void`: a furrow (dragged foot, sliding body,
+  weapon tip dragged through the sand).
+- `func add_blood(pos: Vector3, radius: float, litres: float) -> void`: soak blood in; pools spread a little.
+- `func spray(pos: Vector3, vel: Vector3, amount: float) -> void`: kick up a sand puff (particles plus grains).
+- `func height_at(pos: Vector3) -> float`: visual height offset in metres at a point (for decals and feet).
+- `static` helpers for the pure map math so it is unit-testable.
+
+`class_name BloodFx extends Node3D` (`game/fx/blood/`, owner: blood worker). Listens to `Fighter.hit` and
+`Fighter.gore` (connect with `func track(f: Fighter) -> void`).
+- Ballistic droplets (own lightweight particle sim on the CPU, pooled, budgeted for mobile) with spray direction
+  from the hit normal and weapon velocity, arterial pulsing for severs and guts (spurts timed like a heartbeat that
+  weaken as `health.blood` drops), drips from wounds and from bloodied weapons, streaks along the weapon edge.
+- Droplets that land call `SandSurface.add_blood` (small clumps darken the sand), droplets that hit a body or
+  weapon leave a stain (a per-fighter blood mask or decals).
+- `var sand: SandSurface`, `func set_quality(level: int) -> void` (0 mobile .. 2 desktop high).
