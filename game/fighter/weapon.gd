@@ -103,6 +103,24 @@ func build(d: Dictionary, physical_mass: float = -1.0) -> void:
 			_add_capsule(head_r, head_len, Vector3(0, tip - head_len * 0.5, 0), col)
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
 	center_of_mass = com_local
+	_use_art_mesh()
+
+
+## Art slot: res://assets/weapons/<id>.glb (built in Houdini by tools/houdini/build_weapons.py: +Y along the weapon,
+## origin at the grip, edges toward +-X) replaces the primitive meshes. Visual only: the collision shapes stay.
+func _use_art_mesh() -> void:
+	var path: String = "res://assets/weapons/%s.glb" % weapon_id
+	if not ResourceLoader.exists(path):
+		return
+	var scene: PackedScene = load(path) as PackedScene
+	if scene == null:
+		return
+	for c: Node in get_children():
+		if c is MeshInstance3D:
+			(c as MeshInstance3D).visible = false
+	var art: Node3D = scene.instantiate() as Node3D
+	art.name = "Art"
+	add_child(art)
 
 
 static func parse_color(c: Variant) -> Color:
