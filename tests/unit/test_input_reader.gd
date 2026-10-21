@@ -92,10 +92,27 @@ func test_every_button_action_has_a_device_binding() -> void:
 		assert_true(bound, "no binding for %s" % action)
 
 
-func test_default_device_follows_touch_availability() -> void:
-	assert_eq(InputReader.default_device(false, {}), "kbm")
-	assert_eq(InputReader.default_device(true, {}), "touch")
-	assert_eq(InputReader.default_device(false, {"touch": "1"}), "touch", "--touch forces the overlay")
+func test_default_device_is_auto_everywhere() -> void:
+	# A Windows touch laptop reports a touchscreen; keyboard and mouse must still drive the fighter.
+	assert_eq(InputReader.default_device(false, {}), "auto")
+	assert_eq(InputReader.default_device(true, {}), "auto")
+
+
+func test_merge_inputs_first_active_device_wins() -> void:
+	var pad := FighterInput.new()
+	var kbm := FighterInput.new()
+	kbm.move_y = 1000
+	kbm.aim_x = 300
+	kbm.buttons = 1
+	pad.buttons = 2
+	var m: FighterInput = InputReader.merge_inputs([pad, kbm] as Array[FighterInput])
+	assert_eq(m.move_y, 1000, "keyboard moves when the stick is idle")
+	assert_eq(m.aim_x, 300)
+	assert_eq(m.buttons, 3, "buttons from every device")
+	pad.move_x = -500
+	m = InputReader.merge_inputs([pad, kbm] as Array[FighterInput])
+	assert_eq(m.move_x, -500, "a moved stick overrides the keys")
+	assert_eq(m.move_y, 0)
 
 
 func test_touch_should_show() -> void:

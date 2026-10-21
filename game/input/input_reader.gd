@@ -1,7 +1,9 @@
 class_name InputReader
 extends Node
 ## Reads one fighter's device once per physics tick and returns a FighterInput. The mapping is in static functions
-## (tests/unit/test_input_reader.gd); this node only touches devices. Devices: "kbm", "pad0", "pad1", "touch".
+## (tests/unit/test_input_reader.gd); this node only touches devices. Devices: "kbm", "pad0", "pad1", "touch", and
+## "auto" (player 1 vs CPU: keyboard and mouse, the first gamepad and, on phones or with --touch, the touch overlay,
+## all at once, so whatever the player picks up works).
 
 const MOUSE_SENSITIVITY: float = 2.0  ## aim units (of 1000) per mouse pixel
 const AIM_RETURN_PER_TICK: float = 6.0  ## aim units pulled back to centre per tick while the mouse is still
@@ -16,9 +18,9 @@ var _touch: TouchControls = null
 
 
 func _ready() -> void:
-	if device == "kbm":
+	if device == "kbm" or (device == "auto" and not _wants_touch()):
 		set_captured(true)
-	elif device == "touch":
+	if device == "touch" or (device == "auto" and _wants_touch()):
 		var layer := CanvasLayer.new()
 		layer.layer = TOUCH_LAYER
 		add_child(layer)
@@ -29,13 +31,18 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	if device == "kbm":
+	if device == "kbm" or device == "auto":
 		set_captured(false)
 
 
 ## Default device for player 1: touch when the touch overlay is wanted, else keyboard and mouse.
-static func default_device(touch_ok: bool, args: Dictionary) -> String:
-	return "touch" if TouchControls.should_show(touch_ok, args) else "kbm"
+static func default_device(_touch_ok: bool, _args: Dictionary) -> String:
+	# Windows touch laptops report a touchscreen too, so never pick touch alone: "auto" reads every device.
+	return "auto"
+
+
+func _wants_touch() -> bool:
+	return TouchControls.should_show(OS.has_feature("mobile"), Flags.args)
 
 
 ## Keyboard and mouse capture while playing, so aim is not limited by the screen edge.
@@ -44,7 +51,7 @@ func set_captured(on: bool) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if device != "kbm" or not (event is InputEventMouseMotion):
+	if (device != "kbm" and device != "auto") or not (event is InputEventMouseMotion):
 		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
@@ -58,6 +65,8 @@ func read() -> FighterInput:
 			return _read_kbm()
 		"touch":
 			return _read_touch()
+		"auto":
+			return _read_auto()
 	var pad: int = pad_index(device)
 	if pad >= 0:
 		return _read_pad(pad)
@@ -84,6 +93,36 @@ func _read_kbm() -> FighterInput:
 			pressed.append(action)
 	f.buttons = InputBindings.button_mask(pressed)
 	return f
+
+
+## Keyboard/mouse, the first connected gamepad and the touch overlay merged: buttons add up, and movement and aim come
+## from the first device that is being used this tick (a stick or touch drag overrides a still mouse).
+func _read_auto() -> FighterInput:
+	var parts: Array[FighterInput] = [_read_kbm()]
+	var pads: Array[int] = Input.get_connected_joypads()
+	if not pads.is_empty():
+		parts.push_front(_read_pad(pads[0]))
+	if _touch != null:
+		parts.push_front(_read_touch())
+	return merge_inputs(parts)
+
+
+## First non-zero move and aim in list order, buttons OR-ed. The last entry is the fallback (keyboard and mouse).
+static func merge_inputs(parts: Array[FighterInput]) -> FighterInput:
+	var out := FighterInput.new()
+	var move_set: bool = false
+	var aim_set: bool = false
+	for p: FighterInput in parts:
+		out.buttons |= p.buttons
+		if not move_set and (p.move_x != 0 or p.move_y != 0):
+			out.move_x = p.move_x
+			out.move_y = p.move_y
+			move_set = true
+		if not aim_set and (p.aim_x != 0 or p.aim_y != 0):
+			out.aim_x = p.aim_x
+			out.aim_y = p.aim_y
+			aim_set = true
+	return out
 
 
 func _read_pad(id: int) -> FighterInput:
