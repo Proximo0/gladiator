@@ -1,0 +1,216 @@
+extends TestCase
+
+const DT: float = 1.0 / 60.0
+
+
+func _frame(side: int, pos: Vector3, yaw: float, weapon: String = "gladius") -> Dictionary:
+	var parts: Dictionary = {}
+	var offs: Dictionary = {
+		"pelvis": 0.95, "torso": 1.3, "head": 1.65, "upper_arm_l": 1.4, "upper_arm_r": 1.4, "forearm_l": 1.2,
+		"forearm_r": 1.2, "thigh_l": 0.7, "thigh_r": 0.7, "shin_l": 0.3, "shin_r": 0.3,
+	}
+	for n: String in offs:
+		parts[n] = {"pos": Vector3(pos.x, float(offs[n]), pos.z), "hp": 50.0, "severed": false}
+	return {
+		"tick": 0, "side": side, "pelvis_pos": Vector3(pos.x, 0.95, pos.z), "pelvis_vel": Vector3.ZERO,
+		"facing_yaw": yaw, "balance": 1.0, "stamina": 1.0, "consciousness": 1.0, "hand_target": Vector3.ZERO,
+		"hand_pos": Vector3.ZERO, "tip_pos": Vector3(pos.x, 1.2, pos.z - 0.5), "tip_speed": 0.0, "weapon_id": weapon,
+		"grip": "normal", "parts": parts, "contacts": [], "state": "standing",
+	}
+
+
+## Me at the origin facing -Z (yaw 0), foe `dist` metres ahead.
+func _pair(dist: float, weapon: String = "gladius") -> Array:
+	return [_frame(0, Vector3.ZERO, 0.0, weapon), _frame(1, Vector3(0.0, 0.0, -dist), PI, "gladius")]
+
+
+func _brain(personality: Dictionary = {}) -> FighterBrain:
+	var p: Dictionary = {"reaction_ms": 0.0, "aim_noise": 0.0}
+	p.merge(personality, true)
+	return FighterBrain.new(7, p)
+
+
+func test_approaches_when_far() -> void:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(7.0)
+	var inp: FighterInput = null
+	for i in 5:
+		inp = b.think(f[0], f[1], DT)
+	assert_true(inp.move_y > 500, "walks forward")
+	assert_false(inp.has(FighterInput.SWING), "no swing when far")
+	assert_true(inp.has(FighterInput.SPRINT), "sprints to close a long gap")
+
+
+func test_winds_up_then_sweeps_through() -> void:
+	var b := _brain({"preset": "berserker", "preferred_attacks": ["horizontal"]})
+	var f: Array = _pair(1.2)
+	var wind: Vector2 = Vector2.ZERO
+	var end: Vector2 = Vector2.ZERO
+	var saw_windup: bool = false
+	var saw_strike: bool = false
+	var strike_swing: bool = false
+	for i in 200:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		if b.state_name() == "windup":
+			saw_windup = true
+			wind = inp.aim()
+		if b.state_name() == "strike":
+			saw_strike = true
+			end = inp.aim()
+			strike_swing = inp.has(FighterInput.SWING)
+	assert_true(saw_windup and saw_strike, "windup then strike")
+	assert_true(strike_swing, "SWING held in the strike")
+	assert_true(absf(wind.x - end.x) > 0.8, "hand sweeps across the target: %s to %s" % [wind, end])
+
+
+func test_guards_against_fast_incoming_tip() -> void:
+	var b := _brain({"preset": "duelist", "risk": 0.0})
+	var f: Array = _pair(1.5)
+	var foe: Dictionary = f[1]
+	var inp: FighterInput = null
+	for i in 10:
+		foe["tip_speed"] = 8.0
+		foe["tip_pos"] = Vector3(0.6, 1.7, -1.2 + 0.1 * i)
+		inp = b.think(f[0], foe, DT)
+	assert_eq(b.state_name(), "guard")
+	assert_true(inp.aim_x > 100, "weapon goes to the right side of the incoming tip: %d" % inp.aim_x)
+	assert_true(inp.aim_y > 100, "and up")
+	assert_true(inp.has(FighterInput.OFFHAND), "offhand raised")
+
+
+func test_thrusts_with_a_spear() -> void:
+	var b := _brain({"preset": "berserker"})
+	var f: Array = _pair(2.2, "spear")
+	var thrust_seen: bool = false
+	for i in 300:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		if b.state_name() == "strike" and inp.has(FighterInput.THRUST):
+			thrust_seen = true
+			break
+	assert_true(thrust_seen, "spear strikes use THRUST")
+	assert_eq(str(b.plan()["kind"]), "thrust")
+
+
+func test_goes_for_the_neck_when_foe_blood_is_low() -> void:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(1.2)
+	(f[1] as Dictionary)["blood_frac"] = 0.15
+	var aim_y: float = 0.0
+	var seen: bool = false
+	for i in 200:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		if b.state_name() == "windup" or b.state_name() == "strike":
+			seen = true
+	assert_true(seen, "attacks")
+	assert_eq(str(b.plan()["part"]), "head", "neck is the finisher target")
+	assert_true(bool(b.plan()["neck"]), "aimed below the head")
+	assert_true(aim_y == 0.0)
+
+
+func test_finishes_a_fallen_foe() -> void:
+	var b := _brain({"preset": "brute"})
+	var f: Array = _pair(1.2)
+	(f[1] as Dictionary)["state"] = "down"
+	for i in 60:
+		b.think(f[0], f[1], DT)
+	assert_true(bool(b.plan()["finishing"]), "plans a finisher")
+	assert_eq(str(b.plan()["kind"]), "overhead")
+
+
+func test_retreats_when_stamina_low() -> void:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(2.0)
+	(f[0] as Dictionary)["stamina"] = 0.05
+	var inp: FighterInput = null
+	for i in 5:
+		inp = b.think(f[0], f[1], DT)
+	assert_eq(b.state_name(), "retreat")
+	assert_true(inp.move_y < -300, "backs away")
+	assert_false(inp.has(FighterInput.SWING))
+
+
+func test_berserker_keeps_fighting_when_tired() -> void:
+	var b := _brain({"preset": "berserker"})
+	var f: Array = _pair(2.0)
+	(f[0] as Dictionary)["stamina"] = 0.15
+	for i in 5:
+		b.think(f[0], f[1], DT)
+	assert_true(b.state_name() != "retreat")
+
+
+func test_picks_up_a_dropped_weapon() -> void:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(5.0)
+	b.think(f[0], f[1], DT)
+	var me: Dictionary = f[0]
+	me["weapon_id"] = "fists"
+	me["props"] = [{"pos": Vector3(1.0, 0.05, -1.0), "weapon_id": "gladius"}]
+	var inp: FighterInput = b.think(me, f[1], DT)
+	assert_eq(b.state_name(), "weapon")
+	assert_true(inp.move_x > 0, "heads toward the prop")
+	me["props"] = [{"pos": Vector3(0.3, 0.05, -0.6), "weapon_id": "gladius"}]
+	inp = b.think(me, f[1], DT)
+	assert_true(inp.has(FighterInput.GRAB), "grabs when close")
+
+
+func test_missing_props_key_is_fine() -> void:
+	var b := _brain()
+	var f: Array = _pair(5.0)
+	b.think(f[0], f[1], DT)
+	(f[0] as Dictionary)["weapon_id"] = "fists"
+	b.think(f[0], f[1], DT)
+	assert_true(b.state_name() != "weapon")
+
+
+func test_reaction_delay_defers_guard() -> void:
+	var b := FighterBrain.new(3, {"preset": "duelist", "risk": 0.0, "reaction_ms": 200.0})
+	var f: Array = _pair(1.5)
+	var foe: Dictionary = f[1]
+	var first_guard: int = -1
+	for i in 40:
+		foe["tip_speed"] = 8.0 if i >= 5 else 0.0
+		foe["tip_pos"] = Vector3(0.4, 1.5, -1.2 + 0.05 * i)
+		b.think(f[0], foe, DT)
+		if first_guard < 0 and b.state_name() == "guard":
+			first_guard = i
+	assert_true(first_guard >= 15, "guard comes about 12 ticks after the swing starts: %d" % first_guard)
+
+
+func test_half_sword_against_heavy_armor() -> void:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(1.5, "longsword")
+	var armor: Dictionary = {}
+	for n: String in ["head", "torso", "pelvis", "upper_arm_l", "upper_arm_r", "forearm_l", "forearm_r", "thigh_l", "thigh_r", "shin_l", "shin_r"]:
+		armor[n] = "plate"
+	(f[1] as Dictionary)["armor"] = armor
+	var half: bool = false
+	for i in 300:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		if inp.has(FighterInput.HALF_SWORD):
+			half = true
+	assert_true(half, "uses the half-sword grip")
+
+
+func _run(seed_value: int, preset_name: String) -> Array:
+	var b := FighterBrain.new(seed_value, {"preset": preset_name})
+	var f: Array = _pair(1.3)
+	var seq: Array = []
+	for i in 400:
+		(f[1] as Dictionary)["tip_speed"] = 6.0 if (i % 90) > 70 else 0.5
+		(f[1] as Dictionary)["tip_pos"] = Vector3(0.3, 1.4, -1.0 - 0.01 * (i % 90))
+		seq.append(b.think(f[0], f[1], DT).to_array())
+	return seq
+
+
+func test_same_seed_same_inputs() -> void:
+	for pn: String in ["brute", "duelist", "coward", "berserker"]:
+		assert_eq(_run(11, pn), _run(11, pn), pn)
+
+
+func test_different_seeds_diverge() -> void:
+	assert_true(_run(1, "duelist") != _run(2, "duelist"))
+
+
+func test_presets_differ() -> void:
+	assert_true(FighterBrain.preset("coward")["aggression"] < FighterBrain.preset("berserker")["aggression"])
+	assert_true(FighterBrain.preset("berserker")["risk"] > FighterBrain.preset("duelist")["risk"])
