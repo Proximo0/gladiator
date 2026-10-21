@@ -97,18 +97,20 @@ const FIELDS: Array = [
 	["leg_reaction", 0.25, 0.0, 1.0, 0.05, "Stability", "Share of leg joint reaction put on the pelvis."],
 	["pd_margin", 0.5, 0.1, 1.5, 0.05, "Stability", "Damping-rate margin for explicit PD (below 2 is stable)."],
 	["self_hit_min_speed", 6.0, 0.0, 15.0, 0.5, "Damage", "Min speed for a fighter's own weapon to hurt them, m/s."],
+	["self_hit_grace_s", 0.5, 0.0, 3.0, 0.1, "Damage", "No self hits for this long after spawn, while the weapon settles in the hand, s."],
+	["finisher_consc", 0.35, 0.0, 1.0, 0.05, "Damage", "A dazed (consciousness below this) or downed fighter can be finished at any blood level."],
 	["hold_freq", 2.0, 0.0, 6.0, 0.1, "Movement", "Idle position hold stiffness (stops drift), rad/s."],
 	["guard_hand_speed", 2.5, 0.5, 10.0, 0.1, "Arms", "Max speed of the hand goal in guard, m/s."],
 	["swing_hand_speed", 30.0, 5.0, 60.0, 1.0, "Arms", "Max speed of the hand goal while swinging or thrusting, m/s."],
 	["offhand_hand_speed", 5.0, 0.5, 15.0, 0.5, "Arms", "Max speed of the left hand goal, m/s."],
 	["hit_debounce", 0.25, 0.05, 1.0, 0.05, "Damage", "Min time between hits by the same weapon on the same part, s."],
-	["grab_radius", 0.3, 0.1, 1.0, 0.05, "Arms", "GRAB pickup radius from the hand, m."],
+	["grab_radius", 0.6, 0.1, 1.0, 0.05, "Arms", "GRAB pickup radius from the hand, m."],
 	["knockback_scale", 1.0, 0.0, 3.0, 0.05, "Damage", "Multiplier on hit knockback impulses."],
 	["match_pause_s", 4.0, 1.0, 15.0, 0.5, "Match", "Pause after a match before the next bot match starts, s."],
 	["match_slowmo_scale", 0.4, 0.1, 1.0, 0.05, "Match", "Time scale during the finisher slow motion."],
 	["match_slowmo_s", 1.0, 0.0, 5.0, 0.1, "Match", "Length of the finisher slow motion, game seconds."],
 	["blood_faint", 3.5, 2.6, 5.0, 0.1, "Health", "Blood (L) below which consciousness is capped; zero at blood_death."],
-	["health_head_ko", 0.03, 0.0, 0.2, 0.005, "Health", "Consciousness lost per blunt point on the head."],
+	["health_head_ko", 0.1, 0.0, 0.2, 0.005, "Health", "Consciousness lost per blunt point on the head."],
 	["health_stagger_ko", 0.05, 0.0, 0.5, 0.01, "Health", "Consciousness lost per unit of stagger on any part."],
 	["health_clot", 0.02, 0.0, 0.5, 0.005, "Health", "Bleed rate decay per second (clotting)."],
 	["health_consc_recover", 0.03, 0.0, 0.5, 0.005, "Health", "Consciousness recovery per second."],
@@ -205,6 +207,8 @@ var balance_inertia: float
 var leg_reaction: float
 var pd_margin: float
 var self_hit_min_speed: float
+var self_hit_grace_s: float
+var finisher_consc: float
 var hold_freq: float
 var guard_hand_speed: float
 var swing_hand_speed: float

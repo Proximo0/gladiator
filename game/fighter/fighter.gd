@@ -1068,6 +1068,8 @@ func _process_contacts() -> void:
 				continue
 			var min_speed: float = _t("damage_min_speed")
 			if target == self:
+				if _tick < int(round(_t("self_hit_grace_s") * 60.0)):
+					continue
 				min_speed = maxf(min_speed, _t("self_hit_min_speed"))
 			if rel.length() < min_speed:
 				continue
@@ -1103,7 +1105,7 @@ func _resolve_hit(w: Weapon, target: Fighter, body: RigidBody3D, part: String, p
 		"edge_alignment": cls["edge_alignment"],
 		"effective_mass": FighterMath.effective_mass(wdef_mass, w.inertia_com, r, arm_mass),
 		"armor_ids": target.armor_on(part), "armor_wear": target._armor_wear.duplicate(),
-		"part_hp_frac": target._hp(part), "blood_frac": target.health.blood_frac() if target.health != null else 1.0,
+		"part_hp_frac": target._hp(part), "blood_frac": target._finish_frac(),
 		"hit_on_weapon": on_weapon,
 	}
 	var res: Dictionary = DamageModel.resolve(hit_in, _tun)
@@ -1113,6 +1115,16 @@ func _resolve_hit(w: Weapon, target: Fighter, body: RigidBody3D, part: String, p
 	ev["target"] = target.side
 	ev["point"] = p
 	target._take_hit(ev, body, w, self)
+
+
+## Blood fraction as the finisher rules see it: a dazed or downed fighter counts as deep in the finisher window.
+func _finish_frac() -> float:
+	if health == null:
+		return 1.0
+	var bf: float = health.blood_frac()
+	if health.consciousness < _t("finisher_consc") or _state == "down" or _state == "ko":
+		bf = minf(bf, _t("finisher_blood_frac") * 0.5)
+	return bf
 
 
 ## Armor ids currently worn over part `n`.
