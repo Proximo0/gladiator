@@ -1,9 +1,9 @@
 class_name LoadoutPreview
 extends SubViewportContainer
-## Rotating 3D preview of one or two real Fighters (the same class a match builds, frozen in their rest pose) in a
+## Swaying 3D preview of one or two real Fighters (the same class a match builds, standing in their guard pose with neutral input) in a private physics world. Call show_loadouts([a, b]); a null entry leaves that side empty. Rebuilds are debounced.
 ## private world. Call show_loadouts([a, b]); a null entry leaves that side empty. Rebuilds are debounced.
-
-const SPIN_RATE: float = 0.45  ## rad/s
+const SWAY_RATE: float = 0.7  ## rad/s of the sway phase
+const SWAY_ANGLE: float = 0.55  ## rad each side of the front view
 const CAM_DIST: float = 4.7
 const CAM_HEIGHT: float = 1.2
 const LOOK_Y: float = 0.9
@@ -16,7 +16,7 @@ var _stage: Node3D
 var _fighters: Array = []
 var _pending: Array = []
 var _timer: float = -1.0
-var _spin: float = 0.4
+var _spin: float = 0.0
 
 
 func _init() -> void:
@@ -50,6 +50,16 @@ func _init() -> void:
 	disc.mesh = cm
 	disc.position = Vector3(0.0, -0.03, 0.0)
 	_stage.add_child(disc)
+	var floor_body := StaticBody3D.new()
+	floor_body.collision_layer = 1
+	floor_body.collision_mask = 0
+	var fcs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(12.0, 1.0, 12.0)
+	fcs.shape = box
+	fcs.position = Vector3(0.0, -0.5, 0.0)
+	floor_body.add_child(fcs)
+	_stage.add_child(floor_body)
 	_rig = Node3D.new()
 	_vp.add_child(_rig)
 	var cam := Camera3D.new()
@@ -64,7 +74,7 @@ func _init() -> void:
 	sun.position = Vector3(1.0, 3.0, -2.0)
 	_rig.add_child(sun)
 	sun.look_at_from_position(sun.position, Vector3(0.0, 1.0, 0.0))
-	_rig.rotation.y = _spin
+	_rig.rotation.y = 0.0
 
 
 func show_loadouts(loadouts: Array) -> void:
@@ -73,8 +83,8 @@ func show_loadouts(loadouts: Array) -> void:
 
 
 func _process(delta: float) -> void:
-	_spin += delta * SPIN_RATE
-	_rig.rotation.y = _spin
+	_spin += delta * SWAY_RATE
+	_rig.rotation.y = sin(_spin) * SWAY_ANGLE
 	if _timer >= 0.0:
 		_timer -= delta
 		if _timer < 0.0:
@@ -93,14 +103,8 @@ func _rebuild() -> void:
 			continue
 		var f := Fighter.new()
 		f.name = "Preview%d" % i
-		f.set_physics_process(false)
 		_stage.add_child(f)
 		var x: float = (float(n - 1) * 0.5 - float(i)) * 2.0 * SPACING if n > 1 else 0.0  # seen from -Z, +X is screen-left
 		f.global_transform = Transform3D(Basis(), Vector3(x, 0.0, 0.0))
 		f.setup(_pending[i], i, Tuning.shared())
-		for part: Variant in f.parts.values():
-			(part as RigidBody3D).freeze = true
-		for w: Variant in [f.weapon, f.offhand, f.fist_l, f.fist_r]:
-			if w != null:
-				(w as RigidBody3D).freeze = true
 		_fighters.append(f)
