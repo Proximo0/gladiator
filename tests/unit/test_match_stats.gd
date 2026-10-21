@@ -6,6 +6,91 @@ func _frame(side: int, state: String = "standing", tip: float = 0.0, vel: Vector
 		"parts": {"pelvis": {"pos": Vector3(float(side), y, 0.0), "hp": 1.0, "severed": false}}}
 
 
+func _at(side: int, x: float, z: float, weapon: String = "fists") -> Dictionary:
+	var f: Dictionary = _frame(side)
+	f["pelvis_pos"] = Vector3(x, 1.0, z)
+	f["weapon_id"] = weapon
+	return f
+
+
+func _reach(weapon: String) -> float:
+	return 0.9 + 0.9 * float(CombatData.weapon(weapon).get("length", 0.3))
+
+
+func test_arena_distance_mean() -> void:
+	var s := MatchStats.new()
+	s.on_frames([_at(0, 0.0, 0.0), _at(1, 3.0, 4.0)], 1.0 / 60.0)  # 5 m
+	s.on_frames([_at(0, 0.0, 0.0), _at(1, 0.0, 1.0)], 1.0 / 60.0)  # 1 m
+	var d: Dictionary = s.to_dict()
+	assert_near(s.dist_sum, 6.0)
+	assert_near(float(d["mean_dist"]), 3.0)
+
+
+func test_strike_share_uses_reach_with_margin() -> void:
+	var r: float = 1.05 * _reach("fists")
+	var s := MatchStats.new()
+	s.on_frames([_at(0, 0.0, 0.0), _at(1, r * 0.99, 0.0)], 1.0 / 60.0)  # inside
+	s.on_frames([_at(0, 0.0, 0.0), _at(1, r * 1.01, 0.0)], 1.0 / 60.0)  # outside
+	s.on_frames([_at(0, 0.0, 0.0), _at(1, 50.0, 0.0)], 1.0 / 60.0)  # outside
+	assert_eq(s.strike_ticks, 1)
+	assert_near(float(s.to_dict()["strike_share"]), 1.0 / 3.0, 0.0001)
+
+
+func test_strike_uses_either_fighters_weapon() -> void:
+	var longest: String = ""
+	var longest_len: float = -1.0
+	for id: String in CombatData.weapon_ids():
+		var len_: float = float(CombatData.weapon(id).get("length", 0.3))
+		if len_ > longest_len:
+			longest_len = len_
+			longest = id
+	var d: float = 1.05 * _reach(longest) * 0.99
+	assert_true(d > 1.05 * _reach("fists"), "the longest weapon reaches past fists")
+	var s := MatchStats.new()
+	s.on_frames([_at(0, 0.0, 0.0, "fists"), _at(1, d, 0.0, longest)], 1.0 / 60.0)
+	assert_eq(s.strike_ticks, 1, "one fighter's reach is enough")
+	var t := MatchStats.new()
+	t.on_frames([_at(0, 0.0, 0.0, "fists"), _at(1, d, 0.0, "fists")], 1.0 / 60.0)
+	assert_eq(t.strike_ticks, 0)
+
+
+func test_travel_is_horizontal_per_side() -> void:
+	var s := MatchStats.new()
+	s.on_frames([_at(0, 0.0, 0.0), _at(1, 10.0, 10.0)], 1.0 / 60.0)
+	s.on_frames([_at(0, 3.0, 4.0), _at(1, 10.0, 10.0)], 1.0 / 60.0)  # side 0 steps 5 m
+	s.on_frames([_at(0, 3.0, 4.0), _at(1, 10.0, 11.0)], 1.0 / 60.0)  # side 1 steps 1 m
+	var d: Dictionary = s.to_dict()
+	assert_near(float(d["travel0"]), 5.0)
+	assert_near(float(d["travel1"]), 1.0)
+	var y_only := MatchStats.new()  # a height change must not count as travel
+	var high: Dictionary = _at(0, 1.0, 1.0)
+	high["pelvis_pos"] = Vector3(1.0, 9.0, 1.0)
+	y_only.on_frames([_at(0, 1.0, 1.0), _at(1, 20.0, 0.0)], 1.0 / 60.0)
+	y_only.on_frames([high, _at(1, 20.0, 0.0)], 1.0 / 60.0)
+	assert_near(float(y_only.to_dict()["travel0"]), 0.0)
+
+
+func test_cells_are_floored_grid_cells_of_either_pelvis() -> void:
+	var s := MatchStats.new()
+	s.on_frames([_at(0, 0.2, 0.7), _at(1, -0.5, 1.5)], 1.0 / 60.0)  # (0,0), (-1,1)
+	s.on_frames([_at(0, 0.9, 0.1), _at(1, -0.1, 1.9)], 1.0 / 60.0)  # (0,0) again, (-1,1) again
+	s.on_frames([_at(0, 2.4, -3.2), _at(1, -0.5, 1.5)], 1.0 / 60.0)  # (2,-4) new
+	assert_true(s.cells.has(Vector2i(0, 0)))
+	assert_true(s.cells.has(Vector2i(-1, 1)))
+	assert_true(s.cells.has(Vector2i(2, -4)))
+	assert_eq(s.to_dict()["cells"], 3)
+
+
+func test_nan_pelvis_skips_arena_sums() -> void:
+	var s := MatchStats.new()
+	s.on_frames([_at(0, 0.0, 0.0), _at(1, 2.0, 0.0)], 1.0 / 60.0)
+	s.on_frames([_at(0, NAN, 0.0), _at(1, 2.0, 0.0)], 1.0 / 60.0)
+	var d: Dictionary = s.to_dict()
+	assert_near(float(d["mean_dist"]), 2.0)
+	assert_near(float(d["travel0"]), 0.0)
+	assert_eq(d["cells"], 2)
+
+
 func test_hit_counts_and_kinds() -> void:
 	var s := MatchStats.new()
 	s.on_hit({"attacker": 0, "target": 1, "contact": "edge", "total": 10.0})
@@ -102,7 +187,7 @@ func test_to_dict_has_contract_keys() -> void:
 	var d: Dictionary = MatchStats.new().to_dict()
 	for k: String in ["hits", "hits_by_side", "contact_kinds", "max_tip_speed", "mean_tip_speed", "severs", "finisher",
 			"disarms", "arm_drops", "rearms", "rearms_after_disarm", "stamina0_max_s", "getup_fails", "armor_dislodged", "self_hits", "knockdowns", "time_down_s", "stuck_s", "explosions",
-			"wall_time_s", "blood_left"]:
+			"wall_time_s", "blood_left", "mean_dist", "strike_share", "travel0", "travel1", "cells"]:
 		assert_true(d.has(k), k)
 
 

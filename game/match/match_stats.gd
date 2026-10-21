@@ -12,6 +12,10 @@ extends RefCounted
 ## the fighters' cumulative "weapon_log" in debug_frame (`rearms_after_disarm`: pickups that replaced a weapon
 ## knocked out of hand). `stamina0_max_s` is the longest run any fighter spent at
 ## zero stamina; `getup_fails` counts get-ups that fell back down.
+## Arena movement (horizontal pelvis x/z, from the two debug_frames in side order): `dist_sum` is the summed distance
+## between the fighters over `_dist_ticks` ticks (`mean_dist()`); a "strike tick" is one where the fighters are within
+## STRIKE_MARGIN times the longer reach of the two weapons (`strike_share()`); `travel` is each side's summed pelvis
+## step length in metres; `cells` is the set of Vector2i(floori(x), floori(z)) cells either pelvis stood in.
 
 const SWING_SPEED: float = 2.5
 const STUCK_SPEED: float = 0.2
@@ -22,6 +26,10 @@ const FALL_Y: float = -3.0
 const FINISHERS: PackedStringArray = ["run_through", "gut", "behead", "skull_crush"]
 const DOWN_STATES: PackedStringArray = ["down", "ko", "getting_up"]
 const STAMINA_ZERO: float = 0.005
+const REACH_BASE: float = 0.9
+const REACH_PER_LENGTH: float = 0.9
+const DEFAULT_LENGTH: float = 0.3
+const STRIKE_MARGIN: float = 1.05
 
 var ticks: int = 0
 var hits: int = 0
@@ -42,7 +50,13 @@ var stuck_s: float = 0.0
 var explosions: int = 0
 var wall_time_s: float = 0.0
 var blood_left: Array = [5.0, 5.0]
+var dist_sum: float = 0.0
+var strike_ticks: int = 0
+var travel: Array = [0.0, 0.0]
+var cells: Dictionary = {}
 
+var _dist_ticks: int = 0
+var _prev_xz: Array = [null, null]
 var _swing_sum: float = 0.0
 var _swing_ticks: int = 0
 var _stuck_run: float = 0.0
@@ -90,6 +104,7 @@ func on_gore(ev: Dictionary) -> void:
 ## Both fighters' debug_frame() dictionaries (side order), once per physics tick.
 func on_frames(frames: Array, dt: float) -> void:
 	ticks += 1
+	_on_arena(frames)
 	var still: bool = true
 	for fr: Dictionary in frames:
 		var side: int = int(fr.get("side", 0))
@@ -129,6 +144,42 @@ func on_frames(frames: Array, dt: float) -> void:
 			stuck_s += dt
 	else:
 		_stuck_run = 0.0
+
+
+## Distance, strike ticks, pelvis travel and visited cells from the two frames (side order). Skips a tick whose
+## pelvis position is not finite, so one NaN never poisons the sums.
+func _on_arena(frames: Array) -> void:
+	if frames.size() < 2:
+		return
+	var xz: Array = [Vector2.ZERO, Vector2.ZERO]
+	var reach: Array = [0.0, 0.0]
+	for i: int in 2:
+		var fr: Dictionary = frames[i]
+		var p: Vector3 = fr.get("pelvis_pos", Vector3.ZERO)
+		if not (is_finite(p.x) and is_finite(p.z)):
+			return
+		xz[i] = Vector2(p.x, p.z)
+		var w: Dictionary = CombatData.weapon(str(fr.get("weapon_id", "fists")))
+		reach[i] = REACH_BASE + REACH_PER_LENGTH * float(w.get("length", DEFAULT_LENGTH))
+	var d: float = (xz[0] as Vector2).distance_to(xz[1] as Vector2)
+	dist_sum += d
+	_dist_ticks += 1
+	if d <= STRIKE_MARGIN * maxf(float(reach[0]), float(reach[1])):
+		strike_ticks += 1
+	for i: int in 2:
+		var p2: Vector2 = xz[i]
+		if _prev_xz[i] != null:
+			travel[i] = float(travel[i]) + p2.distance_to(_prev_xz[i] as Vector2)
+		_prev_xz[i] = p2
+		cells[Vector2i(floori(p2.x), floori(p2.y))] = true
+
+
+func mean_dist() -> float:
+	return dist_sum / float(_dist_ticks) if _dist_ticks > 0 else 0.0
+
+
+func strike_share() -> float:
+	return float(strike_ticks) / float(_dist_ticks) if _dist_ticks > 0 else 0.0
 
 
 func _check_explosion(fr: Dictionary, dt: float) -> bool:
@@ -174,4 +225,6 @@ func to_dict() -> Dictionary:
 		"stamina0_max_s": stamina0_max_s, "getup_fails": getup_fails, "armor_dislodged": armor_dislodged, "self_hits": self_hits, "knockdowns": knockdowns,
 		"time_down_s": time_down_s, "stuck_s": stuck_s, "explosions": explosions, "wall_time_s": wall_time_s,
 		"blood_left": blood_left.duplicate(),
+		"mean_dist": mean_dist(), "strike_share": strike_share(),
+		"travel0": float(travel[0]), "travel1": float(travel[1]), "cells": cells.size(),
 	}

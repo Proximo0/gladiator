@@ -95,6 +95,16 @@ s0_max = max(s0) if s0 else (0.0, "-")
 print("  stamina 0 longest    %.1f s (seed %s), over 10 s: %d" % (s0_max[0], s0_max[1], sum(1 for v in s0 if v[0] > 10.0)))
 print("  max tip speed        %.1f m/s" % max([float(s.get("max_tip_speed", 0.0)) for s in stats] + [0.0]))
 print("  stuck_s total %.1f  explosions %d" % (sum(float(s.get("stuck_s", 0.0)) for s in stats), tot("explosions")))
+arena = [s for s in stats if "mean_dist" in s]
+def avg(vals):
+    return sum(vals) / len(vals) if vals else 0.0
+t0 = [float(s["travel0"]) for s in arena]
+t1 = [float(s["travel1"]) for s in arena]
+print("  mean distance        %.2f m, strike share %.1f%%" % (avg([float(s["mean_dist"]) for s in arena]),
+    100 * avg([float(s["strike_share"]) for s in arena])))
+print("  travel per fighter   mean %.1f m (side 0 %.1f, side 1 %.1f), max %.1f m" % (
+    avg(t0 + t1), avg(t0), avg(t1), max(t0 + t1 + [0.0])))
+print("  cells per match      %.1f" % avg([float(s["cells"]) for s in arena]))
 print("  ms per tick          %.2f" % wall)
 print("BOT score=%.2f matches=%d failed=%d hits=%d ms_per_tick=%.2f" % (passed / n, n, n - passed, hits, wall))
 sys.exit(1 if bad else 0)
