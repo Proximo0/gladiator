@@ -280,14 +280,18 @@ func test_finisher_skull_crush_blunt_not_fists() -> void:
 
 
 func test_no_finisher_above_threshold() -> void:
-	assert_eq(_fin("head", "bat", "blunt", 20.0, 1.0, 0.4), "")
+	assert_eq(_fin("head", "bat", "blunt", 20.0, 1.0, 0.6), "")
 	assert_eq(_fin("head", "bat", "blunt", 20.0, 1.0, 1.0), "")
-	assert_eq(_fin("torso", "spear", "point", 8.0, 2.0, 0.5), "")
+	assert_eq(_fin("torso", "spear", "point", 8.0, 2.0, 0.7), "")
 	assert_eq(str(_r(_hit("torso", "spear", "point", 8.0, 2.0))["finisher"]), "")
 
 
 func test_finisher_threshold_scales_with_blood() -> void:
-	assert_eq(_fin("torso", "spear", "point", 5.0, 2.0, 0.35), "")
+	assert_eq(_fin("torso", "spear", "point", 3.5, 2.0, 0.55), "")
+	assert_eq(_fin("torso", "spear", "point", 5.0, 2.0, 0.55), "run_through")
+	# The force needed shrinks from top_scale at the window edge to min_scale at blood_death.
+	assert_eq(_fin("torso", "spear", "point", 4.0, 2.0, 0.59), "")
+	assert_eq(_fin("torso", "spear", "point", 4.0, 2.0, 0.0), "run_through")
 	assert_eq(_fin("torso", "spear", "point", 5.0, 2.0, 0.0), "run_through")
 	assert_eq(_fin("torso", "spear", "point", 2.0, 2.0, 0.0), "")
 

@@ -38,8 +38,9 @@ const FIELDS: Array = [
 	["dmg_disarm_forearm", 0.5, 0.0, 1.0, 0.05, "Damage", "Share of the disarm impulse that a hit on the holding forearm (not the weapon) delivers."],
 	["dmg_grip_base", 18.0, 4.0, 60.0, 0.5, "Damage", "One-handed grip strength at full arm hp and stamina, N·s."],
 	["dmg_grip_two_hands", 1.6, 1.0, 3.0, 0.05, "Damage", "Grip strength multiplier with two hands on the weapon."],
-	["finisher_blood_frac", 0.4, 0.0, 1.0, 0.05, "Damage", "Blood fraction (0 = blood_death, 1 = full) below which a hit can be a killing blow."],
-	["dmg_finisher_min_scale", 0.333, 0.1, 1.0, 0.01, "Damage", "Share of the normal sever/gut/crush force a finisher needs when blood is at blood_death."],
+	["finisher_blood_frac", 0.6, 0.0, 1.0, 0.05, "Damage", "Blood fraction (0 = blood_death, 1 = full) below which a hit can be a killing blow."],
+	["dmg_finisher_min_scale", 0.25, 0.1, 1.0, 0.01, "Damage", "Share of the normal sever/gut/crush force a finisher needs when blood is at blood_death."],
+	["dmg_finisher_top_scale", 0.5, 0.2, 1.0, 0.01, "Damage", "Share of the normal sever/gut/crush force a finisher needs at the top edge of the finisher window."],
 	["dmg_skull_crush", 20.0, 5.0, 80.0, 1.0, "Damage", "Blunt points (after armor, head multiplier included) a heavy blunt hit needs to crush the skull."],
 	["stand_height", 0.95, 0.7, 1.1, 0.01, "Fighter", "Pelvis height held when standing, m."],
 	["crouch_height", 0.74, 0.5, 0.95, 0.01, "Fighter", "Pelvis height held when crouching, m."],
@@ -147,6 +148,7 @@ var dmg_grip_base: float
 var dmg_grip_two_hands: float
 var finisher_blood_frac: float
 var dmg_finisher_min_scale: float
+var dmg_finisher_top_scale: float
 var dmg_skull_crush: float
 var stand_height: float
 var crouch_height: float

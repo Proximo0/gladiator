@@ -172,7 +172,7 @@ material (the arena builds only the flat collider at y = 0 and calls `SandSurfac
   the fighter decides with its grip strength). New keys only; nothing existing changes.
 
 ## Finishing blows (Curtis, 2026-10-21)
-- When the target's blood meter is low (`health.blood_frac()` = (blood - blood_death) / (5.0 - blood_death), under `Tuning.finisher_blood_frac`, default 0.4, about 3.5 L), a good enough
+- When the target's blood meter is low (`health.blood_frac()` = (blood - blood_death) / (5.0 - blood_death), under `Tuning.finisher_blood_frac`, default 0.6, about 4.0 L; the force a finisher needs scales from `dmg_finisher_top_scale` of normal at the window edge down to `dmg_finisher_min_scale` at blood_death), a good enough
   hit becomes a killing blow chosen by weapon and contact: a thrust with a point to the torso or pelvis runs the target
   through (the weapon stays lodged, impaled), a strong edged cut across the torso guts them, a strong edged hit to the
   head or neck beheads, and a heavy blunt hit to the head crushes the skull. Any of these kills.

@@ -29,9 +29,10 @@ const DEFAULTS: Dictionary = {
 	"dmg_disarm_forearm": 0.5,
 	"dmg_grip_base": 18.0,
 	"dmg_grip_two_hands": 1.6,
-	"finisher_blood_frac": 0.4,
-	"dmg_finisher_min_scale": 0.333,
+	"finisher_blood_frac": 0.6,
+	"dmg_finisher_min_scale": 0.25,
 	"dmg_skull_crush": 20.0,
+	"dmg_finisher_top_scale": 0.5,
 }
 
 
@@ -165,7 +166,7 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 	var bfrac: float = clampf(float(hit.get("blood_frac", 1.0)), 0.0, 1.0)
 	var fin_top: float = maxf(_tv(tuning, "finisher_blood_frac"), 0.001)
 	if bfrac < fin_top:
-		var s: float = lerpf(_tv(tuning, "dmg_finisher_min_scale"), 1.0, bfrac / fin_top)
+		var s: float = lerpf(_tv(tuning, "dmg_finisher_min_scale"), _tv(tuning, "dmg_finisher_top_scale"), bfrac / fin_top)
 		var fin: String = ""
 		var gut_need: float = _tv(tuning, "dmg_gut") * s
 		var is_torso: bool = part == "torso" or part == "pelvis"

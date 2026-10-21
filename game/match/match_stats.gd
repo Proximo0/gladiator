@@ -45,6 +45,8 @@ var _prev_state: Array = ["", ""]
 ## A resolved hit event (Fighter.hit payload).
 func on_hit(ev: Dictionary) -> void:
 	if bool(ev.get("hit_on_weapon", false)):
+		if bool(ev.get("disarmed", false)):
+			disarms += 1
 		parries += 1
 		return
 	hits += 1
