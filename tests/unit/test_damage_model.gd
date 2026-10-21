@@ -167,3 +167,75 @@ func test_tuning_override_and_missing_field_fallback() -> void:
 
 func test_unknown_weapon_is_harmless() -> void:
 	assert_near(float(_r(_hit("torso", "nothing", "edge", 20.0, 1.0))["total"]), 0.0)
+
+
+func test_bat_knocks_iron_helm_off() -> void:
+	var r: Dictionary = _r(_hit("head", "bat", "blunt", 20.0, 1.0, ["helm_iron"]))
+	assert_true(bool(r["dislodge"]))
+	assert_eq(r["dislodged_id"], "helm_iron")
+
+
+func test_no_armor_or_touch_no_dislodge() -> void:
+	assert_false(bool(_r(_hit("head", "bat", "blunt", 20.0, 1.0))["dislodge"]))
+	assert_false(bool(_r(_hit("head", "bat", "blunt", 2.0, 1.0, ["helm_iron"]))["dislodge"]))
+	assert_false(bool(_r(_hit("head", "bat", "blunt", 6.0, 1.0, ["helm_iron"]))["dislodge"]))
+
+
+func test_upward_blow_dislodges_more_easily() -> void:
+	var level: Dictionary = _hit("head", "club", "blunt", 7.0, 1.6, ["helm_iron"])
+	assert_false(bool(_r(level)["dislodge"]))
+	var up: Dictionary = level.duplicate()
+	up["rel_vel"] = Vector3(0, 7.0, -0.5)
+	up["normal"] = Vector3(0, 1, 0)
+	assert_true(bool(_r(up)["dislodge"]))
+
+
+func test_wear_weakens_strap() -> void:
+	var h: Dictionary = _hit("head", "club", "blunt", 8.0, 1.6, ["helm_iron"])
+	h["armor_wear"] = {"helm_iron": 0.0}
+	var fresh: bool = bool(_r(h)["dislodge"])
+	h["armor_wear"] = {"helm_iron": 1.0}
+	assert_false(fresh)
+	assert_true(bool(_r(h)["dislodge"]))
+
+
+func test_heavy_plate_cuirass_stays_on() -> void:
+	assert_false(bool(_r(_hit("torso", "club", "blunt", 12.0, 1.6, ["cuirass_iron"]))["dislodge"]))
+
+
+func test_hit_on_weapon_only_disarm_impulse() -> void:
+	var h: Dictionary = _hit("forearm_r", "longsword", "edge", 20.0, 1.0, ["bracers_leather"])
+	h["hit_on_weapon"] = true
+	var r: Dictionary = _r(h)
+	assert_near(float(r["total"]), 0.0)
+	assert_near(float(r["bleed"]), 0.0)
+	assert_false(bool(r["sever"]))
+	assert_false(bool(r["dislodge"]))
+	assert_eq(r["armor_wear"], {})
+	assert_true(float(r["disarm_impulse"]) > 5.0)
+	h["rel_vel"] = Vector3(0, 0, -2.0)
+	assert_near(float(_r(h)["disarm_impulse"]), 0.0)
+
+
+func test_forearm_hit_has_smaller_disarm_impulse() -> void:
+	var h: Dictionary = _hit("forearm_r", "bat", "blunt", 15.0, 1.0)
+	var arm: float = float(_r(h)["disarm_impulse"])
+	h["hit_on_weapon"] = true
+	var wpn: float = float(_r(h)["disarm_impulse"])
+	assert_true(arm > 0.0 and arm < wpn)
+	assert_near(float(_r(_hit("torso", "bat", "blunt", 15.0, 1.0))["disarm_impulse"]), 0.0)
+
+
+func test_grip_holds() -> void:
+	var t := Tuning.new()
+	assert_true(DamageModel.grip_holds(10.0, 1.0, 1.0, false, t))
+	assert_false(DamageModel.grip_holds(25.0, 1.0, 1.0, false, t))
+	assert_true(DamageModel.grip_holds(25.0, 1.0, 1.0, true, t))
+	assert_false(DamageModel.grip_holds(10.0, 0.2, 0.2, false, t))
+	assert_true(DamageModel.grip_holds(0.0, 0.0, 0.0, false, t))
+	assert_true(DamageModel.grip_holds(10.0, 0.5, 0.5, true, t))
+
+
+func test_armor_straps_defined() -> void:
+	for id: String in CombatData.armor_ids():
+		assert_true(float(CombatData.armor(id).get("strap", 0.0)) > 0.0, id)

@@ -12,7 +12,8 @@
 			"cut_resist": 0.3,
 			"pierce_resist": 0.2,
 			"blunt_resist": 0.15,
-			"durability": 60
+			"durability": 60,
+			"strap": 50
 		},
 		{
 			"id": "helm_iron",
@@ -26,7 +27,8 @@
 			"cut_resist": 0.92,
 			"pierce_resist": 0.85,
 			"blunt_resist": 0.4,
-			"durability": 200
+			"durability": 200,
+			"strap": 100
 		},
 		{
 			"id": "cuirass_leather",
@@ -41,7 +43,8 @@
 			"cut_resist": 0.3,
 			"pierce_resist": 0.2,
 			"blunt_resist": 0.15,
-			"durability": 60
+			"durability": 60,
+			"strap": 150
 		},
 		{
 			"id": "cuirass_iron",
@@ -56,7 +59,8 @@
 			"cut_resist": 0.92,
 			"pierce_resist": 0.85,
 			"blunt_resist": 0.3,
-			"durability": 200
+			"durability": 200,
+			"strap": 450
 		},
 		{
 			"id": "mail",
@@ -71,7 +75,8 @@
 			"cut_resist": 0.72,
 			"pierce_resist": 0.3,
 			"blunt_resist": 0.1,
-			"durability": 150
+			"durability": 150,
+			"strap": 600
 		},
 		{
 			"id": "bracers_leather",
@@ -88,7 +93,8 @@
 			"cut_resist": 0.3,
 			"pierce_resist": 0.2,
 			"blunt_resist": 0.15,
-			"durability": 60
+			"durability": 60,
+			"strap": 120
 		},
 		{
 			"id": "bracers_iron",
@@ -105,7 +111,8 @@
 			"cut_resist": 0.92,
 			"pierce_resist": 0.85,
 			"blunt_resist": 0.3,
-			"durability": 200
+			"durability": 200,
+			"strap": 300
 		},
 		{
 			"id": "greaves_leather",
@@ -122,7 +129,8 @@
 			"cut_resist": 0.3,
 			"pierce_resist": 0.2,
 			"blunt_resist": 0.15,
-			"durability": 60
+			"durability": 60,
+			"strap": 120
 		},
 		{
 			"id": "greaves_iron",
@@ -139,7 +147,8 @@
 			"cut_resist": 0.92,
 			"pierce_resist": 0.85,
 			"blunt_resist": 0.3,
-			"durability": 200
+			"durability": 200,
+			"strap": 300
 		}
 	]
 }

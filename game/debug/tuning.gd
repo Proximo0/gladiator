@@ -30,6 +30,14 @@ const FIELDS: Array = [
 	["dmg_bleed_gut", 0.35, 0.0, 2.0, 0.05, "Damage", "Extra bleed rate (L/s) from a gutting."],
 	["dmg_wear_loss", 0.6, 0.0, 1.0, 0.05, "Damage", "Fraction of an armor piece's resistance lost at full wear."],
 	["dmg_glance_frac", 0.15, 0.0, 1.0, 0.01, "Damage", "A sharp hit is a glance when armor leaves less than this fraction of its cut+pierce."],
+	["dmg_strap_wear", 0.7, 0.0, 1.0, 0.05, "Damage", "Fraction of an armor piece's strap strength lost at full wear."],
+	["dmg_dislodge_up", 1.0, 0.0, 4.0, 0.1, "Damage", "Dislodge bonus for upward blows (doubled on the head)."],
+	["dmg_dislodge_glance", 0.5, 0.0, 4.0, 0.1, "Damage", "Dislodge bonus for glancing blows."],
+	["dmg_dislodge_sharp", 0.3, 0.0, 2.0, 0.05, "Damage", "How much cutting or piercing energy counts toward tearing a strap, relative to blunt."],
+	["dmg_disarm_scale", 1.0, 0.1, 5.0, 0.1, "Damage", "Disarm impulse per N·s of hit momentum."],
+	["dmg_disarm_forearm", 0.5, 0.0, 1.0, 0.05, "Damage", "Share of the disarm impulse that a hit on the holding forearm (not the weapon) delivers."],
+	["dmg_grip_base", 18.0, 4.0, 60.0, 0.5, "Damage", "One-handed grip strength at full arm hp and stamina, N·s."],
+	["dmg_grip_two_hands", 1.6, 1.0, 3.0, 0.05, "Damage", "Grip strength multiplier with two hands on the weapon."],
 	["blood_faint", 3.5, 2.6, 5.0, 0.1, "Health", "Blood (L) below which consciousness is capped; zero at blood_death."],
 	["health_head_ko", 0.03, 0.0, 0.2, 0.005, "Health", "Consciousness lost per blunt point on the head."],
 	["health_stagger_ko", 0.05, 0.0, 0.5, 0.01, "Health", "Consciousness lost per unit of stagger on any part."],
@@ -61,6 +69,14 @@ var dmg_bleed_sever: float
 var dmg_bleed_gut: float
 var dmg_wear_loss: float
 var dmg_glance_frac: float
+var dmg_strap_wear: float
+var dmg_dislodge_up: float
+var dmg_dislodge_glance: float
+var dmg_dislodge_sharp: float
+var dmg_disarm_scale: float
+var dmg_disarm_forearm: float
+var dmg_grip_base: float
+var dmg_grip_two_hands: float
 var blood_faint: float
 var health_head_ko: float
 var health_stagger_ko: float

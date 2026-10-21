@@ -2,7 +2,9 @@ class_name DamageModel
 extends RefCounted
 ## Pure, deterministic hit resolution: kinetic energy 0.5*m*v^2 turned into blunt, cut and pierce damage points,
 ## reduced by armor, then checked for sever, gut and behead. No RNG, no nodes.
-## Optional hit key: "part_hp_frac" (0..1, default 1) lets a hurt limb sever more easily.
+## Optional hit keys: "part_hp_frac" (0..1, default 1) lets a hurt limb sever more easily;
+## "hit_on_weapon" (bool) means the contact was on the defender's held weapon or shield: no body damage, only
+## disarm_impulse. Armor def "strap" is the blunt-equivalent energy (J) that tears a fresh piece off.
 
 const DEFAULTS: Dictionary = {
 	"damage_min_speed": 3.0,
@@ -19,6 +21,14 @@ const DEFAULTS: Dictionary = {
 	"dmg_bleed_gut": 0.35,
 	"dmg_wear_loss": 0.6,
 	"dmg_glance_frac": 0.15,
+	"dmg_strap_wear": 0.7,
+	"dmg_dislodge_up": 1.0,
+	"dmg_dislodge_glance": 0.5,
+	"dmg_dislodge_sharp": 0.3,
+	"dmg_disarm_scale": 1.0,
+	"dmg_disarm_forearm": 0.5,
+	"dmg_grip_base": 18.0,
+	"dmg_grip_two_hands": 1.6,
 }
 
 
@@ -40,6 +50,7 @@ static func empty_result() -> Dictionary:
 		"energy": 0.0, "blunt": 0.0, "cut": 0.0, "pierce": 0.0, "total": 0.0, "bleed": 0.0,
 		"sever": false, "gut": false, "behead": false, "knockback": Vector3.ZERO, "stagger": 0.0,
 		"armor_wear": {}, "glanced": false,
+		"dislodge": false, "dislodged_id": "", "disarm_impulse": 0.0,
 	}
 
 
@@ -57,6 +68,14 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 		return out
 
 	var part: String = str(hit.get("part", ""))
+	var closing: float = speed
+	var blunt_f: float = float(wdef.get("blunt_factor", 0.0))
+	var momentum: float = mass * closing * _tv(tuning, "dmg_disarm_scale")
+	if bool(hit.get("hit_on_weapon", false)):
+		out["disarm_impulse"] = momentum * (0.3 + 0.7 * blunt_f)
+		return out
+	if part.begins_with("forearm"):
+		out["disarm_impulse"] = momentum * _tv(tuning, "dmg_disarm_forearm") * (0.3 + 0.7 * blunt_f)
 	var pinfo: Dictionary = CombatData.part_info(part)
 	var contact: String = str(hit.get("contact", "blunt"))
 	var align: float = clampf(float(hit.get("edge_alignment", 1.0)), 0.0, 1.0)
@@ -105,6 +124,29 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 			var dur: float = maxf(float(CombatData.armor(aid).get("durability", 100.0)), 1.0)
 			wear_out[aid] = clampf(float(wear_out.get(aid, 0.0)) + share / dur, 0.0, 1.0)
 
+	# Dislodge: the weakest strap among the covering pieces gives way to a strong, upward or glancing blow.
+	var wear_after: Dictionary = out["armor_wear"]
+	var dir_n: Vector3 = (hit.get("normal", Vector3.ZERO) as Vector3)
+	var vdir: Vector3 = rel_vel.normalized()
+	var up: float = maxf(vdir.y, 0.0) * (2.0 if part == "head" else 1.0)
+	var glance: float = 0.0
+	if dir_n.length_squared() > 0.0001:
+		glance = 1.0 - absf(vdir.dot(dir_n.normalized()))
+	var dir_mult: float = 1.0 + _tv(tuning, "dmg_dislodge_up") * up + _tv(tuning, "dmg_dislodge_glance") * glance
+	var sharp_f: float = maxf(float(wdef.get("cut_factor", 0.0)) if cut_raw > 0.0 else 0.0, float(wdef.get("pierce_factor", 0.0)) if pierce_raw > 0.0 else 0.0)
+	var hit_energy: float = energy * maxf(blunt_f, sharp_f * _tv(tuning, "dmg_dislodge_sharp")) * dir_mult
+	var weakest: float = INF
+	for aid: String in pieces:
+		var strap: float = float(CombatData.armor(aid).get("strap", 0.0))
+		var left: float = strap * (1.0 - _tv(tuning, "dmg_strap_wear") * float(wear_after.get(aid, 0.0)))
+		if left < weakest:
+			weakest = left
+			out["dislodged_id"] = aid
+	if pieces.is_empty() or hit_energy < weakest:
+		out["dislodged_id"] = ""
+	else:
+		out["dislodge"] = true
+
 	# Sever / behead: an edged hit on a severable part with enough cut left, easier on a hurt part.
 	var sev_mult: float = float(pinfo.get("sever", 0.0))
 	var frac: float = clampf(float(hit.get("part_hp_frac", 1.0)), 0.0, 1.0)
@@ -132,3 +174,14 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 	var stagger_energy: float = energy * float(wdef.get("blunt_factor", 0.0)) * pass_blunt * blunt_mult
 	out["stagger"] = clampf(stagger_energy / maxf(_tv(tuning, "dmg_stagger_ref"), 0.001), 0.0, 1.0)
 	return out
+
+
+## True when the hand keeps its weapon against a disarm impulse (N·s). Weaker with a hurt arm or low stamina,
+## stronger with two hands on the weapon.
+static func grip_holds(disarm_impulse: float, arm_hp_frac: float, stamina: float, two_hands: bool, tuning: Tuning) -> bool:
+	var strength: float = _tv(tuning, "dmg_grip_base")
+	strength *= 0.4 + 0.6 * clampf(arm_hp_frac, 0.0, 1.0)
+	strength *= 0.5 + 0.5 * clampf(stamina, 0.0, 1.0)
+	if two_hands:
+		strength *= _tv(tuning, "dmg_grip_two_hands")
+	return disarm_impulse <= strength

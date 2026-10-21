@@ -4,7 +4,7 @@ const WEAPONS: Array[String] = ["fists", "rake", "bat", "club", "gladius", "long
 const WEAPON_KEYS: Array[String] = ["id", "name", "tier", "mass", "length", "grip_offset", "balance_point", "shape",
 	"edge_len", "point", "blunt_factor", "cut_factor", "pierce_factor", "two_handed", "half_sword", "color"]
 const ARMOR_KEYS: Array[String] = ["id", "name", "part", "covers", "mass", "kind", "cut_resist", "pierce_resist",
-	"blunt_resist", "durability"]
+	"blunt_resist", "durability", "strap"]
 const PARTS: Array[String] = ["pelvis", "torso", "head", "upper_arm_l", "upper_arm_r", "forearm_l", "forearm_r",
 	"thigh_l", "thigh_r", "shin_l", "shin_r"]
 
