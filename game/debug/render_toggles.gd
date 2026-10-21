@@ -14,7 +14,6 @@ var shadows: bool = true
 var labels: bool = true
 
 var _label: Label
-var _saved_msaa: Viewport.MSAA = Viewport.MSAA_DISABLED
 
 
 func _init() -> void:
@@ -39,7 +38,6 @@ func _ready() -> void:
 	_label = Label.new()
 	_label.add_theme_font_size_override("font_size", FONT_SIZE)
 	plate.add_child(_label)
-	_saved_msaa = get_viewport().msaa_3d
 	_refresh()
 
 
@@ -72,7 +70,8 @@ func set_particles(on: bool) -> void:
 
 func set_msaa(on: bool) -> void:
 	msaa = on
-	get_viewport().msaa_3d = _saved_msaa if on else Viewport.MSAA_DISABLED
+	# On means what the arena sets for the current quality (GfxQuality.MSAA: off on low), not a fixed value.
+	get_viewport().msaa_3d = (GfxQuality.pick_i(GfxQuality.MSAA) if on else Viewport.MSAA_DISABLED) as Viewport.MSAA
 	_refresh()
 
 

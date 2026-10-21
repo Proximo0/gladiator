@@ -42,6 +42,7 @@ is the matching `BloodFx.set_quality` value.
 | sun shadow | 1 split, 34 m, no blur | 2 splits, 44 m, blur 1 | 2 splits, 52 m, blur 2 |
 | velarium casts shadow | no | no | yes |
 | MSAA 3D | off | 2x | 2x |
+| forearms / shins (art, caps, armor on them) cast shadow | no | yes | yes |
 | sand texels per metre / floor mesh cell | 26 / 0.22 m | 32 / 0.15 m | 40 / 0.10 m |
 | sand grains / dust puffs | 200 / 4 | 360 / 7 | 520 / 10 |
 | sand shader detail | 0 | 1 | 2 |
@@ -92,13 +93,39 @@ Where the draw calls are (high, early in the fight, `--hide=`): HUD 228 of 486, 
 pass), crowd 81, shadow pass 59, stands and props 21, sand 6, blood 3. Triangles by the primitive counter (which skips
 instancing): fighters 103k, sand 88k, shadow pass 63k. At low: crowd 32 calls, shadow pass 56 calls.
 
-So the draw call count is now dominated by things outside the arena: **the HUD (about 230 calls)** and **the fighters
-(about 150 calls: one MeshInstance per part, armor and weapon pieces, each drawn again in the shadow pass)**. They are
-the next target for Android (see open issues in the work report: merge HUD labels, fewer per-part meshes or no shadow
-on small parts at low).
+### Draw calls after the HUD and fighter pass
+
+Same bot match (seed 1002, tick 515), `tools/perf.sh --quality=all`; `--hide=` rows are the whole scene minus that part.
+
+| | low | medium | high |
+| --- | --- | --- | --- |
+| draw calls before (whole scene) | 671 | 714 | 745 |
+| draw calls after | 255 | 310 | 341 |
+| HUD cost after (whole scene minus `--hide=hud`) | 68 | 68 | 68 |
+| fighters after (whole scene minus `--hide=fighters`) | 135 | 167 | 188 |
+
+HUD: the meander rules were one `draw_polyline` per Greek-key cell (28 per meter, about 54 per banner rule); they are
+now cached segment lists drawn with one `draw_multiline` each (`BloodMeter.meander_segments`). The dashed death line
+and the flow streaks are one multiline each, and the banner is `visible = false` while idle, so it costs nothing
+until `announce()`. The look is unchanged (compared before/after HUD screenshots; only the antialiasing of the rule
+rows differs by about a pixel).
+
+Fighters on low: forearms and shins (and their dismemberment caps) no longer cast into the shadow map
+(`GfxQuality.SMALL_PART_SHADOWS`, `FighterArt.apply_shadow`). Armor and weapon meshes are added by `fighter.gd` and
+`weapon.gd`, which must call `FighterArt.apply_shadow(part_body, part_name)` after adding them; until they do, armor
+trims on forearms and shins still cast.
 
 Draw calls on a mid phone are cheap to a point (a few hundred is fine) and the crowd and sand triangle cuts are
 the GPU-side win; the CPU-side wins are the sand pools, uploads and splat caps (fx_ms 4.34 -> 1.69).
+
+## Options menu
+
+Options has one "Graphics: Low / Medium / High" picker (`MenuSettings.gfx_quality`, saved under `[graphics]
+gfx_quality`, never in scripted runs). It replaces the old Blood picker: the same level sets everything in the table
+above, blood included (`GfxQuality.blood_level()`). Old settings files migrate from `blood_quality`. The default is
+`GfxQuality.default_level()` (low on mobile, high on desktop). `MenuFlow` calls `settings.apply_quality()` before
+`Match.new()` for local, CPU, online host and online client matches; a `--quality=N` run argument overrides it. The
+F7 MSAA toggle turns MSAA on to `GfxQuality.MSAA` for the current level, so it stays off on low.
 
 ## Rules for new effects
 

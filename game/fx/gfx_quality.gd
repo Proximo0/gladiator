@@ -24,6 +24,9 @@ const CROWD_TIER_LOD: Array = [[1, 1, 1, 2, 2, 2], [0, 0, 0, 1, 1, 1], [-1, -1, 
 const SHADOW_SPLITS: Array[int] = [1, 2, 2]
 const SHADOW_DISTANCE: Array[float] = [34.0, 44.0, 52.0]
 const SHADOW_BLUR: Array[float] = [0.0, 1.0, 2.0]
+## Do small fighter pieces (forearms, shins and feet, armor trims on them) cast into the sun shadow map? Each caster is
+## drawn a second time in the shadow pass, and from the camera a forearm's shadow is hardly seen on the sand.
+const SMALL_PART_SHADOWS: Array[bool] = [false, true, true]
 const MSAA: Array[int] = [0, 2, 2]  ## Viewport.MSAA_DISABLED / MSAA_2X
 ## Sand: heightmap texels per metre, floor mesh vertex spacing (m), thrown-grain pool, dust puffs, shader detail
 ## (0 cheap, 1 most, 2 full: pebbles, rake lines, sparkle).
@@ -64,6 +67,10 @@ static func pick_f(table: Array[float], l: int = -1) -> float:
 
 static func pick_i(table: Array[int], l: int = -1) -> int:
 	return table[clampi(level if l < 0 else l, LOW, HIGH)]
+
+
+static func small_part_shadows(l: int = -1) -> bool:
+	return SMALL_PART_SHADOWS[clampi(level if l < 0 else l, LOW, HIGH)]
 
 
 static func tier_lod(tier: int, l: int = -1) -> int:

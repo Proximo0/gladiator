@@ -12,6 +12,10 @@ const CAP_SINK: float = 0.004
 ## How far from the pivot to the art's end the cut face sits (0 = at the pivot, 1 = at the tip).
 const CUT_REACH: float = 0.5
 
+## Parts whose meshes (art, caps, armor on them) are too small to matter in the shadow map; they stop casting when
+## `GfxQuality.small_part_shadows()` is false (low). The torso, pelvis, head, thighs and upper arms keep their shadow.
+const SMALL_SHADOW_PARTS: PackedStringArray = ["forearm_l", "forearm_r", "shin_l", "shin_r"]
+
 var _skin: StandardMaterial3D = null
 var _cloth: StandardMaterial3D = null
 var _head_scene: String = "head"
@@ -38,6 +42,21 @@ static func _scene(asset: String) -> PackedScene:
 	if not ResourceLoader.exists(path):
 		return null
 	return load(path) as PackedScene
+
+
+## Whether part `pn`'s meshes cast into the shadow map at quality `l` (-1 = the current level).
+static func casts_shadow(pn: String, l: int = -1) -> bool:
+	return GfxQuality.small_part_shadows(l) or not SMALL_SHADOW_PARTS.has(pn)
+
+
+## Sets the shadow casting of every mesh under `n` (a part's body, or its Look or ArmorSlot) for part `pn`. Call it
+## again after adding armor or other pieces to the part.
+static func apply_shadow(n: Node, pn: String) -> void:
+	if n is MeshInstance3D:
+		(n as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if casts_shadow(pn) \
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c: Node in n.get_children():
+		apply_shadow(c, pn)
 
 
 func _instance(asset: String) -> Node3D:
@@ -83,6 +102,7 @@ func dress(b: Node3D, pn: String) -> bool:
 			(c as MeshInstance3D).visible = false
 	art.name = ART_NAME
 	look.add_child(art)
+	apply_shadow(b, pn)
 	return true
 
 
@@ -122,6 +142,7 @@ func _add_cap(b: Node3D, key: String, asset: String, at: Vector3, normal: Vector
 	var basis := Basis(Quaternion(Vector3.UP, normal.normalized()))
 	cap.transform = Transform3D(basis, at - normal.normalized() * CAP_SINK)
 	look.add_child(cap)
+	apply_shadow(cap, str(b.name))
 	_caps[key] = cap
 
 

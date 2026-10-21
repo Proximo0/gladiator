@@ -1,6 +1,6 @@
 class_name MenuSettings
 extends RefCounted
-## Player options: master, sfx and crowd volume (audio buses Master, SFX, Crowd), blood quality, fullscreen.
+## Player options: master, sfx and crowd volume (audio buses Master, SFX, Crowd), graphics quality (low/medium/high: crowd, sand, shadows, MSAA and blood, see GfxQuality), fullscreen.
 ## Saved to user://settings.cfg, never in scripted runs (CLAUDE.md). `apply()` pushes the values to the engine.
 
 const PATH: String = "user://settings.cfg"
@@ -8,7 +8,7 @@ const BUSES: Dictionary = {"master": "Master", "sfx": "SFX", "crowd": "Crowd"}
 const QUALITY_NAMES: Array = [["0", "Low"], ["1", "Medium"], ["2", "High"]]
 
 var volumes: Dictionary = {"master": 1.0, "sfx": 1.0, "crowd": 1.0}
-var blood_quality: int = 0 if OS.has_feature("mobile") else 2
+var gfx_quality: int = GfxQuality.default_level()
 var fullscreen: bool = false
 var _base_db: Dictionary = {}
 
@@ -28,7 +28,9 @@ func load_file() -> void:
 		return
 	for k: String in volumes:
 		volumes[k] = clampf(float(cf.get_value("audio", k, 1.0)), 0.0, 1.0)
-	blood_quality = clampi(int(cf.get_value("graphics", "blood_quality", blood_quality)), 0, 2)
+	# Older files only have the blood picker; it used the same low/medium/high scale, so it carries over.
+	var old: Variant = cf.get_value("graphics", "blood_quality", gfx_quality)
+	gfx_quality = clampi(int(cf.get_value("graphics", "gfx_quality", old)), GfxQuality.LOW, GfxQuality.HIGH)
 	fullscreen = bool(cf.get_value("graphics", "fullscreen", false))
 
 
@@ -38,9 +40,21 @@ func save_file() -> void:
 	var cf := ConfigFile.new()
 	for k: String in volumes:
 		cf.set_value("audio", k, volumes[k])
-	cf.set_value("graphics", "blood_quality", blood_quality)
+	cf.set_value("graphics", "gfx_quality", gfx_quality)
 	cf.set_value("graphics", "fullscreen", fullscreen)
 	cf.save(PATH)
+
+
+## The level to build a match with: the `--quality=N` run argument wins (captures and perf runs), else the setting.
+func match_quality() -> int:
+	if Flags.args.has("quality"):
+		return clampi(int(Flags.get_arg("quality", str(gfx_quality))), GfxQuality.LOW, GfxQuality.HIGH)
+	return gfx_quality
+
+
+## Sets the global graphics level. Call before `Match.new()` / `setup()`: the arena, sand and blood read it when built.
+func apply_quality() -> void:
+	GfxQuality.set_level(match_quality())
 
 
 func apply() -> void:

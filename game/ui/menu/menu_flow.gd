@@ -224,12 +224,13 @@ func _begin_fight(mode: String) -> void:
 	_hide_screens()
 	_free_backdrop()
 	var cfg: Dictionary = state.to_config(mode, _new_seed())
+	settings.apply_quality()  # before Match.new(): the arena, sand and blood read GfxQuality when built
 	var m := Match.new()
 	m.name = "Match"
 	_host.add_child(m)
 	m.setup(cfg)
 	if m.presenter != null and m.presenter.blood != null:
-		m.presenter.blood.set_quality(settings.blood_quality)
+		m.presenter.blood.set_quality(GfxQuality.blood_level())
 	current_match = m
 	_hook_match(m)
 	match_started.emit(m)
@@ -311,12 +312,13 @@ func _begin_online(start: Dictionary) -> void:
 	_hide_screens()
 	_free_backdrop()
 	state.last_mode = ONLINE_MODE
+	settings.apply_quality()  # each peer builds with its own setting; presentation only, the sim is unaffected
 	var m := Match.new()
 	m.name = "Match"
 	_host.add_child(m)
 	m.setup(NetLobby.match_config(start, true))
 	if m.presenter != null and m.presenter.blood != null:
-		m.presenter.blood.set_quality(settings.blood_quality)
+		m.presenter.blood.set_quality(GfxQuality.blood_level())
 	_net.attach_match(m)
 	current_match = m
 	_hook_match(m)

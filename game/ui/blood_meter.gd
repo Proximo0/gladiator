@@ -56,6 +56,7 @@ var heart_phase: float = 0.0
 var flow_phase: float = 0.0
 var _started: bool = false
 var _frame: StyleBoxFlat = null
+var _meander: PackedVector2Array = PackedVector2Array()  ## Segment pairs of the rule above the readout (built once).
 
 
 func _init() -> void:
@@ -67,6 +68,7 @@ func _init() -> void:
 	_frame.border_color = BRONZE
 	_frame.set_border_width_all(3)
 	_frame.set_corner_radius_all(10)
+	_meander = meander_segments(size.x - 16.0, MEANDER_CELL, Vector2(8.0, MEANDER_Y))
 
 
 ## Binds a fighter and its name. The first frame after binding snaps the level instead of draining to it.
@@ -97,8 +99,7 @@ func _draw() -> void:
 	var font: Font = ThemeDB.fallback_font
 	draw_style_box(_frame, Rect2(Vector2.ZERO, size))
 	_draw_header(font)
-	for seg: PackedVector2Array in meander_cells(size.x - 16.0, MEANDER_CELL, Vector2(8.0, MEANDER_Y)):
-		draw_polyline(seg, OCHRE, MEANDER_STROKE, true)
+	draw_multiline(_meander, OCHRE, MEANDER_STROKE, true)  # one call for the whole rule
 
 	var rect: Rect2 = vial_rect()
 	var cx: float = rect.get_center().x
@@ -128,19 +129,26 @@ func _draw() -> void:
 
 	# Flow streaks inside the liquid, moving down at the drip speed.
 	if hz > 0.0 and y_level < rect.end.y - 14.0:
+		var streaks: PackedVector2Array = PackedVector2Array()
 		for k: int in 3:
 			var p: float = fposmod(flow_phase + float(k) / 3.0, 1.0)
 			var y: float = lerpf(y_level + 6.0, rect.end.y - 8.0, p)
 			var x: float = cx + float(k - 1) * VIAL_W * 0.21
-			draw_line(Vector2(x, y), Vector2(x, y + 12.0), Color(1.0, 0.8, 0.7, 0.22), 2.0)
+			streaks.append(Vector2(x, y))
+			streaks.append(Vector2(x, y + 12.0))
+		draw_multiline(streaks, Color(1.0, 0.8, 0.7, 0.22), 2.0)
 
 	# Blood-death marker: a faint dashed line at the level where the fighter dies.
 	var y_mark: float = level_y(rect, death)
 	var hm: float = half_width(rect, y_mark)
 	var dash_x: float = cx - hm
+	var dashes: PackedVector2Array = PackedVector2Array()
 	while dash_x < cx + hm:
-		draw_line(Vector2(dash_x, y_mark), Vector2(minf(dash_x + 6.0, cx + hm), y_mark), Color(0.95, 0.9, 0.75, 0.4), 1.5)
+		dashes.append(Vector2(dash_x, y_mark))
+		dashes.append(Vector2(minf(dash_x + 6.0, cx + hm), y_mark))
 		dash_x += 10.0
+	if dashes.size() >= 2:
+		draw_multiline(dashes, Color(0.95, 0.9, 0.75, 0.4), 1.5)
 
 	# Drips: a short bronze spout, then droplets falling into the liquid.
 	draw_rect(Rect2(cx - 7.0, rect.position.y - 10.0, 14.0, 10.0), BRONZE)
@@ -226,6 +234,17 @@ static func meander_cells(width: float, cell: float, origin: Vector2) -> Array:
 			var fx: float = 1.0 - f.x if mirror else f.x
 			pts.append(Vector2(x0 + fx * cell, origin.y + f.y * cell))
 		out.append(pts)
+	return out
+
+
+## The same band as `meander_cells`, flattened to line segment pairs for one `draw_multiline` call (one draw call
+## instead of one per cell).
+static func meander_segments(width: float, cell: float, origin: Vector2) -> PackedVector2Array:
+	var out: PackedVector2Array = PackedVector2Array()
+	for seg: PackedVector2Array in meander_cells(width, cell, origin):
+		for i: int in range(seg.size() - 1):
+			out.append(seg[i])
+			out.append(seg[i + 1])
 	return out
 
 

@@ -36,3 +36,29 @@ func test_level_is_clamped_and_named() -> void:
 	assert_eq(GfxQuality.name_of(1), "medium")
 	assert_eq(GfxQuality.blood_level(), 0)
 	GfxQuality.set_level(old)
+
+
+func test_small_part_shadows_off_only_on_low() -> void:
+	assert_false(GfxQuality.small_part_shadows(0))
+	assert_true(GfxQuality.small_part_shadows(1))
+	assert_true(GfxQuality.small_part_shadows(2))
+	assert_eq(GfxQuality.SMALL_PART_SHADOWS.size(), 3)
+	assert_false(FighterArt.casts_shadow("forearm_r", 0))
+	assert_true(FighterArt.casts_shadow("torso", 0), "big parts keep their shadow on low")
+	assert_true(FighterArt.casts_shadow("shin_l", 2))
+
+
+func test_apply_shadow_walks_the_subtree() -> void:
+	var old: int = GfxQuality.level
+	GfxQuality.set_level(0)
+	var b := Node3D.new()
+	var mi := MeshInstance3D.new()
+	var look := Node3D.new()
+	b.add_child(look)
+	look.add_child(mi)
+	FighterArt.apply_shadow(b, "forearm_l")
+	assert_eq(mi.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	FighterArt.apply_shadow(b, "torso")
+	assert_eq(mi.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+	b.free()
+	GfxQuality.set_level(old)

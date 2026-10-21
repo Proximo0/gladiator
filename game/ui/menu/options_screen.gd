@@ -1,6 +1,6 @@
 class_name OptionsScreen
 extends Control
-## Volume sliders (master, sfx, crowd), blood quality, fullscreen, and the controls reference page.
+## Volume sliders (master, sfx, crowd), graphics quality (low/medium/high; includes blood), fullscreen, and the controls reference page.
 
 signal back
 
@@ -73,10 +73,9 @@ func _build_main() -> void:
 	v.add_child(MenuTheme.label("Graphics", MenuTheme.FONT_SMALL, MenuTheme.OCHRE))
 	_quality = MenuPicker.new()
 	_quality.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
-	var qi: Array = [["0", "Low"], ["1", "Medium"], ["2", "High"]]
-	_quality.setup("Blood", qi, str(settings.blood_quality))
+	_quality.setup("Graphics", MenuSettings.QUALITY_NAMES, str(settings.gfx_quality))
 	_quality.changed.connect(func(id: String) -> void:
-		settings.blood_quality = int(id)
+		settings.gfx_quality = int(id)
 		settings.save_file())
 	v.add_child(_quality)
 	if not OS.has_feature("mobile"):

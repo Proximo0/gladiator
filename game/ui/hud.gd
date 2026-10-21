@@ -38,6 +38,8 @@ var _banner: Control = null
 var _latin: Label = null
 var _english: Label = null
 var _banner_tween: Tween = null
+var _rules: PackedVector2Array = PackedVector2Array()  ## Meander segments of both rules (one multiline call).
+var _hairlines: PackedVector2Array = PackedVector2Array()
 
 
 func _init() -> void:
@@ -57,6 +59,8 @@ func _init() -> void:
 	_banner.size = Vector2(BANNER_W, BANNER_H)
 	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_banner.modulate.a = 0.0
+	_banner.visible = false  # an idle banner costs nothing: no draw calls for its rules and text
+	_build_rules()
 	_banner.draw.connect(_draw_banner_rules)
 	root.add_child(_banner)
 
@@ -124,17 +128,24 @@ func announce(text: String) -> void:
 	if _banner_tween != null and _banner_tween.is_valid():
 		_banner_tween.kill()
 	_banner.modulate.a = 0.0
+	_banner.visible = true
 	_banner_tween = create_tween()
 	_banner_tween.tween_property(_banner, "modulate:a", 1.0, BANNER_FADE_IN_S)
 	_banner_tween.tween_interval(BANNER_HOLD_S)
 	_banner_tween.tween_property(_banner, "modulate:a", 0.0, BANNER_FADE_OUT_S)
+	_banner_tween.tween_callback(func() -> void: _banner.visible = false)
 
 
-## Meander rules above and below the banner text, with a bronze hairline under each.
-func _draw_banner_rules() -> void:
+## Meander rules above and below the banner text, with a bronze hairline under each. Built once as segment lists.
+func _build_rules() -> void:
 	var span: float = BANNER_W * 0.32
 	var x0: float = BANNER_W * 0.5 - span
 	for y: float in [RULE_TOP, RULE_BOTTOM]:
-		for seg: PackedVector2Array in BloodMeter.meander_cells(span * 2.0, RULE_CELL, Vector2(x0, y)):
-			_banner.draw_polyline(seg, BloodMeter.OCHRE, RULE_STROKE, true)
-		_banner.draw_line(Vector2(x0, y + RULE_CELL + 6.0), Vector2(x0 + span * 2.0, y + RULE_CELL + 6.0), BloodMeter.BRONZE, 2.0)
+		_rules.append_array(BloodMeter.meander_segments(span * 2.0, RULE_CELL, Vector2(x0, y)))
+		_hairlines.append(Vector2(x0, y + RULE_CELL + 6.0))
+		_hairlines.append(Vector2(x0 + span * 2.0, y + RULE_CELL + 6.0))
+
+
+func _draw_banner_rules() -> void:
+	_banner.draw_multiline(_rules, BloodMeter.OCHRE, RULE_STROKE, true)
+	_banner.draw_multiline(_hairlines, BloodMeter.BRONZE, 2.0)

@@ -157,3 +157,22 @@ func _shoelace(pts: PackedVector2Array) -> float:
 		var b: Vector2 = pts[(i + 1) % pts.size()]
 		s += a.x * b.y - b.x * a.y
 	return absf(s) * 0.5
+
+
+func test_meander_segments_match_cells() -> void:
+	var cells: Array = BloodMeter.meander_cells(80.0, 8.0, Vector2(2.0, 3.0))
+	var segs: PackedVector2Array = BloodMeter.meander_segments(80.0, 8.0, Vector2(2.0, 3.0))
+	var expect: int = 0
+	for c: PackedVector2Array in cells:
+		expect += (c.size() - 1) * 2
+	assert_eq(segs.size(), expect)
+	assert_eq(segs.size() % 2, 0, "segment pairs")
+	var first: PackedVector2Array = cells[0]
+	assert_eq(segs[0], first[0])
+	assert_eq(segs[1], first[1])
+
+
+func test_idle_banner_is_hidden() -> void:
+	var h := HUD.new()
+	assert_false(h.get("_banner").visible)
+	h.free()

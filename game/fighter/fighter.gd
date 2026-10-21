@@ -510,6 +510,7 @@ func _armor_mesh(b: RigidBody3D, pn: String, ad: Dictionary) -> MeshInstance3D:
 	mi.material_override = mat
 	mi.name = "Armor_" + pn
 	_slot(b, "ArmorSlot").add_child(mi)
+	FighterArt.apply_shadow(mi, pn)
 	return mi
 
 
