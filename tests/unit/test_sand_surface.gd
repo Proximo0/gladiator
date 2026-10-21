@@ -35,3 +35,27 @@ func test_disc_mesh_is_clockwise_up() -> void:
 	assert_true(idx.size() > 0 and idx.size() % 3 == 0)
 	var nrm: Vector3 = (v[idx[1]] - v[idx[0]]).cross(v[idx[2]] - v[idx[0]])
 	assert_true(nrm.y < 0.0, "clockwise from above means cross points down")
+
+
+func test_piles_are_part_of_height_and_survive_clear() -> void:
+	var s: SandSurface = _make()
+	var wall: Vector3 = Vector3(3.8, 0, 0)
+	var base: float = s.base_height_at(wall)
+	assert_true(base > 0.01, "wall drift %f" % base)
+	assert_near(s.height_at(wall), base, 0.0001)
+	s.stamp(wall, 0.2, 0.04)
+	assert_true(s.height_at(wall) < base - 0.02, "stamp digs into the pile")
+	s.clear()
+	assert_near(s.height_at(wall), base, 0.0001)
+	s.free()
+
+
+func test_effects_throw_grains() -> void:
+	var s: SandSurface = _make()
+	s.spray(Vector3(0, 0, 0), Vector3(2, 1, 0), 0.8)
+	assert_true(s._fx.count > 10, "spray throws grains")
+	s.clear()
+	assert_eq(s._fx.count, 0)
+	s.drag(Vector3(0, 0, 0), Vector3(0.1, 0, 0), 0.025, 0.012)
+	assert_true(s._fx.count > 0, "a fast tip drag throws sand")
+	s.free()

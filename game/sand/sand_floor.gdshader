@@ -1,20 +1,32 @@
 shader_type spatial;
-render_mode cull_back;
+render_mode cull_back, ambient_light_disabled;
 
-// Sand floor: vertex displacement and normals from the deformation map, damp sand and blood from the blood map,
-// procedural grain, sparkle, dunes and raked lines on top. Compatibility-renderer friendly (no compute, few fetches).
+// Sand floor: vertex displacement and normals from the deformation map plus the permanent relief (wall drifts and
+// heaps, base_tex), damp sand and blood from the blood map, procedural grain, pebbles, rake lines, wind ripples and
+// sparkle on top. Compatibility-renderer friendly (no compute, few fetches).
+// Ambient is supplied here (sand_ambient, a warm tint scaled by the scene's ambient energy): the sky's blue ambient
+// times orange sand is olive green in shadow, so the shader never uses the engine's ambient.
+// Colour rules: every tint is a multiplier on warm sand, never an additive or sky term. SPECULAR = 0 keeps the
+// sky's blue reflection off the sand (it turned shaded and dim sand teal-green); damp sand darkens toward warm
+// brown and blood-soaked sand toward red-brown.
 
 uniform sampler2D height_tex : filter_linear, repeat_disable;
+uniform sampler2D base_tex : filter_linear, repeat_disable;  // R height, G dh/dx, B dh/dz of the permanent piles
 uniform sampler2D blood_tex : filter_linear, repeat_disable;
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform float extent = 11.6;
 uniform float map_n = 880.0;
-uniform vec3 sand_light : source_color = vec3(0.72, 0.60, 0.45);
-uniform vec3 sand_dark : source_color = vec3(0.62, 0.50, 0.37);
+uniform vec3 sand_light : source_color = vec3(0.60, 0.54, 0.45);
+uniform vec3 sand_dark : source_color = vec3(0.52, 0.46, 0.37);
+uniform vec3 sand_buff : source_color = vec3(0.68, 0.62, 0.50);
+uniform vec3 sand_ochre : source_color = vec3(0.58, 0.45, 0.31);
 uniform vec3 blood_fresh : source_color = vec3(0.30, 0.008, 0.012);
 uniform vec3 blood_dried : source_color = vec3(0.13, 0.03, 0.02);
 uniform float grain_gain = 1.0;
 uniform float sparkle_gain = 1.0;
+uniform float pebble_gain = 1.0;
+uniform float arena_radius = 11.0;
+uniform vec3 sand_ambient = vec3(0.52, 0.43, 0.38);
 
 varying vec3 lpos;
 varying float v_sparkle;
@@ -27,20 +39,23 @@ float hash12(vec2 p) {
 	return fract((p3.x + p3.y) * p3.z);
 }
 
-// Large scale shapes: raked strokes in patches and soft dunes. Metres.
+// Raked lines: straight strokes in some patches, concentric rings in others, soft dunes over all. Metres.
 float base_h(vec2 p) {
 	float warp = 0.35 * sin(p.x * 0.9 + 1.3 * sin(p.y * 0.6)) + 0.2 * sin(p.y * 1.7 + p.x * 0.3);
-	float across = dot(p, vec2(-0.34, 0.94)) + warp;
-	float ridge = 0.5 + 0.5 * cos(across / 0.095 * 6.2832);
-	ridge = pow(ridge, 1.6);
-	float mask = smoothstep(-0.1, 0.55, sin(p.x * 0.23 + 0.7 * sin(p.y * 0.31)) + 0.6 * sin(p.y * 0.17 + 1.0) + 0.3 * sin(p.x * 0.7 - p.y * 0.5));
+	float straight = dot(p, vec2(-0.34, 0.94)) + warp;
+	float ring = length(p) + warp * 0.6;
+	float sel = smoothstep(-0.15, 0.15, sin(p.x * 0.19 + 1.1 * sin(p.y * 0.23)) + 0.7 * sin(p.y * 0.14 + 2.0));
+	float across = mix(straight, ring, sel);
+	float ridge = 0.5 + 0.5 * cos(across / 0.085 * 6.2832);
+	ridge = pow(ridge, 1.5);
+	float mask = smoothstep(-0.2, 0.45, sin(p.x * 0.23 + 0.7 * sin(p.y * 0.31)) + 0.6 * sin(p.y * 0.17 + 1.0) + 0.3 * sin(p.x * 0.7 - p.y * 0.5));
 	float dunes = 0.018 * sin(p.x * 0.42 + 0.9 * sin(p.y * 0.28)) * sin(p.y * 0.37 + 0.5 * sin(p.x * 0.5)) + 0.006 * sin(p.x * 1.3 + p.y * 0.9);
-	return ridge * mask * 0.0034 + dunes;
+	return ridge * mask * 0.0028 + dunes;
 }
 
 void vertex() {
 	vec2 uv = (VERTEX.xz + vec2(extent)) / (2.0 * extent);
-	float h = textureLod(height_tex, uv, 0.0).r;
+	float h = textureLod(height_tex, uv, 0.0).r + textureLod(base_tex, uv, 0.0).r;
 	VERTEX.y += h;
 	lpos = VERTEX;
 }
@@ -57,6 +72,9 @@ void fragment() {
 	float hu = texture(height_tex, uv + vec2(0.0, e)).r;
 	vec2 g = vec2(hr - hl, hu - hd) / (2.0 * tm);
 	float lap = (hl + hr + hd + hu) * 0.25 - hc;
+	vec4 bs = texture(base_tex, uv);
+	float hb = bs.r;
+	vec2 bgrad = bs.gb;
 
 	vec3 bt = texture(blood_tex, uv).rgb;
 	float dist = length(VERTEX);
@@ -70,10 +88,12 @@ void fragment() {
 	float n2x = texture(noise_tex, wp * 2.3 + vec2(0.37 + 1.0 / 256.0, 0.11)).g;
 	float n2z = texture(noise_tex, wp * 2.3 + vec2(0.37, 0.11 + 1.0 / 256.0)).g;
 	vec4 n3 = texture(noise_tex, wp * 0.31);
+	vec4 n4 = texture(noise_tex, wp * 0.071 + vec2(0.5, 0.2));
 
 	float bc = base_h(wp);
-	float rake_fade = 1.0 - smoothstep(5.0, 15.0, dist);
+	float rake_fade = 1.0 - smoothstep(3.0, 10.0, dist);
 	vec2 bg = rake_fade * vec2(base_h(wp + vec2(0.012, 0.0)) - bc, base_h(wp + vec2(0.0, 0.012)) - bc) / 0.012;
+	float rake = clamp(bc * 220.0, -1.0, 1.0) * rake_fade;
 
 	// Blood coverage: soft map, crisp irregular edge from noise.
 	float b = bt.r;
@@ -82,40 +102,78 @@ void fragment() {
 	float wet = bt.g * smoothstep(0.0, 0.1, bt.g);
 	float dry = bt.b;
 
+	// Piles: wind ripples along the contours of drifts and heaps.
+	float pile = smoothstep(0.012, 0.08, hb);
+	vec2 rdir = normalize(bgrad + vec2(0.0001));
+	float rph = hb * 420.0 + (n3.b - 0.5) * 5.0 + dot(wp, vec2(0.7, 0.3)) * 1.5;
+	vec2 ripple = rdir * (pile * 0.07 * cos(rph) * rake_fade);
+
+	// Pebbles: one per sparse grid cell, a dome with a soft shadow ring around it.
+	float pmask = 0.0;
+	float pring = 0.0;
+	vec2 pgrad = vec2(0.0);
+	vec3 pcol = vec3(0.4, 0.33, 0.26);
+	float pvis = fade * pebble_gain * (1.0 - smoothstep(0.003, 0.012, abs(hc))) * (1.0 - smoothstep(0.02, 0.06, hb)) * (1.0 - cov);
+	if (pvis > 0.01) {
+		vec2 cell = floor(wp / 0.42);
+		if (hash12(cell + 71.0) > 0.72) {
+			vec2 pc = (cell + 0.14 + 0.72 * vec2(hash12(cell + 3.1), hash12(cell + 8.7))) * 0.42;
+			float pr = mix(0.008, 0.026, hash12(cell + 19.3) * hash12(cell + 2.2));
+			vec2 dv = wp - pc;
+			float d = length(dv);
+			pmask = (1.0 - smoothstep(pr * 0.78, pr, d)) * pvis;
+			pring = (1.0 - smoothstep(pr, pr * 2.2, d)) * pvis;
+			pgrad = dv / pr * pmask * 1.1;
+			float pk = hash12(cell + 33.3);
+			pcol = mix(vec3(0.36, 0.29, 0.22), vec3(0.62, 0.52, 0.40), pk) * (0.8 + 0.4 * hash12(floor(wp * 400.0)));
+			pcol = mix(pcol, vec3(0.5, 0.2, 0.12) * (0.7 + 0.3 * pk), step(0.88, pk) * 0.6);
+		}
+	}
+
 	// Grain gradient (metres of height per metre), damped under liquid and with distance.
 	float calm = (1.0 - cov * 0.8) * (1.0 - wet * 0.35) * fade;
 	vec2 grain = vec2(n1x - n1.r, n1z - n1.r) * 22.0 + vec2(n2x - n2.g, n2z - n2.g) * 2.2;
 	grain *= grain_gain * calm;
-	vec3 nl = normalize(vec3(-(g.x + bg.x + grain.x * 0.055), 1.0, -(g.y + bg.y + grain.y * 0.055)));
+	vec2 slope = g + bgrad + bg + ripple + grain * 0.055 + pgrad * 0.5;
+	vec3 nl = normalize(vec3(-slope.x, 1.0, -slope.y));
 	nl = normalize(mix(nl, vec3(0.0, 1.0, 0.0), cov * 0.92));
 	NORMAL = normalize((VIEW_MATRIX * MODEL_MATRIX * vec4(nl, 0.0)).xyz);
 
-	// Sand colour: broad variation, grain speckle, compaction, loose crest, ambient occlusion in hollows.
+	// Sand colour: warm base, ochre and buff patches, grain speckle, compaction, loose crests, hollows darker.
 	vec3 sand = mix(sand_dark, sand_light, 0.35 + 0.3 * smoothstep(0.25, 0.75, n3.g * 0.75 + n2.g * 0.25));
-	sand *= 0.88 + 0.24 * n1.r;
-	sand *= 0.95 + 0.10 * n2.r;
-	float cell = hash12(floor(wp * 190.0));
+	sand = mix(sand, sand_ochre, smoothstep(0.55, 0.78, n4.g * 0.7 + n3.b * 0.3) * 0.4);
+	sand = mix(sand, sand_buff, smoothstep(0.52, 0.8, n4.b * 0.75 + n3.b * 0.25) * 0.35);
+	sand *= 0.92 + 0.16 * n1.r;
+	sand *= 0.96 + 0.08 * n2.r;
+	float cell2 = hash12(floor(wp * 190.0));
 	vec2 gf = fract(wp * 190.0) - 0.5;
 	float dot_mask = 1.0 - smoothstep(0.18, 0.42, length(gf));
-	sand *= mix(1.0, 0.76, step(0.985, cell) * dot_mask * fade);
+	sand *= mix(1.0, 0.72, step(0.985, cell2) * dot_mask * fade);
 	vec2 gf2 = fract(wp * 260.0) - 0.5;
-	sand *= mix(1.0, 1.12, step(0.97, hash12(floor(wp * 260.0) + 3.0)) * (1.0 - smoothstep(0.2, 0.45, length(gf2))) * fade);
+	sand *= mix(1.0, 1.14, step(0.97, hash12(floor(wp * 260.0) + 3.0)) * (1.0 - smoothstep(0.2, 0.45, length(gf2))) * fade);
 	float ao = 1.0 - clamp(lap / 0.02, 0.0, 1.0) * 0.35;
 	float compact = clamp(-hc * 9.0, 0.0, 0.3);
 	sand *= ao * (1.0 - compact * 0.5);
 	sand *= 1.0 + clamp(hc * 3.0, 0.0, 0.12);
-	// Damp sand: darker, more saturated.
-	sand = mix(sand, sand * sand * vec3(1.55, 1.35, 1.2) * 0.62, wet * 0.85);
+	sand *= 1.0 + rake * 0.04 + pile * (0.07 + 0.05 * cos(rph)) - pring * 0.16;
+	sand *= 1.0 + clamp(hb * 2.5, 0.0, 0.5) * 0.35;
+	// Contact shade where the sand meets the wall.
+	sand *= mix(0.62, 1.0, smoothstep(0.0, 0.55, arena_radius - dist));
+	sand = mix(sand, pcol, pmask);
+	// Damp sand: darker and warmer (never a squared term: that only pushes the hue around).
+	sand = mix(sand, sand * vec3(0.62, 0.48, 0.37), wet * 0.85);
 	// Soaked stain, then pooled blood on top.
-	vec3 soaked = sand * mix(vec3(0.55, 0.20, 0.15), vec3(0.38, 0.17, 0.12), dry);
+	vec3 soaked = sand * mix(vec3(0.50, 0.15, 0.10), vec3(0.34, 0.13, 0.09), dry);
 	vec3 col = mix(sand, soaked, stain * 0.9);
 	vec3 bcol = mix(blood_fresh, blood_dried, smoothstep(0.0, 1.0, dry));
 	bcol *= 0.9 + 0.2 * n2.r;
 	col = mix(col, bcol, cov);
 	ALBEDO = col;
+	EMISSION = col * sand_ambient;
 
-	float gloss = cov * (1.0 - dry * 0.75) + wet * 0.25;
+	float gloss = cov * (1.0 - dry * 0.75) + wet * 0.2;
 	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
 	v_gloss = gloss;
 	// Sparkle: rare glints from single grains, stable per grain.
 	float sp = hash12(floor(wp * 230.0) + 17.0);
@@ -132,7 +190,9 @@ void light() {
 	float nh = max(dot(NORMAL, h), 0.0);
 	float lit = max(ndl, 0.0) * ATTENUATION;
 	float gl = v_gloss;
-	SPECULAR_LIGHT += LIGHT_COLOR * lit * gl * (pow(nh, 48.0) * 2.2 + 0.03);
+	// Wet sheen: a tight, faint highlight. Facing the low sun a flat pool is a mirror: anything stronger blows the whole
+	// pool out to cream.
+	SPECULAR_LIGHT += LIGHT_COLOR / PI * lit * gl * (pow(nh, 64.0) * 0.14 + 0.004);
 	// Sparkle uses the light and view only, so the grain flashes as the camera moves.
 	float flash = pow(max(dot(normalize(NORMAL + vec3(v_jit.x, 0.0, v_jit.y) * 1.4), h), 0.0), 40.0);
 	SPECULAR_LIGHT += LIGHT_COLOR * lit * v_sparkle * (0.4 + 2.2 * flash);

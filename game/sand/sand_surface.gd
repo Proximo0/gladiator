@@ -11,8 +11,15 @@ const SWEEP_TILES_PER_FRAME: int = 4
 const WET_DECAY: float = 1.0 / 240.0  ## damp fraction lost per second
 const DRY_RATE: float = 1.0 / 120.0  ## dryness gained per second
 const MAX_DRAG_STAMPS: int = 80
-const PUFF_POOL: int = 6
-const GRAIN_POOL: int = 6
+const PUFF_POOL: int = 10
+const GRAIN_CAPACITY: int = 520
+const BASE_SEED: int = 7
+const FOOT_RADIUS_MAX: float = 0.075  ## drag radii up to this count as a foot, the rest as a body or weapon
+const TICK_S: float = 1.0 / 60.0
+const AMBIENT_TINT: Color = Color(1.0, 0.9, 0.82)  ## warm fill for shade (sky ambient is blue: olive on orange sand)
+const AMBIENT_GAIN: float = 1.05
+const AMBIENT_REFRESH_S: float = 0.5
+const GRAIN_COLOR: Color = Color(0.62, 0.43, 0.22)  ## linear
 const FLOOR_SHADER: Shader = preload("res://game/sand/sand_floor.gdshader")
 
 var radius: float = 11.0
@@ -22,6 +29,7 @@ var texels_per_m: float = 40.0
 var rim_gain: float = 1.0
 
 var _h: PackedFloat32Array = PackedFloat32Array()
+var _base: PackedFloat32Array = PackedFloat32Array()  ## permanent piles (wall drifts, heaps), metres
 var _blood: PackedFloat32Array = PackedFloat32Array()
 var _wet: PackedFloat32Array = PackedFloat32Array()
 var _dry: PackedFloat32Array = PackedFloat32Array()
@@ -47,9 +55,14 @@ var _time: float = 0.0
 var _pools: Array[Dictionary] = []
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _puffs: Array[CPUParticles3D] = []
-var _grains: Array[CPUParticles3D] = []
 var _next_puff: int = 0
-var _next_grain: int = 0
+var _fx: SandFx = SandFx.new(GRAIN_CAPACITY)
+var _fx_mm: MultiMesh
+var _fx_buf: PackedFloat32Array = PackedFloat32Array()
+var _fx_shown: int = 0
+var _last_puff_time: float = -10.0
+var _base_tex: ImageTexture
+var _ambient_clock: float = 99.0
 
 
 ## Builds maps, mesh and material. radius = arena radius in metres. texels_per_m 40 gives 2.5 cm texels
@@ -85,9 +98,13 @@ func setup(arena_radius: float = 11.0, tpm: float = 40.0, mesh_cell: float = 0.1
 	_material.shader = FLOOR_SHADER
 	_material.set_shader_parameter("height_tex", _h_tex)
 	_material.set_shader_parameter("blood_tex", _b_tex)
+	_base = SandMap.build_base(radius, extent, BASE_SEED)
+	_base_tex = _make_base_texture()
+	_material.set_shader_parameter("base_tex", _base_tex)
 	_material.set_shader_parameter("noise_tex", make_noise_texture())
 	_material.set_shader_parameter("extent", extent)
 	_material.set_shader_parameter("map_n", float(n))
+	_material.set_shader_parameter("arena_radius", radius)
 	_mesh_node = MeshInstance3D.new()
 	_mesh_node.name = "SandMesh"
 	_mesh_node.mesh = build_disc_mesh(radius + 0.35, mesh_cell)
@@ -96,6 +113,8 @@ func setup(arena_radius: float = 11.0, tpm: float = 40.0, mesh_cell: float = 0.1
 	_mesh_node.custom_aabb = AABB(Vector3(-extent, -0.5, -extent), Vector3(extent * 2.0, 1.0, extent * 2.0))
 	add_child(_mesh_node)
 	_build_particles()
+	refresh_ambient()
+	_fx.set_ground(Callable(self, "_ground_at"))
 
 
 ## Presses a round footprint, knee, weapon tip or body part into the sand. push biases the rim along it (length
@@ -115,6 +134,7 @@ func stamp_ellipse(pos: Vector3, rx: float, rz: float, yaw: float, depth: float,
 	var t: float = texels_per_m
 	var rect: Rect2i = SandMap.apply_stamp(_h, n, c, rx * t, rz * t, yaw, depth, pv, rim_gain)
 	_mark_h(rect)
+	_stamp_fx(pos, maxf(rx, rz), depth, push)
 
 
 ## A furrow: a stamp swept from `from` to `to`, sand spills to both sides and piles up ahead.
@@ -132,6 +152,7 @@ func drag(from: Vector3, to: Vector3, radius_m: float, depth: float) -> void:
 	for p: Vector2 in pts:
 		var c: Vector2 = SandMap.world_to_texel(p.x, p.y, extent, n)
 		_mark_h(SandMap.apply_stamp(_h, n, c, radius_m * t, radius_m * t, 0.0, depth, dir * 0.5, gain))
+	_drag_fx(a, b, dir, radius_m, depth)
 
 
 ## Soaks blood in: pools spread a little, small amounts leave dark clumps.
@@ -149,39 +170,92 @@ func add_blood(pos: Vector3, radius_m: float, litres: float) -> void:
 				"s": strength * 0.8, "seed": seed_v})
 
 
-## Kicks up a sand puff and a few grains. vel = initial direction and speed (m/s), amount 0..1.
+## Kicks up a dust puff and a burst of grains. vel = initial direction and speed (m/s), amount 0..1.
 func spray(pos: Vector3, vel: Vector3, amount: float) -> void:
 	if _puffs.is_empty():
 		return
 	amount = clampf(amount, 0.0, 1.5)
 	var dir: Vector3 = vel.normalized() if vel.length() > 0.01 else Vector3.UP
-	dir = (dir + Vector3.UP * 0.6).normalized()
+	dir = (dir + Vector3.UP * 0.7).normalized()
 	var speed: float = clampf(vel.length() * 0.35, 0.5, 4.0)
+	_puff(pos, dir, speed, amount)
+	_fx.burst(pos + Vector3(0.0, 0.02, 0.0), dir, clampf(vel.length() * 0.5 + 1.8, 1.8, 6.5) * (0.7 + 0.4 * amount),
+			int(8.0 + 30.0 * amount), 0.75, 0.8 + 0.5 * amount)
+	if amount > 0.5:
+		_fx.fountain(pos, 0.1, 1.6 + 1.6 * amount, int(10.0 * amount))
+
+
+## One dust puff (round robin over the pool), speed in m/s along dir.
+func _puff(pos: Vector3, dir: Vector3, speed: float, amount: float) -> void:
 	var puff: CPUParticles3D = _puffs[_next_puff]
 	_next_puff = (_next_puff + 1) % _puffs.size()
-	puff.global_position = pos + Vector3(0.0, 0.03, 0.0)
+	_last_puff_time = _time
+	if puff.is_inside_tree():
+		puff.global_position = pos + Vector3(0.0, 0.03, 0.0)
+	else:
+		puff.position = pos + Vector3(0.0, 0.03, 0.0)
 	puff.direction = dir
-	puff.initial_velocity_min = speed * 0.4
+	puff.initial_velocity_min = speed * 0.3
 	puff.initial_velocity_max = speed
-	puff.scale_amount_min = 0.12 + 0.1 * amount
-	puff.scale_amount_max = 0.22 + 0.2 * amount
-	puff.restart()
-	puff.emitting = true
-	var gr: CPUParticles3D = _grains[_next_grain]
-	_next_grain = (_next_grain + 1) % _grains.size()
-	gr.global_position = pos + Vector3(0.0, 0.02, 0.0)
-	gr.direction = dir
-	gr.initial_velocity_min = speed * 0.8
-	gr.initial_velocity_max = speed * 2.2
-	gr.restart()
-	gr.emitting = true
+	puff.scale_amount_min = 0.10 + 0.08 * amount
+	puff.scale_amount_max = 0.18 + 0.16 * amount
+	if puff.is_inside_tree():
+		puff.restart()
+		puff.emitting = true
+
+
+## Grains and dust from a footprint, a knee, a fallen body: deeper presses throw more, a hard push kicks a little.
+func _stamp_fx(pos: Vector3, r: float, depth: float, push: Vector3) -> void:
+	var heavy: float = depth - 0.022
+	var pl: float = Vector2(push.x, push.z).length()
+	if heavy > 0.0:
+		var k: float = clampf(heavy / 0.03, 0.0, 1.5)
+		_fx.fountain(pos, r, 1.0 + heavy * 45.0, 3 + int(k * 14.0), 0.9)
+		if heavy > 0.02 and _time - _last_puff_time > 0.1:
+			_puff(pos, Vector3.UP, 0.6 + k, 0.2 + 0.3 * k)
+	elif pl > 0.3:
+		var travel: Vector3 = Vector3(push.x, 0.0, push.z).normalized()
+		_fx.kick(pos, travel, 1.0 + pl * 2.0, 2 + int(pl * 3.0), 0.8)
+
+
+## Kick-up from a foot ploughing, a body sliding or a weapon tip raking the sand: grains fly back, up and aside, a
+## weapon tip throws sand forward along its cut. Speed comes from the length of this tick's step.
+func _drag_fx(a: Vector2, b: Vector2, dir: Vector2, radius_m: float, depth: float) -> void:
+	var speed: float = minf(a.distance_to(b) / TICK_S, 14.0)
+	if speed < 0.9:
+		return
+	var travel: Vector3 = Vector3(dir.x, 0.0, dir.y)
+	var at: Vector3 = Vector3(b.x, 0.0, b.y)
+	if radius_m < 0.04:
+		var nf: int = int(clampf(speed - 0.8, 0.0, 10.0) * 0.8 + _rng.randf())
+		if nf > 0:
+			_fx.burst(at + Vector3(0.0, 0.02, 0.0), (travel * 0.7 + Vector3.UP * 0.8).normalized(), 1.5 + speed * 0.35, nf, 0.6, 0.8)
+		if speed > 4.0 and _time - _last_puff_time > 0.12:
+			_puff(at, (travel + Vector3.UP).normalized(), speed * 0.2, 0.3)
+	else:
+		var nk: int = int(clampf(speed - 1.0, 0.0, 8.0) * (0.5 if radius_m <= FOOT_RADIUS_MAX else 0.35) + _rng.randf())
+		if nk > 0:
+			_fx.kick(at, travel, speed, nk, 1.0 if depth > 0.01 else 0.8)
+		if speed > 2.4 and _time - _last_puff_time > 0.15:
+			_puff(at, Vector3.UP, 0.5 + speed * 0.1, 0.25)
+
+
+func _ground_at(p: Vector3) -> float:
+	return height_at(p)
 
 
 ## Visual height offset in metres at a point (bilinear). Zero outside the map.
 func height_at(pos: Vector3) -> float:
 	if n == 0:
 		return 0.0
-	return SandMap.sample_height(_h, n, extent, pos.x, pos.z)
+	return SandMap.sample_height(_h, n, extent, pos.x, pos.z) + SandMap.sample_base(_base, extent, pos.x, pos.z)
+
+
+## Height of the permanent piles alone (wall drifts and heaps) at a point.
+func base_height_at(pos: Vector3) -> float:
+	if n == 0:
+		return 0.0
+	return SandMap.sample_base(_base, extent, pos.x, pos.z)
 
 
 ## Blood amount 0..1 at a point (for feet and decals).
@@ -213,6 +287,10 @@ func clear() -> void:
 	_b_list.clear()
 	_b_active_list.clear()
 	_pools.clear()
+	_fx.clear()
+	_fx_shown = 0
+	if _fx_mm != null:
+		_fx_mm.visible_instance_count = 0
 	_h_upload_pending = true
 	_b_upload_pending = true
 
@@ -223,9 +301,47 @@ func _process(delta: float) -> void:
 	_time += delta
 	_since_upload += delta
 	_spread_pools(delta)
+	_update_grains(delta)
+	_ambient_clock += delta
+	if _ambient_clock >= AMBIENT_REFRESH_S:
+		_ambient_clock = 0.0
+		refresh_ambient()
 	_sweep_blood()
 	if _since_upload >= UPLOAD_INTERVAL:
 		flush()
+
+
+## Warm shade fill from the scene's ambient energy (the engine's own ambient is off for the sand).
+func refresh_ambient() -> void:
+	var e: float = 0.5
+	if is_inside_tree():
+		var env: Environment = null
+		var cam: Camera3D = get_viewport().get_camera_3d()
+		if cam != null:
+			env = cam.environment
+		if env == null:
+			env = get_viewport().find_world_3d().environment
+		if env != null:
+			e = env.ambient_light_energy
+	var c: Color = AMBIENT_TINT * (e * AMBIENT_GAIN)
+	_material.set_shader_parameter("sand_ambient", Vector3(c.r, c.g, c.b))
+
+
+func _update_grains(delta: float) -> void:
+	_fx.step(minf(delta, 0.05))
+	if _fx.count > 0 or _fx_shown > 0:
+		var c: int = _fx.fill_buffer(_fx_buf, GRAIN_COLOR)
+		if c > 0:
+			_fx_mm.buffer = _fx_buf
+		_fx_mm.visible_instance_count = c
+		_fx_shown = c
+
+
+func _make_base_texture() -> ImageTexture:
+	var nb: int = SandMap.base_size(extent)
+	var im: Image = Image.create_from_data(nb, nb, false, Image.FORMAT_RGBAF, SandMap.base_to_rgba_bytes(_base, extent))
+	im.convert(Image.FORMAT_RGBAH)
+	return ImageTexture.create_from_image(im)
 
 
 ## Writes dirty tiles to the images and uploads textures. Called from _process, public for tests and renders.
@@ -381,13 +497,13 @@ func _build_particles() -> void:
 	pm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	pm.vertex_color_use_as_albedo = true
 	pm.albedo_texture = gt
-	pm.albedo_color = Color(0.80, 0.66, 0.46)
+	pm.albedo_color = Color(0.74, 0.58, 0.38)
 	pm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var quad: QuadMesh = QuadMesh.new()
 	quad.size = Vector2.ONE
 	quad.material = pm
 	var fade: Gradient = Gradient.new()
-	fade.set_color(0, Color(1, 1, 1, 0.55))
+	fade.set_color(0, Color(1, 1, 1, 0.42))
 	fade.set_color(1, Color(1, 1, 1, 0.0))
 	var grow: Curve = Curve.new()
 	grow.add_point(Vector2(0.0, 0.35))
@@ -396,7 +512,7 @@ func _build_particles() -> void:
 		var p: CPUParticles3D = CPUParticles3D.new()
 		p.emitting = false
 		p.one_shot = true
-		p.amount = 14
+		p.amount = 9
 		p.lifetime = 1.1
 		p.explosiveness = 0.95
 		p.local_coords = false
@@ -413,31 +529,27 @@ func _build_particles() -> void:
 		add_child(p)
 		_puffs.append(p)
 	var gm: StandardMaterial3D = StandardMaterial3D.new()
-	gm.albedo_color = Color(0.78, 0.62, 0.40)
-	gm.roughness = 0.9
+	gm.vertex_color_use_as_albedo = true
+	gm.albedo_color = Color(1.0, 1.0, 1.0)
+	gm.roughness = 1.0
+	gm.metallic_specular = 0.0
+	gm.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
 	var box: BoxMesh = BoxMesh.new()
-	box.size = Vector3(0.012, 0.009, 0.012)
+	box.size = Vector3.ONE
 	box.material = gm
-	for i in range(GRAIN_POOL):
-		var g: CPUParticles3D = CPUParticles3D.new()
-		g.emitting = false
-		g.one_shot = true
-		g.amount = 18
-		g.lifetime = 0.75
-		g.explosiveness = 1.0
-		g.local_coords = false
-		g.mesh = box
-		g.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-		g.emission_sphere_radius = 0.05
-		g.spread = 55.0
-		g.gravity = Vector3(0.0, -9.8, 0.0)
-		g.angular_velocity_min = -360.0
-		g.angular_velocity_max = 360.0
-		g.scale_amount_min = 0.6
-		g.scale_amount_max = 1.8
-		g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(g)
-		_grains.append(g)
+	_fx_mm = MultiMesh.new()
+	_fx_mm.transform_format = MultiMesh.TRANSFORM_3D
+	_fx_mm.use_colors = true
+	_fx_mm.mesh = box
+	_fx_mm.instance_count = GRAIN_CAPACITY
+	_fx_mm.visible_instance_count = 0
+	_fx_buf.resize(GRAIN_CAPACITY * SandFx.FLOATS_PER_GRAIN)
+	var mmi: MultiMeshInstance3D = MultiMeshInstance3D.new()
+	mmi.name = "Grains"
+	mmi.multimesh = _fx_mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.custom_aabb = AABB(Vector3(-extent, -0.5, -extent), Vector3(extent * 2.0, 4.0, extent * 2.0))
+	add_child(mmi)
 
 
 ## Grid disc mesh of cell size `cell` metres, cells kept when any corner lies within r. Flat at y = 0, up normals.

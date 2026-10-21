@@ -196,3 +196,176 @@ static func total_height(h: PackedFloat32Array) -> float:
 	for v: float in h:
 		s += v
 	return s
+
+
+# --- Permanent piles (the base relief under the deformation map) ------------------------------------------------
+
+const BASE_CELL: float = 0.1  ## base relief grid spacing in metres (smooth shapes, sampled bilinearly)
+const WALL_OVERLAP: float = 0.3  ## the drift peaks this far outside the arena radius (under the wall)
+const HEAP_COUNT: int = 9
+const HEAP_MAX_H: float = 0.09  ## floor heaps stay low: the collider is flat, feet must not sink visibly
+const DRIFT_MAX_H: float = 0.30
+
+
+static func base_size(extent: float) -> int:
+	return int(ceil(extent * 2.0 / BASE_CELL))
+
+
+## Drift height (0..1 of its own amplitude, already shaped) as a function of the distance d in from the drift peak.
+static func drift_profile(d: float, width: float) -> float:
+	if d <= 0.0:
+		return 1.0
+	var t: float = clampf(1.0 - d / maxf(width, 0.05), 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t) * (0.55 + 0.45 * t)
+
+
+## Wall drift amplitude in metres around the arena at angle a (radians): lumps and gaps, never below a thin bank.
+static func drift_amp(a: float, seed_v: float) -> float:
+	var v: float = 0.5 + 0.5 * sin(2.0 * a + seed_v) * 0.55 + 0.5 * sin(3.0 * a + 2.1 * seed_v + 1.0) * 0.35 \
+			+ 0.5 * sin(7.0 * a + 0.7 * seed_v) * 0.25 + 0.5 * sin(13.0 * a + 1.3 * seed_v) * 0.12
+	var k: float = clampf(v, 0.0, 1.0)
+	return DRIFT_MAX_H * (0.35 + 0.65 * k * k)
+
+
+## How far (m) the drift reaches in from its peak at angle a.
+static func drift_width(a: float, seed_v: float) -> float:
+	return 1.3 + 1.0 * (0.5 + 0.5 * sin(5.0 * a + 1.7 * seed_v)) + 1.0 * (0.5 + 0.5 * sin(2.0 * a + 0.4 * seed_v + 2.0))
+
+
+## Floor heaps: array of Vector3(x, z, h) plus the shape in a parallel Vector3(rx, rz, yaw). Deterministic per seed,
+## kept off the spawn points (0, +-spawn) and the middle of the ring, inside the wall.
+static func make_heaps(arena_radius: float, seed_v: int) -> Array[Dictionary]:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = seed_v
+	var out: Array[Dictionary] = []
+	var tries: int = 0
+	while out.size() < HEAP_COUNT and tries < 200:
+		tries += 1
+		var a: float = rng.randf_range(0.0, TAU)
+		var r: float = rng.randf_range(arena_radius * 0.34, arena_radius - 1.6)
+		var big: bool = out.size() < 3
+		if big:
+			r = rng.randf_range(arena_radius * 0.55, arena_radius - 1.9)
+		var p: Vector2 = Vector2(cos(a), sin(a)) * r
+		var rx: float = rng.randf_range(0.45, 1.05)
+		var rz: float = rx * rng.randf_range(0.5, 0.9)
+		var h: float = rng.randf_range(0.2, 0.55) * HEAP_MAX_H
+		if big:
+			h = HEAP_MAX_H * rng.randf_range(0.75, 1.0)
+			rx *= 1.1
+		var ok: bool = true
+		for d: float in [-4.0, 4.0]:
+			if p.distance_to(Vector2(0.0, d)) < 1.8 + rx:
+				ok = false
+		for o: Dictionary in out:
+			if p.distance_to(Vector2(float(o["x"]), float(o["z"]))) < 1.6 + rx + float(o["rx"]):
+				ok = false
+		if not ok:
+			continue
+		out.append({"x": p.x, "z": p.y, "rx": rx, "rz": rz, "yaw": rng.randf_range(0.0, PI), "h": h})
+	return out
+
+
+## Height of one heap at world (x, z): a flat-ish dome with a soft foot.
+static func heap_height(hp: Dictionary, x: float, z: float) -> float:
+	var dx: float = x - float(hp["x"])
+	var dz: float = z - float(hp["z"])
+	var yaw: float = float(hp["yaw"])
+	var lx: float = (dx * cos(yaw) - dz * sin(yaw)) / float(hp["rx"])
+	var lz: float = (dx * sin(yaw) + dz * cos(yaw)) / float(hp["rz"])
+	var q2: float = lx * lx + lz * lz
+	if q2 >= 1.0:
+		return 0.0
+	var t: float = 1.0 - q2
+	return float(hp["h"]) * t * t * (1.0 + 0.6 * q2)
+
+
+## Base relief height at world (x, z) for an arena of this radius. Wall drifts plus heaps.
+static func base_height(x: float, z: float, arena_radius: float, seed_v: int, heaps: Array[Dictionary]) -> float:
+	var r: float = sqrt(x * x + z * z)
+	var h: float = 0.0
+	var inner: float = arena_radius - 4.0
+	if r > inner:
+		var a: float = atan2(z, x)
+		var d: float = (arena_radius + WALL_OVERLAP) - r
+		h = drift_amp(a, float(seed_v) * 0.37) * drift_profile(d, drift_width(a, float(seed_v) * 0.37))
+	for hp: Dictionary in heaps:
+		h += heap_height(hp, x, z)
+	return h
+
+
+## Base relief grid for the map square [-extent, extent]: n = base_size(extent) texels per side, row-major, texel
+## (i, j) is centred at (-extent + (i + 0.5) * step), the same convention as the deformation map. Heights in metres.
+static func build_base(arena_radius: float, extent: float, seed_v: int) -> PackedFloat32Array:
+	var n: int = base_size(extent)
+	var step: float = extent * 2.0 / float(n)
+	var heaps: Array[Dictionary] = make_heaps(arena_radius, seed_v)
+	var out: PackedFloat32Array = PackedFloat32Array()
+	out.resize(n * n)
+	out.fill(0.0)
+	var sv: float = float(seed_v) * 0.37
+	var steps: int = 720
+	var tab: PackedFloat32Array = PackedFloat32Array()
+	tab.resize(steps * 2)
+	for k in range(steps):
+		var a: float = -PI + (float(k) + 0.5) * TAU / float(steps)
+		tab[k * 2] = drift_amp(a, sv)
+		tab[k * 2 + 1] = drift_width(a, sv)
+	var inner2: float = (arena_radius - 4.0) * (arena_radius - 4.0)
+	var peak: float = arena_radius + WALL_OVERLAP
+	for j in range(n):
+		var z: float = -extent + (float(j) + 0.5) * step
+		for i in range(n):
+			var x: float = -extent + (float(i) + 0.5) * step
+			var r2: float = x * x + z * z
+			if r2 > inner2:
+				var k2: int = clampi(int((atan2(z, x) + PI) / TAU * float(steps)), 0, steps - 1)
+				out[j * n + i] = tab[k2 * 2] * drift_profile(peak - sqrt(r2), tab[k2 * 2 + 1])
+	for hp: Dictionary in heaps:
+		var rr: float = maxf(float(hp["rx"]), float(hp["rz"]))
+		var i0: int = maxi(0, int(floor((float(hp["x"]) - rr + extent) / step)))
+		var i1: int = mini(n - 1, int(ceil((float(hp["x"]) + rr + extent) / step)))
+		var j0: int = maxi(0, int(floor((float(hp["z"]) - rr + extent) / step)))
+		var j1: int = mini(n - 1, int(ceil((float(hp["z"]) + rr + extent) / step)))
+		for j in range(j0, j1 + 1):
+			var zz: float = -extent + (float(j) + 0.5) * step
+			for i in range(i0, i1 + 1):
+				out[j * n + i] += heap_height(hp, -extent + (float(i) + 0.5) * step, zz)
+	return out
+
+
+## Bilinear base height at world (x, z) from a build_base() grid, clamped at the edges.
+static func sample_base(b: PackedFloat32Array, extent: float, x: float, z: float) -> float:
+	var n: int = int(round(sqrt(float(b.size()))))
+	if n < 2:
+		return 0.0
+	var step: float = extent * 2.0 / float(n)
+	var fx: float = clampf((x + extent) / step - 0.5, 0.0, float(n - 1) - 0.0001)
+	var fz: float = clampf((z + extent) / step - 0.5, 0.0, float(n - 1) - 0.0001)
+	var i: int = int(floor(fx))
+	var j: int = int(floor(fz))
+	var tx: float = fx - float(i)
+	var tz: float = fz - float(j)
+	var a: float = lerpf(b[j * n + i], b[j * n + i + 1], tx)
+	var c: float = lerpf(b[(j + 1) * n + i], b[(j + 1) * n + i + 1], tx)
+	return lerpf(a, c, tz)
+
+
+## Packs a base grid into RGBA float bytes (R height, G dh/dx, B dh/dz by central differences, A 1) for the shader.
+static func base_to_rgba_bytes(b: PackedFloat32Array, extent: float) -> PackedByteArray:
+	var n: int = int(round(sqrt(float(b.size()))))
+	var step: float = extent * 2.0 / float(n)
+	var f: PackedFloat32Array = PackedFloat32Array()
+	f.resize(n * n * 4)
+	for j in range(n):
+		var j0: int = maxi(j - 1, 0)
+		var j1: int = mini(j + 1, n - 1)
+		for i in range(n):
+			var i0: int = maxi(i - 1, 0)
+			var i1: int = mini(i + 1, n - 1)
+			var o: int = (j * n + i) * 4
+			f[o] = b[j * n + i]
+			f[o + 1] = (b[j * n + i1] - b[j * n + i0]) / (step * float(i1 - i0))
+			f[o + 2] = (b[j1 * n + i] - b[j0 * n + i]) / (step * float(j1 - j0))
+			f[o + 3] = 1.0
+	return f.to_byte_array()

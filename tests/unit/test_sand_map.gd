@@ -139,3 +139,44 @@ func test_blood_edge_is_wobbly_but_bounded() -> void:
 		lo = minf(lo, e)
 		hi = maxf(hi, e)
 	assert_true(lo > 0.65 and hi < 1.35 and hi - lo > 0.1)
+
+
+func test_base_relief_banks_the_wall_and_leaves_spawns_flat() -> void:
+	var e: float = SandMap.map_extent(11.0)
+	var heaps: Array[Dictionary] = SandMap.make_heaps(11.0, 7)
+	assert_true(heaps.size() >= 4, "heaps %d" % heaps.size())
+	var wall_max: float = 0.0
+	var wall_min: float = 1.0
+	for k in range(72):
+		var a: float = TAU * float(k) / 72.0
+		var h: float = SandMap.base_height(cos(a) * 11.1, sin(a) * 11.1, 11.0, 7, heaps)
+		wall_max = maxf(wall_max, h)
+		wall_min = minf(wall_min, h)
+	assert_true(wall_max > 0.08 and wall_max <= SandMap.DRIFT_MAX_H + SandMap.HEAP_MAX_H, "wall max %f" % wall_max)
+	assert_true(wall_min > 0.008, "a thin bank everywhere, min %f" % wall_min)
+	assert_near(SandMap.base_height(0.0, 0.0, 11.0, 7, heaps), 0.0, 0.0001)
+	assert_near(SandMap.base_height(0.0, 4.0, 11.0, 7, heaps), 0.0, 0.0001)
+	assert_near(SandMap.base_height(0.0, -4.0, 11.0, 7, heaps), 0.0, 0.0001)
+	for hp: Dictionary in heaps:
+		assert_true(float(hp["h"]) <= SandMap.HEAP_MAX_H + 0.0001)
+
+
+func test_base_grid_samples_and_is_deterministic() -> void:
+	var e: float = SandMap.map_extent(4.0)
+	var a: PackedFloat32Array = SandMap.build_base(4.0, e, 3)
+	var b: PackedFloat32Array = SandMap.build_base(4.0, e, 3)
+	assert_eq(a, b)
+	var n: int = SandMap.base_size(e)
+	assert_eq(a.size(), n * n)
+	var heaps: Array[Dictionary] = SandMap.make_heaps(4.0, 3)
+	var x: float = 3.5
+	var z: float = 0.7
+	assert_near(SandMap.sample_base(a, e, x, z), SandMap.base_height(x, z, 4.0, 3, heaps), 0.01)
+	var bytes: PackedByteArray = SandMap.base_to_rgba_bytes(a, e)
+	assert_eq(bytes.size(), n * n * 16)
+
+
+func test_drift_profile_falls_off_inward() -> void:
+	assert_near(SandMap.drift_profile(-0.5, 1.0), 1.0)
+	assert_true(SandMap.drift_profile(0.2, 1.0) > SandMap.drift_profile(0.6, 1.0))
+	assert_near(SandMap.drift_profile(1.0, 1.0), 0.0)
