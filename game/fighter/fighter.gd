@@ -86,6 +86,9 @@ var _severed: PackedStringArray = PackedStringArray()
 var _armor: Array[String] = []
 var _armor_wear: Dictionary = {}
 var _armor_meshes: Dictionary = {}
+## Seed for the cosmetic skin tone and head pick (the match sets it before setup; visuals only).
+var look_seed: int = 0
+var _art: FighterArt = null
 var _debounce: Dictionary = {}
 var _contacts: Array = []
 var _contacts_frame: int = -1
@@ -153,6 +156,7 @@ func _build() -> void:
 	var skin := Color(0.78, 0.6, 0.47)
 	var cloth := Color(0.62, 0.16, 0.12) if side == 0 else Color(0.16, 0.26, 0.55)
 	var legs := Color(0.36, 0.28, 0.2)
+	_art = FighterArt.new(side, look_seed)
 	for pd: Dictionary in FighterRig.PARTS:
 		var n: String = pd["name"]
 		_rest[n] = Transform3D(Basis(), pd["center"])
@@ -248,6 +252,8 @@ func _make_part(pd: Dictionary, col: Color) -> void:
 	parts[n] = b
 	add_child(b)
 	b.global_transform = global_transform * (_rest[n] as Transform3D)
+	if not (loadout.get("look", {}) as Dictionary).has(n):
+		_art.dress(b, n)
 
 
 func _add_shape(b: RigidBody3D, s: Shape3D, m: Mesh, pos: Vector3, mat: Material) -> void:
@@ -445,7 +451,11 @@ func _armor_mesh(b: RigidBody3D, pn: String, ad: Dictionary) -> MeshInstance3D:
 			mat.roughness = 0.8
 	if ad.has("color"):
 		mat.albedo_color = Weapon.parse_color(ad["color"])
-	if pd["shape"] == "sphere":
+	var fit: Dictionary = FighterArt.armor_fit(pn) if b.has_node("Look/Art") else {}
+	if not fit.is_empty():
+		mi.mesh = fit["mesh"]
+		mi.position = fit["pos"]
+	elif pd["shape"] == "sphere":
 		var sm := SphereMesh.new()
 		sm.radius = size.x + 0.015
 		sm.height = sm.radius * 1.6
@@ -1329,6 +1339,7 @@ func _sever(n: String) -> void:
 		return
 	_severed.append(n)
 	_disconnect_joint(n)
+	_art.cut(parts, n)
 	if health != null and not health.severed.has(n):
 		health.severed.append(n)
 	for h: String in ["r", "l"]:
@@ -1465,10 +1476,12 @@ func restore(d: Dictionary) -> void:
 		if not want_sev.has(n):
 			_severed.remove_at(_severed.find(n))
 			_connect_joint(n)
+			_art.uncut(n)
 	for n: String in want_sev:
 		if not _severed.has(n):
 			_severed.append(n)
 			_disconnect_joint(n)
+			_art.cut(parts, n)
 	# Armor.
 	var want_armor: Array = d.get("armor", [])
 	_armor.clear()

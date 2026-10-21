@@ -168,6 +168,7 @@ func _start_match() -> void:
 		f.name = "Fighter%d" % side
 		add_child(f)
 		f.global_transform = Arena.spawn_transform(side, radius)
+		f.look_seed = seed
 		f.setup((config["loadouts"] as Array)[side], side, Tuning.shared())
 		fighters.append(f)
 	(fighters[0] as Fighter).opponent = fighters[1]
