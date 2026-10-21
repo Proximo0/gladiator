@@ -41,6 +41,68 @@ const FIELDS: Array = [
 	["finisher_blood_frac", 0.4, 0.0, 1.0, 0.05, "Damage", "Blood fraction (0 = blood_death, 1 = full) below which a hit can be a killing blow."],
 	["dmg_finisher_min_scale", 0.333, 0.1, 1.0, 0.01, "Damage", "Share of the normal sever/gut/crush force a finisher needs when blood is at blood_death."],
 	["dmg_skull_crush", 20.0, 5.0, 80.0, 1.0, "Damage", "Blunt points (after armor, head multiplier included) a heavy blunt hit needs to crush the skull."],
+	["stand_height", 0.95, 0.7, 1.1, 0.01, "Fighter", "Pelvis height held when standing, m."],
+	["crouch_height", 0.74, 0.5, 0.95, 0.01, "Fighter", "Pelvis height held when crouching, m."],
+	["support_freq", 9.0, 2.0, 20.0, 0.5, "Fighter", "Stiffness of the pelvis height support, rad/s."],
+	["support_max", 2.2, 0.5, 4.0, 0.1, "Fighter", "Max support force as a multiple of body weight."],
+	["balance_freq", 9.0, 2.0, 20.0, 0.5, "Fighter", "Stiffness of the upright and yaw controller, rad/s."],
+	["balance_torque", 450.0, 50.0, 2000.0, 10.0, "Fighter", "Max upright torque on the pelvis, N·m."],
+	["torso_assist", 0.35, 0.0, 1.0, 0.05, "Fighter", "Share of the upright torque also put on the torso."],
+	["move_accel", 9.0, 1.0, 30.0, 0.5, "Movement", "Max horizontal acceleration while moving, m/s²."],
+	["move_response", 7.0, 1.0, 20.0, 0.5, "Movement", "How fast the body velocity follows the move input, 1/s."],
+	["turn_rate", 6.0, 1.0, 20.0, 0.5, "Movement", "Max turn rate toward the opponent, rad/s."],
+	["joint_strength", 1.0, 0.0, 3.0, 0.05, "Fighter", "Multiplier on every joint's PD torque cap."],
+	["joint_damping", 1.0, 0.2, 2.0, 0.05, "Fighter", "Damping ratio of joint PD drives."],
+	["arm_freq", 22.0, 5.0, 40.0, 0.5, "Arms", "Stiffness of the hand position drive, rad/s."],
+	["arm_damping", 0.3, 0.05, 1.5, 0.05, "Arms", "Damping ratio of the hand position drive."],
+	["arm_drive_mass", 3.5, 0.5, 10.0, 0.1, "Arms", "Mass the hand drive gains are computed for, kg."],
+	["guard_force_frac", 0.45, 0.1, 1.0, 0.05, "Arms", "Share of arm_force used when not swinging or thrusting."],
+	["offhand_force_frac", 0.6, 0.1, 1.0, 0.05, "Arms", "Share of arm_force for the left hand."],
+	["arm_reaction", 0.4, 0.0, 1.0, 0.05, "Arms", "Share of the hand force pushed back on the torso at the shoulder."],
+	["wrist_torque", 140.0, 10.0, 400.0, 5.0, "Arms", "Max wrist torque on the weapon, N·m."],
+	["wrist_freq", 16.0, 4.0, 40.0, 0.5, "Arms", "Stiffness of the weapon orientation drive, rad/s."],
+	["wrist_limit", 1.2, 0.2, 2.0, 0.05, "Arms", "Wrist joint swing limit, rad."],
+	["wrist_roll", 0.3, 0.0, 1.0, 0.05, "Arms", "Strength of the wrist roll drive relative to swing."],
+	["wrist_reach", 0.9, 0.2, 1.6, 0.05, "Arms", "Max wrist target angle from the natural grip direction, rad."],
+	["wrist_lead", 0.15, 0.0, 0.5, 0.01, "Arms", "Blade lead along hand velocity (whip), s."],
+	["blade_up_guard", 0.75, 0.0, 1.0, 0.05, "Arms", "How upright the blade is held in guard."],
+	["blade_up_swing", 0.25, 0.0, 1.0, 0.05, "Arms", "How upright the blade is held while swinging."],
+	["blade_pivot_back", 0.45, 0.0, 1.0, 0.05, "Arms", "How far the blade points back along the swing path, wind-up."],
+	["guard_width", 0.7, 0.2, 1.2, 0.05, "Arms", "Half width of the guard plane, m."],
+	["guard_height", 0.5, 0.2, 1.0, 0.05, "Arms", "Half height of the guard plane, m."],
+	["guard_forward", 0.42, 0.2, 0.8, 0.01, "Arms", "Guard plane distance in front of the chest, m."],
+	["thrust_reach", 0.45, 0.0, 1.0, 0.05, "Arms", "Extra forward reach when thrusting, m."],
+	["swing_reach", 0.35, 0.0, 1.0, 0.05, "Arms", "Extra forward reach while swinging, m."],
+	["half_sword_thrust", 1.6, 1.0, 3.0, 0.1, "Arms", "Thrust force multiplier in the half-sword grip."],
+	["torso_twist", 0.7, 0.0, 1.5, 0.05, "Arms", "Torso yaw following horizontal aim, rad at full aim."],
+	["stumble_tilt", 0.35, 0.1, 1.0, 0.01, "Balance", "Tilt where standing turns to stumbling, rad."],
+	["fall_tilt", 1.0, 0.4, 1.5, 0.05, "Balance", "Tilt where the fighter goes down, rad."],
+	["stagger_down", 0.85, 0.2, 1.5, 0.05, "Balance", "Stagger level that knocks the fighter down."],
+	["stagger_recover", 0.8, 0.1, 3.0, 0.05, "Balance", "Stagger recovered per second."],
+	["down_time", 1.5, 0.2, 5.0, 0.1, "Balance", "Time spent down before getting up, s."],
+	["getup_time", 1.4, 0.3, 4.0, 0.1, "Balance", "Duration of getting up, s."],
+	["down_strength", 0.3, 0.0, 1.0, 0.05, "Balance", "Joint strength while down."],
+	["limp_strength", 0.04, 0.0, 0.3, 0.01, "Balance", "Joint strength when KO or dead."],
+	["stamina_floor", 0.45, 0.0, 1.0, 0.05, "Fighter", "Strength left at zero stamina."],
+	["limb_floor", 0.25, 0.0, 1.0, 0.05, "Fighter", "Limb drive left at zero limb hp."],
+	["weapon_drop_hp", 0.15, 0.0, 0.5, 0.01, "Fighter", "Arm hp fraction below which the weapon is dropped."],
+	["stride_base", 0.15, 0.0, 0.4, 0.01, "Movement", "Half stride at walking start, m."],
+	["stride_per_speed", 0.08, 0.0, 0.3, 0.01, "Movement", "Half stride added per m/s, m."],
+	["stride_max", 0.45, 0.1, 0.8, 0.01, "Movement", "Max half stride, m."],
+	["foot_lift", 0.13, 0.0, 0.3, 0.01, "Movement", "Swing foot lift height, m."],
+	["pelvis_inertia", 2.0, 1.0, 5.0, 0.1, "Stability", "Pelvis inertia boost for stable PD."],
+	["torso_inertia", 2.5, 1.0, 5.0, 0.1, "Stability", "Torso inertia boost for stable PD."],
+	["balance_inertia", 3.0, 0.5, 8.0, 0.1, "Stability", "Inertia the upright controller gains assume, kg·m²."],
+	["leg_reaction", 0.25, 0.0, 1.0, 0.05, "Stability", "Share of leg joint reaction put on the pelvis."],
+	["pd_margin", 0.5, 0.1, 1.5, 0.05, "Stability", "Damping-rate margin for explicit PD (below 2 is stable)."],
+	["self_hit_min_speed", 6.0, 0.0, 15.0, 0.5, "Damage", "Min speed for a fighter's own weapon to hurt them, m/s."],
+	["hold_freq", 2.0, 0.0, 6.0, 0.1, "Movement", "Idle position hold stiffness (stops drift), rad/s."],
+	["guard_hand_speed", 2.5, 0.5, 10.0, 0.1, "Arms", "Max speed of the hand goal in guard, m/s."],
+	["swing_hand_speed", 30.0, 5.0, 60.0, 1.0, "Arms", "Max speed of the hand goal while swinging or thrusting, m/s."],
+	["offhand_hand_speed", 5.0, 0.5, 15.0, 0.5, "Arms", "Max speed of the left hand goal, m/s."],
+	["hit_debounce", 0.25, 0.05, 1.0, 0.05, "Damage", "Min time between hits by the same weapon on the same part, s."],
+	["grab_radius", 0.3, 0.1, 1.0, 0.05, "Arms", "GRAB pickup radius from the hand, m."],
+	["knockback_scale", 1.0, 0.0, 3.0, 0.05, "Damage", "Multiplier on hit knockback impulses."],
 	["blood_faint", 3.5, 2.6, 5.0, 0.1, "Health", "Blood (L) below which consciousness is capped; zero at blood_death."],
 	["health_head_ko", 0.03, 0.0, 0.2, 0.005, "Health", "Consciousness lost per blunt point on the head."],
 	["health_stagger_ko", 0.05, 0.0, 0.5, 0.01, "Health", "Consciousness lost per unit of stagger on any part."],
@@ -83,6 +145,68 @@ var dmg_grip_two_hands: float
 var finisher_blood_frac: float
 var dmg_finisher_min_scale: float
 var dmg_skull_crush: float
+var stand_height: float
+var crouch_height: float
+var support_freq: float
+var support_max: float
+var balance_freq: float
+var balance_torque: float
+var torso_assist: float
+var move_accel: float
+var move_response: float
+var turn_rate: float
+var joint_strength: float
+var joint_damping: float
+var arm_freq: float
+var arm_damping: float
+var arm_drive_mass: float
+var guard_force_frac: float
+var offhand_force_frac: float
+var arm_reaction: float
+var wrist_torque: float
+var wrist_freq: float
+var wrist_limit: float
+var wrist_roll: float
+var wrist_reach: float
+var wrist_lead: float
+var blade_up_guard: float
+var blade_up_swing: float
+var blade_pivot_back: float
+var guard_width: float
+var guard_height: float
+var guard_forward: float
+var thrust_reach: float
+var swing_reach: float
+var half_sword_thrust: float
+var torso_twist: float
+var stumble_tilt: float
+var fall_tilt: float
+var stagger_down: float
+var stagger_recover: float
+var down_time: float
+var getup_time: float
+var down_strength: float
+var limp_strength: float
+var stamina_floor: float
+var limb_floor: float
+var weapon_drop_hp: float
+var stride_base: float
+var stride_per_speed: float
+var stride_max: float
+var foot_lift: float
+var pelvis_inertia: float
+var torso_inertia: float
+var balance_inertia: float
+var leg_reaction: float
+var pd_margin: float
+var self_hit_min_speed: float
+var hold_freq: float
+var guard_hand_speed: float
+var swing_hand_speed: float
+var offhand_hand_speed: float
+var hit_debounce: float
+var grab_radius: float
+var knockback_scale: float
 var blood_faint: float
 var health_head_ko: float
 var health_stagger_ko: float

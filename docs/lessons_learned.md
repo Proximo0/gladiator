@@ -21,3 +21,4 @@ Sandblood build guide: https://claude.ai/artifact/LBNp22258n18mRFtk2ke4i (Skate 
 | The brief said finishers start at `blood / 5.0 < 0.4`, but death is at 2.5 L, so it could never fire | Normalise between the death line and full (`health.blood_frac()`); check a new threshold against the existing ones |
 | Thin poles and an awning cast hard streaks across the sand | Only fighters, walls and big shapes cast shadows; thin decorative meshes don't |
 | A worker typed a parameter as `Fighter` before that class was committed; CI lint failed on the pushed tree | Code against an uncommitted contract class with duck typing (`Node3D`), and lint a clean clone before pushing when workers are mid-flight |
+| Mid-fight restore of a melee diverges (0.2 m after 1 s) though idle restore and fresh starts are exact | Record matches as seed + inputs from tick 0 and replay from the start; treat mid-fight restore as approximate |

@@ -5,6 +5,8 @@ extends Node
 
 const SIM_FILES: Array = [
 	"sim_example",
+	"sim_fighter_core",
+	"sim_fighter_replay",
 ]
 
 
