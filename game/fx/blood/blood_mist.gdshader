@@ -2,7 +2,7 @@ shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled;
 // Billboard mist puff. Instance custom: x size, y alpha, z rotation.
 
-uniform vec3 mist_color : source_color = vec3(0.45, 0.02, 0.03);
+uniform vec3 mist_color : source_color = vec3(0.82, 0.03, 0.045);
 
 varying float v_alpha;
 
@@ -23,5 +23,5 @@ void fragment() {
 	float lump = 0.75 + 0.25 * sin(atan(p.y, p.x) * 3.0 + v_alpha * 7.0);
 	float a = smoothstep(lump, 0.15, d);
 	ALBEDO = mist_color;
-	ALPHA = a * v_alpha;
+	ALPHA = clamp(a * v_alpha * 1.25, 0.0, 1.0);
 }

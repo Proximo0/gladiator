@@ -6,14 +6,15 @@ extends RefCounted
 
 static func teardrop(radial: int = 8) -> ArrayMesh:
 	var prof: Array[Vector2] = []  # (radius, z) from tail tip to head tip
-	for i: int in 5:
-		var s: float = float(i) / 5.0
-		prof.append(Vector2(pow(s, 0.75), -(1.0 - s)))
+	for i: int in 6:  # rounded elliptical tail (no needle tip): reads as a liquid streak when stretched
+		var th0: float = float(i) / 6.0 * PI * 0.5
+		prof.append(Vector2(sin(th0), -cos(th0)))
 	for j: int in 5:
 		var th: float = float(j) / 4.0 * PI * 0.5
 		prof.append(Vector2(cos(th), sin(th)))
 	var verts: PackedVector3Array = PackedVector3Array()
 	var norms: PackedVector3Array = PackedVector3Array()
+	var cols: PackedColorArray = PackedColorArray()
 	var idx: PackedInt32Array = PackedInt32Array()
 	var rings: int = prof.size()
 	for ri: int in rings:
@@ -27,6 +28,7 @@ static func teardrop(radial: int = 8) -> ArrayMesh:
 			var cy: float = sin(az)
 			verts.append(Vector3(cx * prof[ri].x, cy * prof[ri].x, prof[ri].y))
 			norms.append(Vector3(cx * n2.x, cy * n2.x, n2.y).normalized())
+			cols.append(Color.WHITE)  # explicit: some GL drivers default a missing COLOR attribute to black
 	for ri: int in rings - 1:
 		for k: int in radial:
 			var k2: int = (k + 1) % radial
@@ -39,6 +41,7 @@ static func teardrop(radial: int = 8) -> ArrayMesh:
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = norms
+	arrays[Mesh.ARRAY_COLOR] = cols
 	arrays[Mesh.ARRAY_INDEX] = idx
 	var mesh: ArrayMesh = ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)

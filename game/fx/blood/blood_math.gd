@@ -8,13 +8,22 @@ const DEFAULT_DEATH_BLOOD: float = 2.5
 const AIR_DRAG: float = 6.0e-4
 ## Droplets stand for more blood than their sphere volume so pools read; tunable.
 const VOLUME_BOOST: float = 12.0
+## Longest droplet tail as a multiple of its radius (short: drops read as liquid, not needles).
+const TAIL_CAP: float = 7.0
 const SYSTOLE: float = 0.36
 const BASE_FLOW: float = 0.10
 
-const BUDGETS: Array[int] = [400, 1500, 4000]
-const MIST_BUDGETS: Array[int] = [60, 160, 320]
-const RATE_MULT: Array[float] = [0.45, 1.0, 1.6]
-const RAY_BUDGETS: Array[int] = [40, 120, 240]
+const BUDGETS: Array[int] = [600, 2400, 5000]
+const MIST_BUDGETS: Array[int] = [90, 240, 480]
+const RATE_MULT: Array[float] = [0.5, 1.0, 1.7]
+const RAY_BUDGETS: Array[int] = [50, 140, 260]
+## Ground decals (spots and pools) and body/weapon stains per quality.
+const DECAL_BUDGETS: Array[int] = [160, 420, 900]
+const STAIN_BUDGETS: Array[int] = [14, 30, 48]
+## Presentation multiplier: pools on the ground read as this many times the blood that really left the fighter.
+const POOL_VISUAL_MULT: float = 2.5
+## Seconds for fresh arterial red to dry to dark brown.
+const DRY_TIME: float = 150.0
 
 
 static func budget(level: int) -> int:
@@ -31,6 +40,37 @@ static func rate_mult(level: int) -> float:
 
 static func ray_budget(level: int) -> int:
 	return RAY_BUDGETS[clampi(level, 0, 2)]
+
+
+static func decal_budget(level: int) -> int:
+	return DECAL_BUDGETS[clampi(level, 0, 2)]
+
+
+static func stain_budget(level: int) -> int:
+	return STAIN_BUDGETS[clampi(level, 0, 2)]
+
+
+## Drying 0 (fresh, bright arterial) .. 1 (dried, dark brown) for a blood age in seconds.
+static func dryness(age: float) -> float:
+	return 1.0 - exp(-maxf(age, 0.0) / (DRY_TIME * 0.45))
+
+
+## Colour of blood by dryness: saturated glossy red when fresh, darkening to brown-black. Never any green.
+static func blood_color(dry: float) -> Color:
+	var d: float = clampf(dry, 0.0, 1.0)
+	var fresh: Color = Color(0.80, 0.012, 0.028)
+	var old: Color = Color(0.24, 0.035, 0.03)
+	return fresh.lerp(old, pow(d, 0.8))
+
+
+## Stain material bucket (0 fresh .. count-1 dried) for a blood age.
+static func stain_bucket(age: float, count: int) -> int:
+	return clampi(int(dryness(age) * float(count)), 0, count - 1)
+
+
+## Pool radius (m) for the visual litres collected under it.
+static func pool_radius(litres: float) -> float:
+	return minf(0.022 + sqrt(maxf(litres, 0.0)) * 0.30, 1.15)
 
 
 ## Velocity damping factor for one step (semi-implicit, always stable).
@@ -111,11 +151,11 @@ static func contact_scale(contact: String) -> float:
 		"edge":
 			return 1.0
 		"point":
-			return 0.5
+			return 0.6
 		"flat":
-			return 0.18
+			return 0.3
 		"blunt":
-			return 0.12
+			return 0.25
 	return 0.2
 
 
@@ -123,13 +163,13 @@ static func contact_scale(contact: String) -> float:
 static func spray_count(wound: float, contact: String) -> int:
 	if wound <= 0.0:
 		return 0
-	var n: float = (8.0 + wound * 2.2) * contact_scale(contact)
-	return clampi(roundi(n), 1, 150)
+	var n: float = (14.0 + wound * 3.6) * contact_scale(contact)
+	return clampi(roundi(n), 1, 260)
 
 
 ## Stretch length (m) of a droplet drawn along its velocity.
 static func stretch_length(speed: float, radius: float, factor: float) -> float:
-	return minf(radius + speed * 0.007 * factor, radius * 16.0)
+	return minf(radius + speed * 0.007 * factor, radius * TAIL_CAP)
 
 
 ## Grid key for aggregating ground splats.

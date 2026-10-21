@@ -5,8 +5,11 @@ extends Node3D
 ## Wire up: add as a child, `sand = sand_surface`, `track(fighter)` per fighter, `set_quality(0..2)`.
 
 const MASK_BODIES: int = 6  ## physics layers 2 (bodies) and 3 (weapons)
-const STAIN_RING: int = 22
-const MAX_WOUNDS: int = 28
+const STAIN_BUCKETS: int = 4
+const STAIN_VARIANTS: int = 4
+const MAX_WOUNDS: int = 40
+const MAX_SPURTS: int = 14
+const MAX_SPURT_EMIT: int = 40
 const SPLAT_CELL: float = 0.07
 const MAX_SPLAT_CALLS: int = 48
 const STUMP_PARENT: Dictionary = {
@@ -53,6 +56,7 @@ class _BfWound extends RefCounted:
 	var vel: Vector3 = Vector3.ZERO
 	var blood_cb: Callable = Callable()
 	var r_scale: float = 1.0
+	var owner: Object = null
 
 class _BfJet extends RefCounted:
 	var target: Node3D = null
@@ -72,6 +76,11 @@ class _BfTracked extends RefCounted:
 	var have_tip: bool = false
 	var drip_acc: float = 0.0
 	var fling_acc: float = 0.0
+	var pool_acc: float = 0.0
+	var pool_litres: float = 0.0
+	var pool_slot: int = -1
+	var pool_pos: Vector3 = Vector3.ZERO
+	var trail_acc: float = 0.0
 
 var sand: Node = null:  ## duck-typed SandSurface: add_blood(pos, radius, litres), height_at(pos)
 	set(value):
@@ -92,6 +101,11 @@ var stat_splat_calls: int = 0
 
 var _mm_drops: MultiMeshInstance3D = null
 var _mm_mist: MultiMeshInstance3D = null
+var _mm_decals: MultiMeshInstance3D = null
+var decals: BloodDecals = null
+var _clock: float = 0.0
+var _stain_list: Array = []
+var _sweep_cursor: int = 0
 var _tracked: Array = []
 var _by_side: Dictionary = {}
 var _spurts: Array = []
@@ -101,7 +115,7 @@ var _splat: Dictionary = {}
 var _blood_cb: Callable = Callable()
 var _ray_query: PhysicsRayQueryParameters3D = null
 var _ray_cursor: int = 0
-var _stain_mats: Array[ShaderMaterial] = []
+var _stain_mats: Array = []  ## [bucket][variant] -> ShaderMaterial, fresh to dried
 var _stain_mesh: QuadMesh = null
 var _height_fn: Callable = Callable()
 var _reach: PackedVector3Array = PackedVector3Array()
@@ -143,13 +157,32 @@ func _build() -> void:
 	_stain_mesh = QuadMesh.new()
 	_stain_mesh.size = Vector2.ONE
 	var stain_shader: Shader = load("res://game/fx/blood/blood_stain.gdshader")
-	for i: int in 4:
-		var m: ShaderMaterial = ShaderMaterial.new()
-		m.shader = stain_shader
-		m.set_shader_parameter("seed", float(i) * 0.31)
-		_stain_mats.append(m)
+	for b: int in STAIN_BUCKETS:
+		var row: Array = []
+		var dry: float = (float(b) + 0.35) / float(STAIN_BUCKETS)
+		for i: int in STAIN_VARIANTS:
+			var m: ShaderMaterial = ShaderMaterial.new()
+			m.shader = stain_shader
+			m.set_shader_parameter("seed", float(i) * 0.31)
+			m.set_shader_parameter("blood_color", BloodMath.blood_color(dry))
+			m.set_shader_parameter("gloss", 1.0 - 0.75 * dry)
+			m.set_shader_parameter("glow", 0.3 * (1.0 - dry))
+			row.append(m)
+		_stain_mats.append(row)
+	var decal_mat: ShaderMaterial = ShaderMaterial.new()
+	decal_mat.shader = load("res://game/fx/blood/blood_decal.gdshader")
+	var dq: QuadMesh = QuadMesh.new()
+	dq.size = Vector2.ONE
+	dq.orientation = PlaneMesh.FACE_Y
+	_mm_decals = MultiMeshInstance3D.new()
+	_mm_decals.name = "Decals"
+	_mm_decals.material_override = decal_mat
+	_mm_decals.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_mm_decals.multimesh = _make_multimesh(dq, false)
+	add_child(_mm_decals)
 	sim = BloodSim.new(BloodMath.budget(quality))
 	mist = BloodMist.new(BloodMath.mist_budget(quality))
+	decals = BloodDecals.new(BloodMath.decal_budget(quality))
 	_apply_sizes()
 
 
@@ -166,6 +199,10 @@ func _make_multimesh(mesh: Mesh, drops: bool) -> MultiMesh:
 func _apply_sizes() -> void:
 	sim.resize(BloodMath.budget(quality))
 	mist.resize(BloodMath.mist_budget(quality))
+	decals.resize(BloodMath.decal_budget(quality))
+	_mm_decals.multimesh.instance_count = 0
+	_mm_decals.multimesh.instance_count = decals.capacity
+	_mm_decals.multimesh.visible_instance_count = 0
 	_mm_drops.multimesh.instance_count = 0
 	_mm_drops.multimesh.instance_count = sim.capacity
 	_mm_drops.multimesh.visible_instance_count = 0
@@ -220,6 +257,11 @@ func clear() -> void:
 	if sim != null:
 		sim.count = 0
 		mist.count = 0
+		decals.clear()
+	for mi: Variant in _stain_list:
+		if is_instance_valid(mi):
+			(mi as Node).queue_free()
+	_stain_list.clear()
 
 
 func live_droplets() -> int:
@@ -248,7 +290,7 @@ func on_hit(event: Dictionary, emitter: Object = null) -> void:
 		wound = float(event.get("total", 0.0))
 	if bool(event.get("glanced", false)):
 		wound *= 0.4
-	if wound < 0.5:
+	if wound < 0.25:
 		return
 	var contact: String = str(event.get("contact", "edge"))
 	var point: Vector3 = event.get("point", Vector3.ZERO)
@@ -260,29 +302,42 @@ func on_hit(event: Dictionary, emitter: Object = null) -> void:
 	var sdir: Vector3 = rel / spd if spd > 0.2 else out
 	var n: int = roundi(BloodMath.spray_count(wound, contact) * BloodMath.rate_mult(quality))
 	var edge: bool = contact == "edge"
-	var arc: float = clampf(spd * 0.04, 0.04, 0.4) if edge else 0.02
+	var arc: float = clampf(spd * 0.05, 0.05, 0.5) if edge else 0.03
 	var side: Vector3 = sdir.cross(out)
+	var big: float = clampf(wound / 40.0, 0.0, 1.0)  ## harder hits throw further and fatter
 	for i: int in n:
 		var p: Vector3 = point - sdir * (rng.randf() * arc) + _jit(0.012)
-		var v: Vector3 = sdir * spd * rng.randf_range(0.10, 0.55) * (1.0 if edge else 0.4)
-		v += out * rng.randf_range(0.7, 3.4) * (1.0 if edge else 0.7)
-		v += side * rng.randf_range(-0.7, 0.7) + _jit(0.9)
-		var r: float = BloodMath.drop_radius(rng.randf(), 0.0030, 0.0110)
-		sim.emit(p, v, r, 2.0 if edge else 1.2, 5.0, rng.randf())
-	var puffs: int = clampi(2 + roundi(wound * 0.08), 2, 8) if contact != "flat" else 1
+		var v: Vector3 = sdir * spd * rng.randf_range(0.10, 0.6) * (1.0 if edge else 0.4)
+		v += out * rng.randf_range(0.9, 3.4 + 2.2 * big) * (1.0 if edge else 0.7)
+		v += side * rng.randf_range(-0.9, 0.9) + _jit(0.9)
+		var r: float = BloodMath.drop_radius(rng.randf(), 0.0028, 0.0085 + 0.003 * big)
+		sim.emit(p, v, r, 3.0 if edge else 1.6, 5.0, rng.randf())
+	if edge and n > 6:  ## a fan of long arcing streaks along the swing, thrown off the blade
+		for i: int in clampi(n / 5, 2, 24):
+			var ang: float = rng.randf_range(-0.5, 0.5)
+			var v2: Vector3 = (sdir.rotated(Vector3.UP, ang) * rng.randf_range(0.45, 1.0) * maxf(spd, 2.0)
+					+ out * rng.randf_range(0.5, 2.0) + Vector3(0, rng.randf_range(0.5, 2.0), 0))
+			sim.emit(point - sdir * rng.randf() * arc, v2, BloodMath.drop_radius(rng.randf(), 0.0035, 0.009),
+					4.5, 5.0, rng.randf())
+	var puffs: int = clampi(3 + roundi(wound * 0.12), 3, 12) if contact != "flat" else 2
 	for i: int in puffs:
 		var mv: Vector3 = out * rng.randf_range(0.3, 1.5) + sdir * spd * 0.08 + _jit(0.4)
 		mist.emit(point + _jit(0.03), mv, 0.05, rng.randf_range(0.16, 0.30), rng.randf_range(0.35, 0.75),
 				0.5, rng.randf() * TAU)
 	var atk: _BfTracked = _by_side.get(int(event.get("attacker", -1)))
 	if atk != null:
-		atk.weapon_blood = minf(atk.weapon_blood + clampf((cut + pierce) * 0.025, 0.0, 1.0), 1.0)
+		atk.weapon_blood = minf(atk.weapon_blood + clampf((cut + pierce) * 0.04 + blunt * 0.004, 0.0, 1.0), 1.0)
+		if cut + pierce > 1.0 or wound > 3.0:
+			_coat_weapon(atk.fighter, wound)
 	var tgt: _BfTracked = _by_side.get(int(event.get("target", -1)))
 	var tf: Object = tgt.fighter if tgt != null else emitter
 	var node: Node3D = _part_node(tf, str(event.get("part", "")))
-	if node != null and cut + pierce > 2.0:
-		var w: float = clampf(2.0 + wound * 0.2, 2.0, 14.0)
+	if node != null:
+		_hit_stains(node, point, wound, sdir)
+	if node != null and cut + pierce > 1.5:
+		var w: float = clampf(3.0 + wound * 0.5, 3.0, 30.0)
 		add_wound(node, node.to_local(point), w, _blood_reader(tf))
+		_wound_owner_tag(tf)
 	if node != null and (contact == "point" or pierce > cut * 1.5) and pierce > 4.0:
 		var j: _BfJet = _BfJet.new()
 		j.target = node
@@ -292,6 +347,11 @@ func on_hit(event: Dictionary, emitter: Object = null) -> void:
 		j.attacker = atk.fighter if atk != null else null
 		j.blood_cb = _blood_reader(tf)
 		_jets.append(j)
+
+
+func _wound_owner_tag(f: Object) -> void:
+	if not _wounds.is_empty():
+		(_wounds[_wounds.size() - 1] as _BfWound).owner = f
 
 
 func on_gore(event: Dictionary, f: Object = null) -> void:
@@ -314,18 +374,46 @@ func on_gore(event: Dictionary, f: Object = null) -> void:
 	match kind:
 		"bleed":
 			if anchor != null:
-				add_wound(anchor, anchor.to_local(point), 2.0 + strength * 3.0, cb)
+				add_wound(anchor, anchor.to_local(point), 4.0 + strength * 6.0, cb)
+				_wound_owner_tag(f)
 		"sever":
 			start_spurt(anchor, point, nrm, strength, "sever", cb)
-			_burst(point, nrm, 34, 2.0, 7.0, 0.5, 0.0075)
+			_burst(point, nrm, 90, 2.0, 8.5, 0.55, 0.0070)
+			_ground_splash(point, 24)
+			if anchor != null:
+				add_wound(anchor, anchor.to_local(point), 22.0, cb, 1.3)
+				_wound_owner_tag(f)
 		"behead":
 			start_spurt(anchor, point, (nrm + Vector3.UP * 0.35).normalized(), strength, "behead", cb)
-			_burst(point, nrm, 46, 2.5, 8.0, 0.5, 0.008)
+			_burst(point, nrm, 130, 2.5, 9.5, 0.55, 0.0078)
+			_ground_splash(point, 34)
+			if anchor != null:
+				add_wound(anchor, anchor.to_local(point), 26.0, cb, 1.4)
+				_wound_owner_tag(f)
 		"gut":
 			start_spurt(anchor, point, nrm, strength, "gut", cb)
-			_burst(point, nrm, 30, 0.8, 3.2, 0.7, 0.011)
+			_burst(point, nrm, 90, 0.8, 4.2, 0.8, 0.0085)
+			_ground_splash(point, 26)
 			if anchor != null:
-				add_wound(anchor, anchor.to_local(point), 14.0, cb, 0.011)
+				add_wound(anchor, anchor.to_local(point), 30.0, cb, 1.5)
+				_wound_owner_tag(f)
+		"run_through":
+			start_spurt(anchor, point, nrm, strength, "gut", cb)
+			start_spurt(anchor, point, -nrm, strength * 0.7, "jet", cb)
+			_burst(point, nrm, 80, 1.0, 5.0, 0.6, 0.012)
+			if anchor != null:
+				add_wound(anchor, anchor.to_local(point), 26.0, cb, 1.4)
+				_wound_owner_tag(f)
+		"skull_crush":
+			var up: Vector3 = (nrm + Vector3.UP * 0.8).normalized()
+			_burst(point, up, 120, 1.5, 7.0, 1.0, 0.0075)
+			_ground_splash(point, 22)
+			start_spurt(anchor, point, up, strength * 0.8, "jet", cb)
+			if anchor != null:
+				add_wound(anchor, anchor.to_local(point), 24.0, cb, 1.4)
+				_wound_owner_tag(f)
+			if anchor != null:
+				_hit_stains(anchor, point, 40.0, Vector3.DOWN)
 
 
 ## Public: start an arterial spurt. anchor may be null (then world point and dir are used as they are).
@@ -345,51 +433,59 @@ func start_spurt(anchor: Node3D, point: Vector3, dir: Vector3, strength: float, 
 	s.phase = rng.randf() * 0.2
 	match kind:
 		"behead":
-			s.tau = 20.0
-			s.max_rate = 1200.0
-			s.v_min = 2.0
-			s.v_max = 6.8
-			s.spread = 0.08
-			s.r_min = 0.0035
-			s.r_max = 0.0095
+			s.tau = 24.0
+			s.dur = 55.0
+			s.max_rate = 1700.0
+			s.v_min = 2.5
+			s.v_max = 9.0
+			s.spread = 0.07
+			s.r_min = 0.0026
+			s.r_max = 0.0075
 			s.stretch = 4.5
-			s.base_flow = 0.3
+			s.base_flow = 0.14
 			var lean: float = rng.randf() * TAU
 			var axis: Vector3 = s.ldir
 			var side: Vector3 = axis.cross(Vector3(cos(lean), 0.0, sin(lean))).normalized()
 			if side.length_squared() > 0.5:
 				s.ldir = axis.rotated(side, 0.75)
 		"gut":
-			s.tau = 16.0
-			s.max_rate = 220.0
-			s.v_min = 0.6
-			s.v_max = 2.8
-			s.spread = 0.55
-			s.r_min = 0.004
-			s.r_max = 0.011
-			s.stretch = 1.0
-			s.base_flow = 0.35
+			s.tau = 18.0
+			s.dur = 45.0
+			s.max_rate = 1100.0
+			s.v_min = 0.8
+			s.v_max = 4.0
+			s.spread = 0.6
+			s.r_min = 0.003
+			s.r_max = 0.008
+			s.stretch = 2.2
+			s.base_flow = 0.4
 		"jet":
-			s.tau = 0.35
-			s.dur = 0.5
+			s.tau = 1.4
+			s.dur = 3.5
 			s.heart = false
-			s.max_rate = 420.0
+			s.max_rate = 700.0
 			s.v_min = 3.5
-			s.v_max = 7.5
+			s.v_max = 8.5
 			s.spread = 0.07
+			s.r_min = 0.0026
+			s.r_max = 0.0065
+			s.stretch = 4.5
 			s.base_flow = 1.0
 		_:
-			s.tau = 13.0
-			s.max_rate = 560.0
-			s.v_min = 1.2
-			s.v_max = 6.0
-			s.base_flow = 0.22
-			s.spread = 0.12
-			s.r_min = 0.003
-			s.r_max = 0.0085
-			s.stretch = 4.0
+			s.tau = 16.0
+			s.dur = 45.0
+			s.max_rate = 1300.0
+			s.v_min = 1.5
+			s.v_max = 8.5
+			s.base_flow = 0.12
+			s.spread = 0.1
+			s.r_min = 0.0026
+			s.r_max = 0.0072
+			s.stretch = 4.5
 	s.last_origin = point
 	_spurts.append(s)
+	if _spurts.size() > MAX_SPURTS:
+		_spurts.pop_front()
 
 
 func add_wound(anchor: Node3D, local_pos: Vector3, drips_per_sec: float, blood_cb: Callable = Callable(),
@@ -430,6 +526,9 @@ func step(dt_in: float) -> void:
 	sim.compact()
 	mist.step(dt)
 	_flush_splats()
+	decals.step(dt)
+	_clock += dt
+	_sweep_stains()
 	stat_emitted = maxi(sim.count - before, 0)
 	_upload()
 
@@ -441,6 +540,9 @@ func _upload() -> void:
 	var mm2: MultiMesh = _mm_mist.multimesh
 	mm2.buffer = mist.buf
 	mm2.visible_instance_count = mist.count
+	var mm3: MultiMesh = _mm_decals.multimesh
+	mm3.buffer = decals.buf
+	mm3.visible_instance_count = decals.count
 
 
 func _refresh_reach() -> void:
@@ -484,13 +586,14 @@ func _update_spurts(dt: float) -> void:
 			if pulse_v > 0.55 and s.prev_pulse <= 0.55 and press > 0.1:
 				mist.emit(origin, dir * 0.8 * press, 0.04, 0.12 + 0.12 * press, 0.4, 0.3, rng.randf() * TAU)
 			s.prev_pulse = pulse_v
-		var flow: float = s.strength * press * exp(-s.age / s.tau) * (s.base_flow + (1.0 - s.base_flow) * pulse_v)
+		var gush: float = 1.0 + 1.4 * exp(-s.age / 0.6)  ## the first second is a hard gush
+		var flow: float = s.strength * press * exp(-s.age / s.tau) * (s.base_flow + (1.0 - s.base_flow) * pulse_v) * gush
 		if s.heart and press <= 0.0:
 			_spurts.erase(s)
 			continue
-		var speed: float = BloodMath.spurt_speed(flow, s.v_min, s.v_max)
+		var speed: float = BloodMath.spurt_speed(flow * 0.85, s.v_min, s.v_max)
 		var want: float = flow * s.max_rate * BloodMath.rate_mult(quality) * dt + s.acc
-		var n: int = mini(int(want), 16)
+		var n: int = mini(int(want), MAX_SPURT_EMIT)
 		s.acc = want - float(int(want))
 		s.consumed += float(n) * 0.00002 * BloodMath.VOLUME_BOOST * 4.0 if not s.blood_cb.is_valid() else 0.0
 		for j: int in n:
@@ -499,7 +602,7 @@ func _update_spurts(dt: float) -> void:
 			var d: Vector3 = BloodMath.cone_dir(dir, s.spread * (1.0 + 0.8 * (1.0 - flow)), rng.randf(), rng.randf())
 			var v: Vector3 = d * speed * rng.randf_range(0.88, 1.12) + s.anchor_vel * 0.8
 			var p: Vector3 = s.last_origin.lerp(origin, frac) + v * ta + Vector3(0, -0.5 * gravity * ta * ta, 0)
-			var r: float = BloodMath.drop_radius(rng.randf(), s.r_min, s.r_max) * (0.7 + 0.5 * minf(flow, 1.0)) * 1.7
+			var r: float = BloodMath.drop_radius(rng.randf(), s.r_min, s.r_max) * (0.75 + 0.45 * minf(flow, 1.0))
 			sim.emit(p, v, r, s.stretch, 6.0, rng.randf())
 		s.last_origin = origin
 
@@ -520,15 +623,25 @@ func _update_wounds(dt: float) -> void:
 		var blood: float = _read_blood(w.blood_cb, full)
 		var press: float = BloodMath.pressure(BloodMath.reserve(blood, full, death))
 		w.rate *= pow(0.5, dt / w.half_life)
-		if w.rate < 0.3:
+		var eff: float = w.rate
+		if w.owner != null and is_instance_valid(w.owner):  ## a fighter who is still bleeding keeps dripping
+			var hv: Variant = w.owner.get("health")
+			if hv is Object:
+				var br: Variant = (hv as Object).get("bleed_rate")
+				if br != null:
+					eff = maxf(eff, minf(float(br) * 14.0, 12.0))
+		if eff < 0.3:
 			_wounds.erase(w)
 			continue
-		w.acc += w.rate * press * BloodMath.rate_mult(quality) * dt
+		w.acc += eff * press * BloodMath.rate_mult(quality) * dt
 		while w.acc >= 1.0:
 			w.acc -= 1.0
 			var v: Vector3 = w.vel * 0.7 + _jit(0.15)
-			var r: float = rng.randf_range(0.0036, 0.0060) * w.r_scale
-			sim.emit(pos + _jit(0.012), v, r, 0.6, 5.0, rng.randf())
+			var r: float = rng.randf_range(0.0042, 0.0080) * w.r_scale
+			sim.emit(pos + _jit(0.012), v, r, 0.9, 5.0, rng.randf())
+			if w.vel.length() > 1.5 and rng.randf() < 0.5:  ## a moving wound flings a streak behind it
+				sim.emit(pos + _jit(0.01), w.vel * rng.randf_range(0.3, 0.6) + _jit(0.5), r * 0.8, 3.5, 3.0,
+						rng.randf())
 
 
 func _update_tracked(dt: float) -> void:
@@ -536,7 +649,8 @@ func _update_tracked(dt: float) -> void:
 		var f: Object = t.fighter
 		if f == null or not is_instance_valid(f):
 			continue
-		t.weapon_blood = maxf(t.weapon_blood - dt * 0.004, 0.0)
+		_feed_pool(t, dt)
+		t.weapon_blood = maxf(t.weapon_blood - dt * 0.003, 0.0)
 		if t.weapon_blood < 0.015 and _jets.is_empty():
 			t.have_tip = false
 			continue
@@ -569,6 +683,51 @@ func _update_tracked(dt: float) -> void:
 				sim.emit(tip + _jit(0.01), t.tip_vel * 0.3 + _jit(0.05), rng.randf_range(0.0030, 0.0046), 0.6,
 						4.0, rng.randf())
 				t.weapon_blood = maxf(t.weapon_blood - 0.006, 0.0)
+
+
+## Pools spread under a bleeding fighter who is down (or dead). The litres are a presentation number, scaled
+## up so a pool reads; they are never read back by the fight.
+func _feed_pool(t: _BfTracked, dt: float) -> void:
+	var f: Object = t.fighter
+	var hv: Variant = f.get("health")
+	if not (hv is Object):
+		return
+	var h: Object = hv as Object
+	var br: float = float(h.get("bleed_rate")) if h.get("bleed_rate") != null else 0.0
+	var dead: bool = bool(h.get("dead")) if h.get("dead") != null else false
+	var core: Node3D = _part_node(f, "torso")
+	if core == null:
+		core = _part_node(f, "pelvis")
+	if core == null:
+		return
+	var low: bool = core.global_position.y < 0.55
+	var ooze: float = br + (0.05 if dead else 0.0)
+	if not low or ooze <= 0.0 or t.pool_litres > 7.0:
+		return
+	t.pool_acc += ooze * BloodMath.POOL_VISUAL_MULT * dt
+	if t.pool_acc < 0.004:
+		return
+	var l: float = t.pool_acc
+	t.pool_acc = 0.0
+	t.pool_litres += l
+	var p: Vector3 = core.global_position + Vector3(rng.randf_range(-0.12, 0.12), 0.0, rng.randf_range(-0.12, 0.12))
+	if t.pool_slot < 0:
+		t.pool_pos = Vector3(p.x, _ground_y(p) + 0.006, p.z)
+	t.pool_slot = decals.feed(t.pool_slot, t.pool_pos, l, rng.randf())
+
+
+func _ground_y(p: Vector3) -> float:
+	if _height_fn.is_valid():
+		return float(_height_fn.call(Vector3(p.x, 0.0, p.z)))
+	return 0.0
+
+
+func _ground_splash(point: Vector3, count: int) -> void:
+	var n: int = roundi(count * BloodMath.rate_mult(quality))
+	for i: int in n:
+		var d: Vector3 = BloodMath.cone_dir(Vector3.DOWN, 1.15, rng.randf(), rng.randf())
+		sim.emit(point + _jit(0.03), d * rng.randf_range(1.2, 5.0), BloodMath.drop_radius(rng.randf(), 0.003, 0.010),
+				3.0, 4.0, rng.randf())
 
 
 func _update_jets(dt: float) -> void:
@@ -630,31 +789,118 @@ func _process_rays() -> void:
 	_ray_cursor = (_ray_cursor + budget) % maxi(n, 1)
 
 
-func _stain(body: Node3D, pos: Vector3, normal: Vector3, vel: Vector3, r: float) -> void:
+## A fresh stain quad on `body` (a ring per body, oldest reused). Registered for ageing.
+func _new_stain(body: Node3D) -> MeshInstance3D:
 	var ring: Array = body.get_meta("bfx_stains", []) as Array
 	var next: int = int(body.get_meta("bfx_next", 0))
-	var mi: MeshInstance3D
-	if ring.size() < STAIN_RING:
+	var cap: int = BloodMath.stain_budget(quality)
+	var mi: MeshInstance3D = null
+	if ring.size() < cap:
 		mi = MeshInstance3D.new()
 		mi.mesh = _stain_mesh
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		body.add_child(mi)
 		ring.append(mi)
 		body.set_meta("bfx_stains", ring)
+		_stain_list.append(mi)
 	else:
-		mi = ring[next % STAIN_RING]
+		mi = ring[next % ring.size()] as MeshInstance3D
 		body.set_meta("bfx_next", next + 1)
-	mi.material_override = _stain_mats[rng.randi() % _stain_mats.size()]
+		if mi == null or not is_instance_valid(mi):
+			return null
+	var variant: int = rng.randi() % STAIN_VARIANTS
+	mi.set_meta("born", _clock)
+	mi.set_meta("bk", 0)
+	mi.set_meta("var", variant)
+	mi.material_override = (_stain_mats[0] as Array)[variant]
+	return mi
+
+
+## Ages stains: swaps fresh bright red for drying and dried materials, a few per frame.
+func _sweep_stains() -> void:
+	var n: int = _stain_list.size()
+	if n == 0:
+		return
+	for k: int in mini(n, 24):
+		var i: int = (_sweep_cursor + k) % n
+		var mi: MeshInstance3D = _stain_list[i] as MeshInstance3D
+		if mi == null or not is_instance_valid(mi):
+			_stain_list[i] = null
+			continue
+		var bk: int = BloodMath.stain_bucket(_clock - float(mi.get_meta("born", 0.0)), STAIN_BUCKETS)
+		if bk != int(mi.get_meta("bk", 0)):
+			mi.set_meta("bk", bk)
+			mi.material_override = (_stain_mats[bk] as Array)[int(mi.get_meta("var", 0))]
+	_sweep_cursor = (_sweep_cursor + 24) % n
+	if _sweep_cursor < 24 and _stain_list.has(null):
+		_stain_list = _stain_list.filter(func(x: Variant) -> bool: return x != null)
+
+
+func _place_stain(body: Node3D, pos: Vector3, normal: Vector3, tang: Vector3, along: float, across: float) -> void:
+	var mi: MeshInstance3D = _new_stain(body)
+	if mi == null:
+		return
 	var nrm: Vector3 = normal.normalized()
-	var tang: Vector3 = vel - nrm * vel.dot(nrm)
-	if tang.length_squared() < 0.01:
-		tang = nrm.cross(Vector3.UP if absf(nrm.y) < 0.9 else Vector3.RIGHT)
-	tang = tang.normalized()
-	var bit: Vector3 = nrm.cross(tang)
+	var tg: Vector3 = tang - nrm * tang.dot(nrm)
+	if tg.length_squared() < 0.0001:
+		tg = nrm.cross(Vector3.UP if absf(nrm.y) < 0.9 else Vector3.RIGHT)
+	tg = tg.normalized()
+	var bit: Vector3 = nrm.cross(tg)
+	mi.global_transform = Transform3D(Basis(tg * along, bit * across, nrm), pos + nrm * 0.003)
+
+
+func _stain(body: Node3D, pos: Vector3, normal: Vector3, vel: Vector3, r: float) -> void:
 	var width: float = clampf(r * 11.0, 0.015, 0.09) * rng.randf_range(0.8, 1.3)
 	var stretch: float = 1.0 + clampf(vel.length() * 0.12, 0.0, 2.2)
-	var basis: Basis = Basis(tang * width * stretch, bit * width, nrm)
-	mi.global_transform = Transform3D(basis, pos + nrm * 0.003)
+	var nrm: Vector3 = normal.normalized()
+	_place_stain(body, pos, nrm, vel - nrm * vel.dot(nrm), width * stretch, width)
+
+
+## Blood soaking a body part where it was hit: a wet patch smeared along the blow plus runnels that run down.
+func _hit_stains(node: Node3D, point: Vector3, wound: float, sdir: Vector3) -> void:
+	var out: Vector3 = point - node.global_position
+	if out.length_squared() < 0.0001:
+		out = Vector3.UP
+	out = out.normalized()
+	var w0: float = clampf(0.035 + wound * 0.003, 0.04, 0.12)
+	_place_stain(node, point, out, sdir, w0 * 1.4, w0)
+	var runs: int = clampi(int(wound / 7.0), 0, 4)
+	for k: int in runs:
+		var p: Vector3 = point + _jit(w0 * 0.5)
+		var len_m: float = rng.randf_range(0.08, 0.2) * (1.0 + wound / 40.0)
+		_place_stain(node, p, out, Vector3.DOWN, len_m, rng.randf_range(0.012, 0.028))
+
+
+## Blood on a weapon: stains along the blade, two crossed quads so either flat face shows it.
+func _coat_weapon(f: Object, wound: float) -> void:
+	if f == null or not is_instance_valid(f):
+		return
+	var wv: Variant = f.get("weapon")
+	if not (wv is Node3D):
+		wv = f.get("fist_r")
+	if not (wv is Node3D):
+		return
+	var w: Node3D = wv as Node3D
+	var tipv: Variant = w.get("tip_local")
+	var tip_l: Vector3 = tipv if tipv is Vector3 else Vector3(0, 0, -0.5)
+	if tip_l.length() < 0.05:
+		return
+	var axis: Vector3 = tip_l.normalized()
+	var p1: Vector3 = axis.cross(Vector3.UP if absf(axis.y) < 0.9 else Vector3.RIGHT).normalized()
+	var p2: Vector3 = axis.cross(p1)
+	var n: int = clampi(1 + int(wound / 10.0), 1, 3)
+	for k: int in n:
+		var u: float = rng.randf_range(0.4, 1.0)
+		var len_m: float = rng.randf_range(0.07, 0.16) * clampf(tip_l.length() * 1.6, 0.4, 1.5)
+		var wid: float = rng.randf_range(0.035, 0.06)
+		var pos: Vector3 = tip_l * u
+		for flip: int in 2:
+			var mi: MeshInstance3D = _new_stain(w)
+			if mi == null:
+				continue
+			var a: Vector3 = p1 if flip == 0 else p2
+			var nn: Vector3 = p2 if flip == 0 else p1
+			mi.transform = Transform3D(Basis(axis * len_m, a * wid, nn), pos)
 
 
 func _process_impacts() -> void:
@@ -680,9 +926,9 @@ func _process_impacts() -> void:
 
 func _flush_splats() -> void:
 	stat_splat_calls = 0
-	if sand == null or _splat.is_empty() or not sand.has_method("add_blood"):
-		_splat.clear()
+	if _splat.is_empty():
 		return
+	var has_sand: bool = sand != null and sand.has_method("add_blood")
 	for cell: Vector2i in _splat.keys():
 		if stat_splat_calls >= MAX_SPLAT_CALLS:
 			break
@@ -690,8 +936,13 @@ func _flush_splats() -> void:
 		_splat.erase(cell)
 		if a.w <= 0.0:
 			continue
-		sand.call("add_blood", Vector3(a.x / a.w, a.y / a.w, a.z / a.w), BloodMath.splat_radius(a.w), a.w)
+		var at: Vector3 = Vector3(a.x / a.w, a.y / a.w, a.z / a.w)
+		decals.add(at + Vector3(0, 0.006, 0), a.w, rng.randf())
+		if has_sand:
+			sand.call("add_blood", at, BloodMath.splat_radius(a.w), a.w)
 		stat_splat_calls += 1
+	if _splat.size() > 4 * MAX_SPLAT_CALLS:
+		_splat.clear()
 
 
 # --- Helpers --------------------------------------------------------------------------------------------
@@ -703,9 +954,9 @@ func _burst(point: Vector3, dir: Vector3, count: int, v_min: float, v_max: float
 		var d: Vector3 = BloodMath.cone_dir(dir, spread, rng.randf(), rng.randf())
 		var v: Vector3 = d * rng.randf_range(v_min, v_max)
 		sim.emit(point + _jit(0.02), v, BloodMath.drop_radius(rng.randf(), 0.002, r_max), 2.0, 5.0, rng.randf())
-	for i: int in clampi(n / 6, 2, 8):
-		mist.emit(point + _jit(0.04), dir * rng.randf_range(0.5, 2.0) + _jit(0.4), 0.06,
-				rng.randf_range(0.2, 0.38), rng.randf_range(0.45, 0.9), 0.38, rng.randf() * TAU)
+	for i: int in clampi(n / 5, 3, 16):
+		mist.emit(point + _jit(0.04), dir * rng.randf_range(0.5, 2.5) + _jit(0.4), 0.07,
+				rng.randf_range(0.25, 0.5), rng.randf_range(0.5, 1.1), 0.5, rng.randf() * TAU)
 
 
 func _jit(amount: float) -> Vector3:
@@ -714,6 +965,12 @@ func _jit(amount: float) -> Vector3:
 
 func _part_node(f: Object, part: String) -> Node3D:
 	if f == null or part == "":
+		return null
+	var pv: Variant = f.get("parts")  ## Fighter keeps its body parts in a `parts` dictionary
+	if pv is Dictionary and (pv as Dictionary).has(part):
+		var pn: Variant = (pv as Dictionary)[part]
+		if pn is Node3D and is_instance_valid(pn):
+			return pn as Node3D
 		return null
 	var v: Variant = f.get(part)
 	if v is Node3D:

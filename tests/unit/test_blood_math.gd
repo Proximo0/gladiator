@@ -59,13 +59,13 @@ func test_spray_scales_with_contact_and_damage() -> void:
 	assert_true(BloodMath.spray_count(40.0, "point") > BloodMath.spray_count(40.0, "blunt"))
 	assert_true(BloodMath.spray_count(80.0, "edge") > BloodMath.spray_count(10.0, "edge"))
 	assert_eq(BloodMath.spray_count(0.0, "edge"), 0)
-	assert_true(BloodMath.spray_count(9999.0, "edge") <= 150)
+	assert_true(BloodMath.spray_count(9999.0, "edge") <= 260)
 
 
 func test_budgets() -> void:
-	assert_eq(BloodMath.budget(0), 400)
-	assert_eq(BloodMath.budget(2), 4000)
-	assert_eq(BloodMath.budget(9), 4000)
+	assert_eq(BloodMath.budget(0), 600)
+	assert_eq(BloodMath.budget(2), 5000)
+	assert_eq(BloodMath.budget(9), 5000)
 	assert_true(BloodMath.rate_mult(2) > BloodMath.rate_mult(0))
 
 
@@ -77,4 +77,23 @@ func test_splat_helpers() -> void:
 
 func test_stretch_length_capped() -> void:
 	assert_true(BloodMath.stretch_length(8.0, 0.004, 2.5) > BloodMath.stretch_length(1.0, 0.004, 2.5))
-	assert_true(BloodMath.stretch_length(500.0, 0.004, 2.5) <= 0.004 * 16.0 + 0.00001)
+	assert_true(BloodMath.stretch_length(500.0, 0.004, 2.5) <= 0.004 * BloodMath.TAIL_CAP + 0.00001)
+
+
+func test_dryness_and_colour_stay_red() -> void:
+	assert_near(BloodMath.dryness(0.0), 0.0, 0.0001)
+	assert_true(BloodMath.dryness(300.0) > 0.9)
+	assert_true(BloodMath.dryness(10.0) < BloodMath.dryness(60.0))
+	for k: int in 11:
+		var c: Color = BloodMath.blood_color(float(k) / 10.0)
+		assert_true(c.r > c.g * 3.0 and c.r > c.b * 3.0, "red dominates at dryness %d" % k)
+	assert_true(BloodMath.blood_color(0.0).r > BloodMath.blood_color(1.0).r)
+
+
+func test_stain_bucket_and_pool_radius() -> void:
+	assert_eq(BloodMath.stain_bucket(0.0, 4), 0)
+	assert_eq(BloodMath.stain_bucket(9999.0, 4), 3)
+	assert_true(BloodMath.pool_radius(1.0) > BloodMath.pool_radius(0.1))
+	assert_true(BloodMath.pool_radius(500.0) <= 1.15)
+	assert_true(BloodMath.decal_budget(2) > BloodMath.decal_budget(0))
+	assert_true(BloodMath.stain_budget(2) > BloodMath.stain_budget(0))
