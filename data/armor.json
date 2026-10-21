@@ -13,7 +13,7 @@
 			"pierce_resist": 0.2,
 			"blunt_resist": 0.15,
 			"durability": 60,
-			"strap": 50
+			"strap": 35
 		},
 		{
 			"id": "helm_iron",
@@ -28,7 +28,7 @@
 			"pierce_resist": 0.85,
 			"blunt_resist": 0.4,
 			"durability": 200,
-			"strap": 100
+			"strap": 70
 		},
 		{
 			"id": "cuirass_leather",

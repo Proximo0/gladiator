@@ -96,6 +96,9 @@ const FIELDS: Array = [
 	["balance_inertia", 3.0, 0.5, 8.0, 0.1, "Stability", "Inertia the upright controller gains assume, kg·m²."],
 	["leg_reaction", 0.25, 0.0, 1.0, 0.05, "Stability", "Share of leg joint reaction put on the pelvis."],
 	["pd_margin", 0.5, 0.1, 1.5, 0.05, "Stability", "Damping-rate margin for explicit PD (below 2 is stable)."],
+	["dmg_disarm_weapon", 0.5, 0.1, 1.5, 0.05, "Damage", "Share of hit momentum delivered as disarm impulse when a hit lands on the held weapon."],
+	["dmg_disarm_fist", 0.6, 0.1, 1.5, 0.05, "Damage", "Extra disarm multiplier when the striker is a fist."],
+	["dmg_disarm_forearm_gain", 1.6, 0.5, 3.0, 0.1, "Damage", "Multiplier on the forearm disarm share, so a hard arm blow can disarm."],
 	["self_hit_min_speed", 6.0, 0.0, 15.0, 0.5, "Damage", "Min speed for a fighter's own weapon to hurt them, m/s."],
 	["self_hit_grace_s", 0.5, 0.0, 3.0, 0.1, "Damage", "No self hits for this long after spawn, while the weapon settles in the hand, s."],
 	["finisher_consc", 0.35, 0.0, 1.0, 0.05, "Damage", "A dazed (consciousness below this) or downed fighter can be finished at any blood level."],
@@ -207,6 +210,9 @@ var balance_inertia: float
 var leg_reaction: float
 var pd_margin: float
 var self_hit_min_speed: float
+var dmg_disarm_weapon: float
+var dmg_disarm_fist: float
+var dmg_disarm_forearm_gain: float
 var self_hit_grace_s: float
 var finisher_consc: float
 var hold_freq: float

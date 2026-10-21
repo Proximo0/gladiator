@@ -27,6 +27,9 @@ const DEFAULTS: Dictionary = {
 	"dmg_dislodge_sharp": 0.3,
 	"dmg_disarm_scale": 1.0,
 	"dmg_disarm_forearm": 0.5,
+	"dmg_disarm_weapon": 0.5,
+	"dmg_disarm_fist": 0.6,
+	"dmg_disarm_forearm_gain": 1.6,
 	"dmg_grip_base": 18.0,
 	"dmg_grip_two_hands": 1.6,
 	"finisher_blood_frac": 0.6,
@@ -76,10 +79,14 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 	var blunt_f: float = float(wdef.get("blunt_factor", 0.0))
 	var momentum: float = mass * closing * _tv(tuning, "dmg_disarm_scale")
 	if bool(hit.get("hit_on_weapon", false)):
-		out["disarm_impulse"] = momentum * (0.3 + 0.7 * blunt_f)
+		# A routine parry is not a disarm: weapon contact delivers a share of the momentum, fists less still.
+		var wk: float = _tv(tuning, "dmg_disarm_weapon")
+		if str(wdef.get("shape", "")) == "fist":
+			wk *= _tv(tuning, "dmg_disarm_fist")
+		out["disarm_impulse"] = momentum * (0.3 + 0.7 * blunt_f) * wk
 		return out
 	if part.begins_with("forearm"):
-		out["disarm_impulse"] = momentum * _tv(tuning, "dmg_disarm_forearm") * (0.3 + 0.7 * blunt_f)
+		out["disarm_impulse"] = momentum * _tv(tuning, "dmg_disarm_forearm") * _tv(tuning, "dmg_disarm_forearm_gain") * (0.3 + 0.7 * blunt_f)
 	var pinfo: Dictionary = CombatData.part_info(part)
 	var contact: String = str(hit.get("contact", "blunt"))
 	var align: float = clampf(float(hit.get("edge_alignment", 1.0)), 0.0, 1.0)
@@ -207,10 +214,13 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 
 ## True when the hand keeps its weapon against a disarm impulse (N·s). Weaker with a hurt arm or low stamina,
 ## stronger with two hands on the weapon.
-static func grip_holds(disarm_impulse: float, arm_hp_frac: float, stamina: float, two_hands: bool, tuning: Tuning) -> bool:
+static func grip_holds(disarm_impulse: float, arm_hp_frac: float, stamina: float, two_hands: bool, tuning: Tuning, weapon_mass: float = 0.0) -> bool:
 	var strength: float = _tv(tuning, "dmg_grip_base")
 	strength *= 0.4 + 0.6 * clampf(arm_hp_frac, 0.0, 1.0)
 	strength *= 0.5 + 0.5 * clampf(stamina, 0.0, 1.0)
 	if two_hands:
 		strength *= _tv(tuning, "dmg_grip_two_hands")
+	# Optional: heavier weapons hold better (0 = unknown, no change; 1 kg = x1, 2 kg = x1.2, 3.5 kg = x1.5).
+	if weapon_mass > 0.0:
+		strength *= 1.0 + 0.2 * clampf(weapon_mass - 1.0, -0.5, 2.5)
 	return disarm_impulse <= strength

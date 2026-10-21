@@ -1165,7 +1165,7 @@ func _take_hit(ev: Dictionary, body: RigidBody3D, w: Weapon, attacker: Fighter) 
 		var held: Weapon = weapon if h == "r" else (offhand if h == "l" else null)
 		if held != null and held.holder == self:
 			var two: bool = held == weapon and (bool(held.def.get("two_handed", false)) or grip() == "half")
-			if not DamageModel.grip_holds(dis, minf(_hp("forearm_" + h), _hp("upper_arm_" + h)), health.stamina, two, _tun):
+			if not DamageModel.grip_holds(dis, minf(_hp("forearm_" + h), _hp("upper_arm_" + h)), health.stamina, two, _tun, float(held.def.get("mass", 0.0))):
 				_release(held)
 				ev["disarmed"] = true
 	if bool(ev.get("hit_on_weapon", false)):

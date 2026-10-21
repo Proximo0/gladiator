@@ -212,18 +212,32 @@ func test_hit_on_weapon_only_disarm_impulse() -> void:
 	assert_false(bool(r["sever"]))
 	assert_false(bool(r["dislodge"]))
 	assert_eq(r["armor_wear"], {})
-	assert_true(float(r["disarm_impulse"]) > 5.0)
+	assert_true(float(r["disarm_impulse"]) > 2.0)
 	h["rel_vel"] = Vector3(0, 0, -2.0)
 	assert_near(float(_r(h)["disarm_impulse"]), 0.0)
 
 
-func test_forearm_hit_has_smaller_disarm_impulse() -> void:
+func test_forearm_hit_disarms_more_than_a_parry() -> void:
 	var h: Dictionary = _hit("forearm_r", "bat", "blunt", 15.0, 1.0)
 	var arm: float = float(_r(h)["disarm_impulse"])
 	h["hit_on_weapon"] = true
 	var wpn: float = float(_r(h)["disarm_impulse"])
-	assert_true(arm > 0.0 and arm < wpn)
+	assert_true(wpn > 0.0 and arm > wpn)
 	assert_near(float(_r(_hit("torso", "bat", "blunt", 15.0, 1.0))["disarm_impulse"]), 0.0)
+
+
+func test_fist_on_weapon_disarms_less_than_club() -> void:
+	var f: Dictionary = _hit("forearm_r", "fists", "blunt", 10.0, 1.0)
+	f["hit_on_weapon"] = true
+	var c: Dictionary = _hit("forearm_r", "club", "blunt", 10.0, 1.0)
+	c["hit_on_weapon"] = true
+	assert_true(float(_r(f)["disarm_impulse"]) < float(_r(c)["disarm_impulse"]))
+
+
+func test_heavy_weapon_grip_holds_better() -> void:
+	var t: Tuning = Tuning.new()
+	assert_false(DamageModel.grip_holds(20.0, 1.0, 1.0, false, t, 1.0))
+	assert_true(DamageModel.grip_holds(20.0, 1.0, 1.0, false, t, 3.5))
 
 
 func test_grip_holds() -> void:
