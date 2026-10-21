@@ -45,6 +45,12 @@ func hp_frac(part: String) -> float:
 	return clampf(hp(part) / full, 0.0, 1.0) if full > 0.0 else 1.0
 
 
+## Blood left above the death line: 1 = full, 0 = at blood_death. Feed this to DamageModel as "blood_frac".
+func blood_frac() -> float:
+	var death: float = _tv("blood_death")
+	return clampf((blood - death) / maxf(START_BLOOD - death, 0.001), 0.0, 1.0)
+
+
 func is_severed(part: String) -> bool:
 	return severed.has(part)
 
@@ -87,6 +93,15 @@ func apply(result: Dictionary, part: String) -> Array:
 		events.append({"kind": "gut", "part": part, "amount": maxf(cut, pierce)})
 	if not big and bleed > 0.0:
 		events.append({"kind": "bleed", "part": part, "amount": bleed})
+	var fin: String = str(result.get("finisher", ""))
+	if fin != "":
+		dead = true
+		if fin == "behead" and not severed.has(part):
+			severed.append(part)
+			parts[part] = 0.0
+		if fin == "gut":
+			gutted = true
+		events = [{"kind": fin, "part": part, "amount": maxf(maxf(cut, pierce), float(result.get("blunt", 0.0)))}]
 	if hp("head") <= 0.0 or hp("torso") <= 0.0:
 		dead = true
 	_check_death()

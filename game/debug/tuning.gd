@@ -38,6 +38,9 @@ const FIELDS: Array = [
 	["dmg_disarm_forearm", 0.5, 0.0, 1.0, 0.05, "Damage", "Share of the disarm impulse that a hit on the holding forearm (not the weapon) delivers."],
 	["dmg_grip_base", 18.0, 4.0, 60.0, 0.5, "Damage", "One-handed grip strength at full arm hp and stamina, N·s."],
 	["dmg_grip_two_hands", 1.6, 1.0, 3.0, 0.05, "Damage", "Grip strength multiplier with two hands on the weapon."],
+	["finisher_blood_frac", 0.4, 0.0, 1.0, 0.05, "Damage", "Blood fraction (0 = blood_death, 1 = full) below which a hit can be a killing blow."],
+	["dmg_finisher_min_scale", 0.333, 0.1, 1.0, 0.01, "Damage", "Share of the normal sever/gut/crush force a finisher needs when blood is at blood_death."],
+	["dmg_skull_crush", 20.0, 5.0, 80.0, 1.0, "Damage", "Blunt points (after armor, head multiplier included) a heavy blunt hit needs to crush the skull."],
 	["blood_faint", 3.5, 2.6, 5.0, 0.1, "Health", "Blood (L) below which consciousness is capped; zero at blood_death."],
 	["health_head_ko", 0.03, 0.0, 0.2, 0.005, "Health", "Consciousness lost per blunt point on the head."],
 	["health_stagger_ko", 0.05, 0.0, 0.5, 0.01, "Health", "Consciousness lost per unit of stagger on any part."],
@@ -77,6 +80,9 @@ var dmg_disarm_scale: float
 var dmg_disarm_forearm: float
 var dmg_grip_base: float
 var dmg_grip_two_hands: float
+var finisher_blood_frac: float
+var dmg_finisher_min_scale: float
+var dmg_skull_crush: float
 var blood_faint: float
 var health_head_ko: float
 var health_stagger_ko: float

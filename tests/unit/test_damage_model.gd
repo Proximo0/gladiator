@@ -239,3 +239,60 @@ func test_grip_holds() -> void:
 func test_armor_straps_defined() -> void:
 	for id: String in CombatData.armor_ids():
 		assert_true(float(CombatData.armor(id).get("strap", 0.0)) > 0.0, id)
+
+
+func _fin(part: String, weapon: String, contact: String, speed: float, mass: float, bf: float, armor: Array = []) -> String:
+	var h: Dictionary = _hit(part, weapon, contact, speed, mass, armor)
+	h["blood_frac"] = bf
+	return str(_r(h)["finisher"])
+
+
+func test_finisher_run_through_point_weapons() -> void:
+	assert_eq(_fin("torso", "spear", "point", 8.0, 2.0, 0.1), "run_through")
+	assert_eq(_fin("pelvis", "gladius", "point", 8.0, 1.2, 0.05), "run_through")
+
+
+func test_finisher_gut_with_edges() -> void:
+	assert_eq(_fin("torso", "longsword", "edge", 20.0, 1.0, 0.0, ["mail"]), "gut")
+	assert_eq(_fin("torso", "axe", "edge", 14.0, 1.8, 0.0, ["mail"]), "gut")
+	var h: Dictionary = _hit("torso", "axe", "edge", 14.0, 1.8, ["mail"])
+	h["blood_frac"] = 0.0
+	assert_true(bool(_r(h)["gut"]))
+
+
+func test_finisher_behead_low_blood_weaker_hit() -> void:
+	assert_eq(_fin("head", "longsword", "edge", 20.0, 1.0, 0.1), "behead")
+	# 12 m/s is too weak for a normal behead but enough when nearly bled out.
+	assert_false(bool(_r(_hit("head", "axe", "edge", 11.0, 1.2))["behead"]))
+	var h: Dictionary = _hit("head", "axe", "edge", 11.0, 1.2)
+	h["blood_frac"] = 0.05
+	var r: Dictionary = _r(h)
+	assert_eq(r["finisher"], "behead")
+	assert_true(bool(r["behead"]) and bool(r["sever"]))
+
+
+func test_finisher_skull_crush_blunt_not_fists() -> void:
+	assert_eq(_fin("head", "club", "blunt", 14.0, 1.6, 0.1), "skull_crush")
+	assert_eq(_fin("head", "bat", "blunt", 20.0, 1.0, 0.1), "skull_crush")
+	for contact: String in ["blunt", "flat", "edge", "point"]:
+		assert_eq(_fin("head", "fists", contact, 30.0, 6.0, 0.0), "")
+	assert_eq(_fin("torso", "bat", "blunt", 30.0, 2.0, 0.0), "")
+
+
+func test_no_finisher_above_threshold() -> void:
+	assert_eq(_fin("head", "bat", "blunt", 20.0, 1.0, 0.4), "")
+	assert_eq(_fin("head", "bat", "blunt", 20.0, 1.0, 1.0), "")
+	assert_eq(_fin("torso", "spear", "point", 8.0, 2.0, 0.5), "")
+	assert_eq(str(_r(_hit("torso", "spear", "point", 8.0, 2.0))["finisher"]), "")
+
+
+func test_finisher_threshold_scales_with_blood() -> void:
+	assert_eq(_fin("torso", "spear", "point", 5.0, 2.0, 0.35), "")
+	assert_eq(_fin("torso", "spear", "point", 5.0, 2.0, 0.0), "run_through")
+	assert_eq(_fin("torso", "spear", "point", 2.0, 2.0, 0.0), "")
+
+
+func test_finisher_blocked_by_plate_and_wrong_contact() -> void:
+	assert_eq(_fin("torso", "spear", "point", 8.0, 2.0, 0.1, ["cuirass_iron"]), "")
+	assert_eq(_fin("torso", "spear", "flat", 8.0, 2.0, 0.1), "")
+	assert_eq(_fin("head", "longsword", "edge", 20.0, 1.0, 0.1, ["helm_iron"]), "")

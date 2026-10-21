@@ -162,3 +162,37 @@ func test_snapshot_round_trip() -> void:
 		h.tick(1.0 / 60.0, 0.2)
 		g.tick(1.0 / 60.0, 0.2)
 	assert_eq(g.to_dict(), h.to_dict())
+
+
+func test_blood_frac() -> void:
+	var h := _new()
+	assert_near(h.blood_frac(), 1.0)
+	h.blood = 2.5
+	assert_near(h.blood_frac(), 0.0)
+	h.blood = 3.75
+	assert_near(h.blood_frac(), 0.5)
+
+
+func _finish(part: String, weapon: String, contact: String, speed: float, mass: float) -> Array:
+	var h := _new()
+	h.blood = 2.6
+	var hit: Dictionary = _hit(part, weapon, contact, speed, mass)
+	hit["blood_frac"] = h.blood_frac()
+	var ev: Array = h.apply(DamageModel.resolve(hit, Tuning.new()), part)
+	assert_true(h.dead)
+	return ev
+
+
+func test_finisher_events_kill() -> void:
+	assert_eq(_kinds(_finish("torso", "spear", "point", 6.0, 2.0)), ["run_through"])
+	assert_eq(_kinds(_finish("torso", "axe", "edge", 8.0, 1.8)), ["gut"])
+	assert_eq(_kinds(_finish("head", "longsword", "edge", 12.0, 1.0)), ["behead"])
+	assert_eq(_kinds(_finish("head", "club", "blunt", 10.0, 1.6)), ["skull_crush"])
+
+
+func test_same_hit_at_full_blood_no_finisher() -> void:
+	var h := _new()
+	var hit: Dictionary = _hit("head", "club", "blunt", 10.0, 1.6)
+	hit["blood_frac"] = h.blood_frac()
+	h.apply(DamageModel.resolve(hit, Tuning.new()), "head")
+	assert_false(h.dead)

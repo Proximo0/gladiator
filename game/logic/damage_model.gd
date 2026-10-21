@@ -2,7 +2,7 @@ class_name DamageModel
 extends RefCounted
 ## Pure, deterministic hit resolution: kinetic energy 0.5*m*v^2 turned into blunt, cut and pierce damage points,
 ## reduced by armor, then checked for sever, gut and behead. No RNG, no nodes.
-## Optional hit keys: "part_hp_frac" (0..1, default 1) lets a hurt limb sever more easily;
+## Optional hit keys: "blood_frac" (0..1, default 1; 0 = at blood_death, 1 = full, see FighterHealth.blood_frac()), "part_hp_frac" (0..1, default 1) lets a hurt limb sever more easily;
 ## "hit_on_weapon" (bool) means the contact was on the defender's held weapon or shield: no body damage, only
 ## disarm_impulse. Armor def "strap" is the blunt-equivalent energy (J) that tears a fresh piece off.
 
@@ -29,6 +29,9 @@ const DEFAULTS: Dictionary = {
 	"dmg_disarm_forearm": 0.5,
 	"dmg_grip_base": 18.0,
 	"dmg_grip_two_hands": 1.6,
+	"finisher_blood_frac": 0.4,
+	"dmg_finisher_min_scale": 0.333,
+	"dmg_skull_crush": 20.0,
 }
 
 
@@ -50,7 +53,7 @@ static func empty_result() -> Dictionary:
 		"energy": 0.0, "blunt": 0.0, "cut": 0.0, "pierce": 0.0, "total": 0.0, "bleed": 0.0,
 		"sever": false, "gut": false, "behead": false, "knockback": Vector3.ZERO, "stagger": 0.0,
 		"armor_wear": {}, "glanced": false,
-		"dislodge": false, "dislodged_id": "", "disarm_impulse": 0.0,
+		"finisher": "", "dislodge": false, "dislodged_id": "", "disarm_impulse": 0.0,
 	}
 
 
@@ -157,6 +160,31 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 	out["sever"] = sever
 	out["behead"] = sever and part == "head"
 	out["gut"] = (part == "torso" or part == "pelvis") and maxf(cut, pierce) >= _tv(tuning, "dmg_gut")
+
+	# Finishing blows: below finisher_blood_frac a good enough hit kills, needing less force the lower the blood.
+	var bfrac: float = clampf(float(hit.get("blood_frac", 1.0)), 0.0, 1.0)
+	var fin_top: float = maxf(_tv(tuning, "finisher_blood_frac"), 0.001)
+	if bfrac < fin_top:
+		var s: float = lerpf(_tv(tuning, "dmg_finisher_min_scale"), 1.0, bfrac / fin_top)
+		var fin: String = ""
+		var gut_need: float = _tv(tuning, "dmg_gut") * s
+		var is_torso: bool = part == "torso" or part == "pelvis"
+		if part == "head" and cut > 0.0 and sev_mult > 0.0 and cut >= _tv(tuning, "dmg_sever_cut") * sev_mult * (0.5 + 0.5 * frac) * s:
+			fin = "behead"
+		elif part == "head" and (contact == "blunt" or contact == "flat") and str(wdef.get("shape", "")) != "fist" \
+				and blunt_f >= 0.5 and blunt >= _tv(tuning, "dmg_skull_crush") * s:
+			fin = "skull_crush"
+		elif is_torso and contact == "point" and pierce >= gut_need:
+			fin = "run_through"
+		elif is_torso and contact == "edge" and cut >= gut_need:
+			fin = "gut"
+		out["finisher"] = fin
+		if fin == "behead":
+			sever = true
+			out["sever"] = true
+			out["behead"] = true
+		if fin == "gut":
+			out["gut"] = true
 
 	var bleed: float = cut * _tv(tuning, "dmg_bleed_cut") + pierce * _tv(tuning, "dmg_bleed_pierce")
 	if sever:

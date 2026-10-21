@@ -11,8 +11,10 @@ cartoonish, built from simple procedural shapes and shaders until real assets ar
 - Crowd: togas and tunics in undyed wool, madder red, saffron, and the odd purple stripe; seated by class (rich low).
 - Fighters: gladiator classes as loadout looks. Murmillo (crested brimmed helmet, scutum, gladius, manica on the
   sword arm, greave on the left leg), Secutor (smooth egg helmet), Hoplomachus (spear, small round shield, crested
-  helmet), Thraex (griffin crest, curved sica), and the arena-worker improvised weapons (rake, club, bat as a wooden
-  rudis cudgel). Subligaculum loincloth and balteus belt; bare skin shows wounds and blood.
+  helmet), Thraex (griffin crest, curved sica). Subligaculum loincloth and balteus belt; bare skin shows wounds and blood.
+- Weapons are NOT Roman-styled (Curtis): each looks like what it is, and modern items stay modern. A garden rake
+  with a metal head and wooden handle, an aluminium or ash baseball bat with grip tape, a modern-looking club; swords,
+  spears and shields look like plain real-world versions. The anachronism is deliberate.
 - Materials: bronze (warm, patinated), iron (dark, scratched), leather (oiled brown), linen. No chrome, no neon.
 - UI: bronze and parchment frames, meander borders, Roman numerals for rounds, Latin flavour words with plain
   English underneath (VICTORIA / Victory, MORS / Death, MISSIO / Spared).
