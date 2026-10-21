@@ -1,4 +1,4 @@
-[gd_resource type="AudioBusLayout" format=3]
+[gd_resource type="AudioBusLayout" format=3 uid="uid://dlr8tuxh5afu0"]
 
 [sub_resource type="AudioEffectLimiter" id="AudioEffectLimiter_master"]
 resource_name = "Limiter"
@@ -10,22 +10,13 @@ resource_name = "Reverb"
 room_size = 0.55
 damping = 0.6
 wet = 0.12
-dry = 1.0
 
 [sub_resource type="AudioEffectReverb" id="AudioEffectReverb_crowd"]
 resource_name = "Reverb"
 room_size = 0.85
-damping = 0.5
 wet = 0.2
-dry = 1.0
 
 [resource]
-bus/0/name = &"Master"
-bus/0/solo = false
-bus/0/mute = false
-bus/0/bypass_fx = false
-bus/0/volume_db = 0.0
-bus/0/send = &""
 bus/0/effect/0/effect = SubResource("AudioEffectLimiter_master")
 bus/0/effect/0/enabled = true
 bus/1/name = &"SFX"
