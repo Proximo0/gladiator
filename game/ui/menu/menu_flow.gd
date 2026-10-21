@@ -392,6 +392,8 @@ func _pause_game() -> void:
 	if _is_online():
 		# The fight goes on for the other player: a menu over it, no pause.
 		screen = Screen.PAUSED
+		if _net != null:
+			_net.input_blocked = true  # neutral input from this side while the menu is up
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		_pause_btn.visible = false
 		_show_panel("PAVSA", "Online: the fight goes on", "", [["resume", "Resume"], ["title", "Leave match"]])
@@ -408,6 +410,8 @@ func _resume() -> void:
 	if screen != Screen.PAUSED:
 		return
 	screen = Screen.FIGHT
+	if _net != null:
+		_net.input_blocked = false
 	_pause_dim.visible = false
 	if _pause != null:
 		_pause.queue_free()
@@ -418,6 +422,9 @@ func _resume() -> void:
 			if r != null and (str(r.device) == "kbm" or str(r.device) == "auto"):
 				r.set_captured(true)
 		_pause_btn.visible = DisplayServer.is_touchscreen_available() or Flags.args.has("touch")
+		if _is_online() and current_match.over:
+			# The fight ended behind the menu: show its result now.
+			_show_result(current_match.result, _fight_token)
 
 
 func _show_panel(latin: String, english: String, body: String, entries: Array) -> void:

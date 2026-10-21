@@ -21,6 +21,7 @@ var _armor: Array = [[], []]
 var _pending: Array = []
 var _last_sent_tick: int = -1
 var _over_sent: bool = false
+var _reader_device: String = ""  ## the host's own reader's real device while it is switched to "none" behind the Esc menu
 
 
 func _init() -> void:
@@ -45,6 +46,8 @@ func on_input(bytes: PackedByteArray) -> void:
 
 
 func _on_event(ev: Dictionary, side: int, kind: String) -> void:
+	if _over_sent or (match_node != null and match_node.over):
+		return  # the end pause: the result is out, nothing after it plays on the client
 	_pending.append([match_node.tick if match_node != null else 0, side, kind, ev])
 
 
@@ -70,6 +73,9 @@ func capture() -> NetSnapshot:
 
 
 func _flush_events() -> void:
+	if _over_sent:
+		_pending.clear()
+		return
 	while not _pending.is_empty() and session != null:
 		var chunk: Array = _pending.slice(0, NetEvents.MAX_PER_PACKET)
 		_pending = _pending.slice(chunk.size())
@@ -77,10 +83,28 @@ func _flush_events() -> void:
 		events_sent += chunk.size()
 
 
+## While the Esc menu is open the host's own reader reads a device that does not exist (neutral input), so its keys
+## do not move its fighter; the real device comes back when the menu closes (NetSession calls this when the flag flips).
+func gate_own_reader() -> void:
+	if match_node == null or not is_instance_valid(match_node):
+		return
+	var r: Variant = match_node.readers[0]
+	if r == null or not is_instance_valid(r):
+		return
+	var rd: InputReader = r as InputReader
+	if session.input_blocked and _reader_device == "":
+		_reader_device = rd.device
+		rd.device = "none"
+	elif not session.input_blocked and _reader_device != "":
+		rd.device = _reader_device
+		_reader_device = ""
+
+
 func _physics_process(_delta: float) -> void:
 	if session == null or match_node == null or not is_instance_valid(match_node) or match_node.fighters.size() < 2:
 		return
 	_flush_events()
+	gate_own_reader()
 	var t: int = match_node.tick
 	if t == _last_sent_tick or t % NetConfig.SNAP_EVERY_TICKS != 0:
 		return

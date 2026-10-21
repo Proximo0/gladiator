@@ -16,6 +16,7 @@ signal closed(reason: String)  ## the connection is gone (left, refused, timed o
 const ROLE_HOST: String = "host"
 const ROLE_CLIENT: String = "client"
 const HOST_PEER: int = 1
+const DATA_DIR: String = "res://data/"
 
 var role: String = ""
 var local_name: String = "Gladiator"
@@ -29,6 +30,11 @@ var bw_in: NetBandwidth = NetBandwidth.new()
 var link: NetLinkSim = NetLinkSim.new()
 var host_driver: NetHostDriver = null
 var client_driver: NetClientDriver = null
+var input_blocked: bool = false:  ## the Esc menu is open over the match: this side sends and plays neutral input (MenuFlow sets it)
+	set(v):
+		input_blocked = v
+		if host_driver != null and is_instance_valid(host_driver):
+			host_driver.gate_own_reader()
 var last_start: Dictionary = {}
 var close_reason: String = ""
 
@@ -37,6 +43,7 @@ var _remote_id: int = 0
 var _last_heard: int = 0
 var _connect_started: int = 0
 var _closed: bool = false
+var _content_hash: String = ""
 
 
 func _init() -> void:
@@ -106,6 +113,21 @@ func rtt_ms() -> int:
 	return int(p.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)) if p != null else 0
 
 
+## Digest of the data JSON files and the Tuning values (see NetLobby.content_hash), computed once per session.
+func content_hash() -> String:
+	if _content_hash == "":
+		var texts: Array = []
+		var dir := DirAccess.open(DATA_DIR)
+		if dir != null:
+			var files: PackedStringArray = dir.get_files()
+			files.sort()
+			for fname: String in files:
+				if fname.get_extension() == "json":
+					texts.append(FileAccess.get_file_as_string(DATA_DIR + fname))
+		_content_hash = NetLobby.content_hash(texts, Tuning.shared().to_dict())
+	return _content_hash
+
+
 func set_local(player_name: String, loadout: Dictionary) -> void:
 	local_name = NetLobby.clean_name(player_name)
 	local_loadout = LoadoutRules.sanitize(loadout)
@@ -114,7 +136,7 @@ func set_local(player_name: String, loadout: Dictionary) -> void:
 	if role == ROLE_CLIENT:
 		send(NetLobby.loadout_msg(local_loadout), true)
 	else:
-		send(NetLobby.lobby(local_name, local_loadout, true), true)
+		send(NetLobby.lobby(local_name, local_loadout, true, "", content_hash()), true)
 
 
 ## Host: send START and build the match here too. `time_limit_s` <= 0 keeps the default.
@@ -146,6 +168,7 @@ func attach_match(m: Match) -> void:
 
 
 func detach_match() -> void:
+	input_blocked = false
 	host_driver = null
 	client_driver = null
 
@@ -185,6 +208,10 @@ func _put(bytes: PackedByteArray, reliable: bool) -> void:
 	_peer.transfer_channel = 0
 	_peer.transfer_mode = MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
 	_peer.put_packet(bytes)
+	# Send now instead of at the next poll, a tick later: saves up to a tick each way.
+	var h: ENetConnection = _peer.host
+	if h != null:
+		h.flush()
 
 
 func _physics_process(_delta: float) -> void:
@@ -237,14 +264,15 @@ func _on_control(d: Dictionary) -> void:
 		NetConfig.MSG_HELLO:
 			if role != ROLE_HOST:
 				return
-			var why: String = NetLobby.check_hello(d)
+			var why: String = NetLobby.check_hello(d, content_hash())
 			if why != "":
-				send(NetLobby.lobby(local_name, local_loadout, false, why), true)
+				send(NetLobby.lobby(local_name, local_loadout, false, why, content_hash()), true)
+				status_changed.emit("Refused a player (%s)" % why)
 				return
 			remote_name = NetLobby.clean_name(str(d.get("name", "")))
 			remote_loadout = LoadoutRules.sanitize(d.get("loadout", {}))
 			remote_joined = true
-			send(NetLobby.lobby(local_name, local_loadout, true), true)
+			send(NetLobby.lobby(local_name, local_loadout, true, "", content_hash()), true)
 			status_changed.emit("%s joined" % remote_name)
 			lobby_changed.emit()
 		NetConfig.MSG_LOADOUT:
@@ -255,7 +283,15 @@ func _on_control(d: Dictionary) -> void:
 			if role != ROLE_CLIENT:
 				return
 			if not bool(d.get("accepted", false)):
-				_fail("Host refused: %s" % str(d.get("reason", "")))
+				var why_not: String = str(d.get("reason", ""))
+				if why_not.begins_with("version mismatch"):
+					_fail(why_not)  # host and client both say it the same way
+				else:
+					_fail("Host refused: %s" % why_not)
+				return
+			var mismatch: String = NetLobby.check_peer(d, content_hash(), true)
+			if mismatch != "":
+				leave(mismatch)
 				return
 			remote_name = NetLobby.clean_name(str(d.get("name", "")))
 			remote_loadout = LoadoutRules.sanitize(d.get("loadout", {}))
@@ -273,10 +309,15 @@ func _on_control(d: Dictionary) -> void:
 					client_driver.on_over(d)
 				match_result.emit(d)
 		NetConfig.MSG_LEAVE:
-			_close("%s left" % (remote_name if remote_name != "" else "The other player"))
+			var why_left: String = str(d.get("reason", ""))
+			if why_left.begins_with("version mismatch"):
+				_close(why_left)
+			else:
+				_close("%s left" % (remote_name if remote_name != "" else "The other player"))
 
 
 func _on_peer_connected(id: int) -> void:
+	_no_throttle(id)
 	if role == ROLE_HOST:
 		if _remote_id != 0 and _remote_id != id:
 			_peer.disconnect_peer.call_deferred(id)  # one opponent only
@@ -286,8 +327,17 @@ func _on_peer_connected(id: int) -> void:
 		status_changed.emit("Player connecting")
 	elif id == HOST_PEER:
 		_last_heard = local_tick
-		send(NetLobby.hello(local_name, local_loadout), true)
+		send(NetLobby.hello(local_name, local_loadout, content_hash()), true)
 		status_changed.emit("Connected, waiting for the host")
+
+
+## ENet drops unreliable packets (snapshots, inputs) when the round trip time jumps, to ease a congested link. At
+## 20 KB/s that never helps, and a frame hitch looks the same, so the snapshot stream lost half its packets for no
+## reason: the throttle may rise again but never falls.
+func _no_throttle(id: int) -> void:
+	var p: ENetPacketPeer = _peer.get_peer(id) if _peer != null else null
+	if p != null:
+		p.throttle_configure(NetConfig.THROTTLE_INTERVAL_MS, NetConfig.THROTTLE_ACCELERATION, 0)
 
 
 func _on_peer_disconnected(id: int) -> void:

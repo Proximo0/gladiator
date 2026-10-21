@@ -1,7 +1,8 @@
 class_name NetFighterSnap
 extends RefCounted
 ## One fighter's networked state at one tick: health, state, what is cut off or knocked off, facing, the weapon hand
-## target and every rigid body (11 parts, then the fighter's weapons in creation order: fists, main, off hand).
+## target and every rigid body (11 parts, then the fighter's weapons in creation order: fists, main, off hand, then
+## the armor props knocked off so far, oldest first; `prop_ids` names each one: armor index << 5 | mesh index).
 ## Pure data plus its wire format and interpolation. The layout is in docs/online_brief.md.
 
 const PART_COUNT: int = 11
@@ -9,6 +10,8 @@ const META_BYTES: int = 31  ## everything before the bodies, the body count byte
 const BODY_BYTES: int = 16  ## pos 6 + rotation 4 + linear velocity 6
 const BLOOD_SCALE: float = 10000.0  ## litres to uint16 (0.1 ml, up to 6.5 l)
 const MAX_BODIES: int = 32
+const MAX_PROPS: int = 8  ## knocked-off armor pieces per fighter that travel (the last bodies of the list)
+const PROP_SHIFT: int = 2  ## prop count rides in bits 2-5 of the flags byte
 
 var state: int = 0  ## index into NetConfig.STATES
 var dead: bool = false
@@ -25,6 +28,7 @@ var hand_target: Vector3 = Vector3.ZERO
 var pos: PackedVector3Array = PackedVector3Array()
 var rot: Array[Quaternion] = []
 var vel: PackedVector3Array = PackedVector3Array()
+var prop_ids: PackedByteArray = PackedByteArray()  ## one per trailing body of `pos`: (armor index << 5) | mesh index
 
 
 func body_count() -> int:
@@ -32,12 +36,18 @@ func body_count() -> int:
 
 
 func byte_size() -> int:
-	return META_BYTES + BODY_BYTES * body_count()
+	return META_BYTES + BODY_BYTES * body_count() + prop_ids.size()
+
+
+## Bodies before the armor props: the parts and the weapons.
+func base_body_count() -> int:
+	return body_count() - prop_ids.size()
 
 
 func write(buf: StreamPeerBuffer) -> void:
 	buf.put_u8(clampi(state, 0, 255))
-	buf.put_u8((1 if dead else 0) | (2 if gutted else 0))
+	var np: int = mini(prop_ids.size(), MAX_PROPS)
+	buf.put_u8((1 if dead else 0) | (2 if gutted else 0) | (np << PROP_SHIFT))
 	buf.put_u16(NetQuant.to_u16(blood, BLOOD_SCALE))
 	buf.put_u16(NetQuant.to_u16(bleed_rate, BLOOD_SCALE))
 	buf.put_u8(NetQuant.frac_u8(stamina))
@@ -54,6 +64,8 @@ func write(buf: StreamPeerBuffer) -> void:
 		NetQuant.put_vec_i16(buf, pos[i], NetQuant.POS_SCALE)
 		buf.put_u32(NetQuant.quat_u32(rot[i] if i < rot.size() else Quaternion.IDENTITY))
 		NetQuant.put_vec_i16(buf, vel[i] if i < vel.size() else Vector3.ZERO, NetQuant.VEL_SCALE)
+	for i: int in range(np):
+		buf.put_u8(prop_ids[i])
 
 
 ## Reads one fighter, or null when the buffer is short or the body count is out of range.
@@ -65,6 +77,7 @@ static func read(buf: StreamPeerBuffer) -> NetFighterSnap:
 	var flags: int = buf.get_u8()
 	f.dead = (flags & 1) != 0
 	f.gutted = (flags & 2) != 0
+	var np: int = (flags >> PROP_SHIFT) & 15
 	f.blood = float(buf.get_u16()) / BLOOD_SCALE
 	f.bleed_rate = float(buf.get_u16()) / BLOOD_SCALE
 	f.stamina = NetQuant.u8_frac(buf.get_u8())
@@ -77,7 +90,7 @@ static func read(buf: StreamPeerBuffer) -> NetFighterSnap:
 	f.yaw = NetQuant.u16_yaw(buf.get_u16())
 	f.hand_target = NetQuant.get_vec_i16(buf, NetQuant.POS_SCALE)
 	var n: int = buf.get_u8()
-	if n > MAX_BODIES or buf.get_available_bytes() < n * BODY_BYTES:
+	if n > MAX_BODIES or np > n or np > MAX_PROPS or buf.get_available_bytes() < n * BODY_BYTES + np:
 		return null
 	f.pos.resize(n)
 	f.vel.resize(n)
@@ -85,11 +98,14 @@ static func read(buf: StreamPeerBuffer) -> NetFighterSnap:
 		f.pos[i] = NetQuant.get_vec_i16(buf, NetQuant.POS_SCALE)
 		f.rot.append(NetQuant.u32_quat(buf.get_u32()))
 		f.vel[i] = NetQuant.get_vec_i16(buf, NetQuant.VEL_SCALE)
+	for _i: int in range(np):
+		f.prop_ids.append(buf.get_u8())
 	return f
 
 
 ## Between a (t = 0) and b (t = 1): bodies, hand target, facing and the meters blend; discrete fields (state, masks,
-## flags) come from a until t reaches 1. Bodies only blend when both have the same count (else a's are kept).
+## flags) come from a until t reaches 1. Bodies blend over the ones both have; a body only the later snapshot has
+## (an armor prop knocked off in between) is taken from it as it is.
 static func blend(a: NetFighterSnap, b: NetFighterSnap, t: float) -> NetFighterSnap:
 	var take_b: bool = t >= 1.0
 	var o := NetFighterSnap.new()
@@ -106,19 +122,19 @@ static func blend(a: NetFighterSnap, b: NetFighterSnap, t: float) -> NetFighterS
 	o.part_hp = src.part_hp.duplicate()
 	o.yaw = lerp_angle(a.yaw, b.yaw, t)
 	o.hand_target = a.hand_target.lerp(b.hand_target, t)
-	if a.body_count() != b.body_count():
-		var keep: NetFighterSnap = src
-		o.pos = keep.pos.duplicate()
-		o.rot = keep.rot.duplicate()
-		o.vel = keep.vel.duplicate()
-		return o
-	var n: int = a.body_count()
+	var n: int = mini(a.body_count(), b.body_count())
+	var longer: NetFighterSnap = a if a.body_count() > b.body_count() else b
 	o.pos.resize(n)
 	o.vel.resize(n)
 	for i: int in range(n):
 		o.pos[i] = a.pos[i].lerp(b.pos[i], t)
 		o.rot.append(a.rot[i].slerp(b.rot[i], t))
 		o.vel[i] = a.vel[i].lerp(b.vel[i], t)
+	for i: int in range(n, longer.body_count()):
+		o.pos.append(longer.pos[i])
+		o.rot.append(longer.rot[i])
+		o.vel.append(longer.vel[i])
+	o.prop_ids = longer.prop_ids.duplicate()
 	return o
 
 

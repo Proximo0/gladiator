@@ -67,6 +67,30 @@ func run() -> Array:
 	rows.append(row("net_menu_fight", ok and weapon_ok and cd != null and cd.snapshots_received > 60,
 		"both matches built (%d ticks), client side 1 holds %s, %d snapshots shown" % [n,
 		(mc.fighters[1] as Fighter).weapon.weapon_id if weapon_ok else "?", cd.snapshots_received if cd != null else -1]))
+	# The Esc menu does not pause an online match, but this side's keys stop reaching its fighter.
+	if cd != null:
+		cd.input_source = func() -> FighterInput:
+			var f := FighterInput.new()
+			f.move_y = 1000
+			return f
+	var rd: InputReader = mh.readers[0] as InputReader
+	var dev_before: String = rd.device if rd != null else "?"
+	await step(3)
+	var moving: int = cd.local_input.move_y if cd != null else -1
+	fc.call("_pause_game")
+	fh.call("_pause_game")
+	await step(4)
+	var paused_tree: bool = host.get_tree().paused
+	var mv_blocked: int = cd.local_input.move_y
+	var dev_blocked: String = rd.device
+	var blocked_ok: bool = cn.input_blocked and hn.input_blocked and cd.local_input.move_y == 0 and rd.device == "none"
+	fc.call("_resume")
+	fh.call("_resume")
+	await step(4)
+	var back_ok: bool = not cn.input_blocked and not hn.input_blocked and cd.local_input.move_y == 1000 and rd.device == dev_before
+	rows.append(row("net_menu_esc_neutral", moving == 1000 and blocked_ok and back_ok and not paused_tree,
+		"input %d, in the menu: client move_y %d, host reader '%s' (was '%s'), tree paused=%s; after resume move_y %d, reader '%s'" % [
+		moving, mv_blocked, dev_blocked, dev_before, str(paused_tree), cd.local_input.move_y, rd.device]))
 	fc.call("_show_title")
 	n = await _wait_until(func() -> bool: return fh.get("_net") == null, 300)
 	rows.append(row("net_menu_leave", fh.get("_net") == null and int(fh.screen) == MenuFlow.Screen.RESULT and fh.current_match != null,

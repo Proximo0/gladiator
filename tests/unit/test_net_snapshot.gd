@@ -106,3 +106,35 @@ func test_extrapolate_moves_by_velocity() -> void:
 	var e: NetSnapshot = s.extrapolated(6.0)
 	assert_eq(e.tick, 16)
 	assert_near(e.fighters[0].pos[0].z, -2.0 - 1.0 * 0.1, 0.0001)
+
+
+func test_armor_props_round_trip_and_cost_one_extra_byte_each() -> void:
+	var f: NetFighterSnap = make_fighter(13, 1.0)  # 11 parts + 2 weapons
+	var plain: int = f.byte_size()
+	for k: int in range(2):
+		f.pos.append(Vector3(0.5 * k, 0.2, 1.0))
+		f.rot.append(Quaternion.IDENTITY)
+		f.vel.append(Vector3(0.0, 1.0, 0.0))
+		f.prop_ids.append((1 << 5) | k)
+	assert_eq(f.byte_size(), plain + 2 * (NetFighterSnap.BODY_BYTES + 1))
+	var buf := StreamPeerBuffer.new()
+	f.write(buf)
+	assert_eq(buf.data_array.size(), f.byte_size())
+	buf.seek(0)
+	var back: NetFighterSnap = NetFighterSnap.read(buf)
+	assert_true(back != null)
+	assert_eq(back.body_count(), 15)
+	assert_eq(back.base_body_count(), 13)
+	assert_eq(Array(back.prop_ids), [32, 33])
+	assert_true(back.gutted and not back.dead, "flags survive the prop count")
+	assert_true((back.pos[14] - Vector3(0.5, 0.2, 1.0)).length() < 0.002)
+
+
+func test_blend_keeps_a_prop_that_only_the_later_snapshot_has() -> void:
+	var a: NetFighterSnap = make_fighter(13, 1.0)
+	var b: NetFighterSnap = make_fighter(14, 1.0)
+	b.prop_ids.append(0)
+	var mid: NetFighterSnap = NetFighterSnap.blend(a, b, 0.5)
+	assert_eq(mid.body_count(), 14, "the body list does not shrink to a's: no freeze of the others")
+	assert_eq(mid.prop_ids.size(), 1)
+	assert_true(mid.pos[3].distance_to(a.pos[3].lerp(b.pos[3], 0.5)) < 0.0001)

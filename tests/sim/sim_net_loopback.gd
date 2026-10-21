@@ -16,6 +16,7 @@ const LOSS: float = 0.05
 const WALK_FROM: int = 60
 const WALK_TO: int = 240
 const CAP_TICKS: int = 1200
+const DISLODGE_TICK: int = 100
 
 var _host: NetSession
 var _client: NetSession
@@ -81,6 +82,7 @@ func _on_client_start(start: Dictionary) -> void:
 func run() -> Array:
 	var rows: Array = []
 	await sandbox()
+	rows.append(await _mismatch_row())
 	_host = NetSession.new()
 	_host.name = "HostSession"
 	world.add_child(_host)
@@ -95,7 +97,7 @@ func run() -> Array:
 	_host.set_link(lag_ticks, jitter_ticks, loss, 11)
 	_client.set_link(lag_ticks, jitter_ticks, loss, 12)
 	_host.set_local("Host", {"weapon": "gladius", "offhand": "", "armor": {}})
-	_client.set_local("Client", {"weapon": "spear", "offhand": "", "armor": {}})
+	_client.set_local("Client", {"weapon": "spear", "offhand": "", "armor": {"torso": "cuirass_iron", "head": "helm_iron"}})
 	_host.match_requested.connect(_on_host_start)
 	_client.match_requested.connect(_on_client_start)
 	var err: Error = _host.host(port, "127.0.0.1")
@@ -122,6 +124,10 @@ func run() -> Array:
 		if _host_match == null or _client_match == null:
 			continue
 		var f1: Fighter = _host_match.fighters[1]
+		if _host_match.tick == DISLODGE_TICK:
+			# Tear the client fighter's cuirass and helm off on the host (what a hard blow does).
+			f1.call("_dislodge", "cuirass_iron", "torso", Vector3(1, 0, 0))
+			f1.call("_dislodge", "helm_iron", "head", Vector3(0, 0, 1))
 		var hp: Vector3 = (f1.parts["pelvis"] as RigidBody3D).global_position
 		var applied: int = _host.host_driver.inputs.last_applied_tick
 		if applied <= WALK_FROM:
@@ -147,8 +153,9 @@ func run() -> Array:
 		"client got %d of %d snapshots, interp delay %.1f ticks (%.0f ms), extrapolated %d ticks, held %d, resyncs %d" % [
 		cd.snapshots_received, hd.snapshots_sent, cd.interp.delay, cd.interp.delay * 1000.0 / 60.0,
 		cd.interp.extrapolated_ticks, cd.interp.held_ticks, cd.interp.resyncs]))
-	rows.append(row(prefix + "_latency", null, "fake link %d+0..%d ticks each way, %.0f%% loss; input to screen %.1f ticks (%.0f ms); cursor drawn from local aim the same tick" % [
-		lag_ticks, jitter_ticks, loss * 100.0, cd.input_to_screen_ticks(), cd.input_to_screen_ticks() * 1000.0 / 60.0]))
+	rows.append(row(prefix + "_latency", null, "fake link %d+0..%d ticks each way, %.0f%% loss; input to screen %.1f ticks (%.0f ms; %.1f ticks counting the older snapshot's ack, as v1 did); cursor drawn from local aim the same tick" % [
+		lag_ticks, jitter_ticks, loss * 100.0, cd.input_to_screen_ticks(), cd.input_to_screen_ticks() * 1000.0 / 60.0,
+		cd.input_to_screen_older_ticks()]))
 	var ib: NetInputBuffer = hd.inputs
 	var moved: float = Vector2(_walk_end.x - _walk_start.x, _walk_end.z - _walk_start.z).length()
 	rows.append(row(prefix + "_inputs_reach_host", ib.received >= int(float(_sent_inputs) * 0.9) and moved > 1.0,
@@ -185,8 +192,70 @@ func run() -> Array:
 	rows.append(row(prefix + "_events_arrive", hd.events_at_over >= 0 and played >= hd.events_at_over,
 		"host sent %d hit/gore events by the end of the match (%d in all), client played %d; %d ticks, %s" % [
 		hd.events_at_over, hd.events_sent, played, ticks, _client.stats_line()]))
+	rows.append(_armor_props_row())
+	rows.append(await _end_pause_row())
 	await _teardown()
 	return rows
+
+
+## A client whose game data differs is refused, and both sides say "version mismatch".
+func _mismatch_row() -> Array:
+	var h := NetSession.new()
+	h.name = "MismatchHost"
+	world.add_child(h)
+	var c := NetSession.new()
+	c.name = "MismatchClient"
+	world.add_child(c)
+	c.set("_content_hash", "deadbeefdeadbeef")
+	var host_said: Array = []
+	h.status_changed.connect(func(t: String) -> void: host_said.append(t))
+	var err: Error = h.host(port + 20, "127.0.0.1")
+	if err == OK:
+		err = c.join("127.0.0.1", port + 20)
+	var n: int = 0
+	while err == OK and n < 300 and c.close_reason == "":
+		await host.get_tree().physics_frame
+		n += 1
+	var host_line: String = ""
+	for t: String in host_said:
+		if t.contains("version mismatch"):
+			host_line = t
+	var ok: bool = c.close_reason.begins_with("version mismatch") and host_line != "" and not h.remote_joined
+	var line: String = "client: \"%s\"; host: \"%s\"" % [c.close_reason, host_line]
+	c.queue_free()
+	h.queue_free()
+	await host.get_tree().physics_frame
+	return row(prefix + "_version_mismatch", ok, line)
+
+
+## Knocked-off armor flies as props on the client too: same count, same place (both have come to rest by now).
+func _armor_props_row() -> Array:
+	var hp: Array[RigidBody3D] = NetWorld.armor_props(_host_match.fighters[1] as Fighter)
+	var cp: Array[RigidBody3D] = NetWorld.armor_props(_client_match.fighters[1] as Fighter)
+	var worst: float = 0.0
+	for i: int in range(mini(hp.size(), cp.size())):
+		worst = maxf(worst, hp[i].global_position.distance_to(cp[i].global_position))
+	var visible_ok: bool = true
+	for c: RigidBody3D in cp:
+		for ch: Node in c.get_children():
+			if ch is MeshInstance3D:
+				visible_ok = visible_ok and (ch as MeshInstance3D).is_visible_in_tree()
+	return row(prefix + "_armor_props", hp.size() == 2 and cp.size() == hp.size() and worst < 0.15 and visible_ok,
+		"host props %d, client props %d, worst distance %.3f m, visible %s" % [hp.size(), cp.size(), worst, str(visible_ok)])
+
+
+## Hits in the host's end pause are not sent: after the result the host sends no more events and the client plays none.
+func _end_pause_row() -> Array:
+	var hd: NetHostDriver = _host.host_driver
+	var cd: NetClientDriver = _client.client_driver
+	var sent_at_over: int = hd.events_sent
+	var played_at_over: int = cd.events_played
+	for _i: int in range(120):
+		await host.get_tree().physics_frame
+	return row(prefix + "_no_events_after_result", hd.events_sent == sent_at_over and cd.events_played == played_at_over \
+		and hd.events_sent == hd.events_at_over,
+		"events sent %d -> %d, played %d -> %d over the 120 ticks after the result (sent at over: %d)" % [
+		sent_at_over, hd.events_sent, played_at_over, cd.events_played, hd.events_at_over])
 
 
 ## The client's held snapshot with exactly `tick` (re-sampled at that tick), or null.

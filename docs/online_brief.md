@@ -25,8 +25,8 @@ transfer mode. Max one client per host.
 
 | Type | Dir | Mode | Rate | Payload |
 | --- | --- | --- | --- | --- |
-| HELLO (1) | C→H | reliable | once | `var_to_bytes({v, name, loadout})` |
-| LOBBY (2) | H→C | reliable | on change | `{v, name, loadout, accepted, reason}` |
+| HELLO (1) | C→H | reliable | once | `var_to_bytes({v, h, name, loadout})` |
+| LOBBY (2) | H→C | reliable | on change | `{v, h, name, loadout, accepted, reason}` |
 | LOADOUT (9) | C→H | reliable | on change | `{loadout}` |
 | START (3) | H→C | reliable | per match | `{seed, loadouts[2], time_limit_s, names[2]}` |
 | INPUT (4) | C→H | unreliable ordered | 60 Hz | newest tick u32, count u8, then count × (move_x, move_y, aim_x, aim_y i16, buttons u8), newest first |
@@ -35,13 +35,21 @@ transfer mode. Max one client per host.
 | OVER (7) | H→C | reliable | once | `{winner, reason, ticks, seed}` |
 | LEAVE (8) | both | reliable | once | `{reason}` |
 
-Lobby messages are `var_to_bytes` dictionaries (objects refused by `bytes_to_var`, 4 KB cap). The protocol version
-is checked on HELLO; a mismatch is refused with a reason.
+Lobby messages are `var_to_bytes` dictionaries (objects refused by `bytes_to_var`, 4 KB cap). `v` is the protocol version and `h` a
+content hash (`NetLobby.content_hash`: SHA-256, 16 hex chars, of every `res://data/*.json` re-written with sorted keys
+so line endings do not matter, plus all `Tuning` values). The host checks both on HELLO and refuses a mismatch with
+"version mismatch: different game data (client build X, host build Y)" (or "different protocol"); the client shows
+that text as the reason the connection closed and the host shows "Refused a player (...)" in its lobby. The client
+checks the host's `h` on an accepted LOBBY too and leaves with the same text. Live-tuned Tuning values count, so two
+builds with different dev tweaks refuse each other on purpose.
 
 **INPUT** carries the last `INPUT_REDUNDANCY` = 4 ticks, so any packet that arrives fills the gap of up to 3 lost
-before it. The host's `NetInputBuffer` plays the client's ticks in order, `INPUT_BUFFER_TARGET` = 2 ticks behind the
+before it. The host's `NetInputBuffer` plays the client's ticks in order, `INPUT_BUFFER_TARGET` = 1 tick behind the
 newest received; a missing tick repeats the last input (and is skipped once newer ticks are in), a buffer deeper
-than `INPUT_BUFFER_MAX` = 10 skips back to the target (client clock running fast, or a burst).
+than `INPUT_BUFFER_MAX` = 10 skips back to the target (client clock running fast, or a burst). It adapts by itself:
+each underrun leaves the stream one tick further ahead (so jitter grows the buffer), and every `SHRINK_WINDOW` = 90
+pops in which it never came within `target` of empty, it drops one tick again. A clean link sits at 1 tick; the
+redundancy (4 ticks per packet) means a 0-2 tick jittery link with 5% loss hardly ever underruns at that depth.
 
 **SNAP** (`NetSnapshot`): header 12 bytes (type, host tick u32, last applied client input tick u32, flags, engine
 time scale u8, fighter count), then per fighter (`NetFighterSnap`) 31 bytes of meta and 16 bytes per body:
@@ -50,7 +58,12 @@ time scale u8, fighter count), then per fighter (`NetFighterSnap`) 31 bytes of m
   mask u16 (FighterRig order), armor-worn mask u8 (the loadout's armor order), 11 × part hp fraction u8, facing yaw
   u16, hand target 3 × i16.
 - bodies: the 11 parts in `FighterRig.PARTS` order, then the fighter's weapons in creation order (right fist, left
-  fist, main weapon, off hand; dropped weapons stay in the list, so props are covered). Each body: position 3 × i16
+  fist, main weapon, off hand; dropped weapons stay in the list, so props are covered), then the **armor props**
+  knocked off so far (oldest first, max 8; the count rides in bits 2-5 of the flags byte, and one id byte per prop
+  follows the bodies: armor index << 5 | index of the armor mesh it was torn from, found by matching the prop's
+  material). A prop costs 17 bytes, nothing when none are off. The client makes each one a frozen collision-free
+  RigidBody3D with a copy of that mesh the first time a snapshot lists it, posed like a weapon. Blending keeps a
+  body only the later snapshot has, so a new prop does not freeze the others. Each body: position 3 × i16
   at 1 mm (±32.7 m), rotation 32-bit smallest-three (≤0.25° error), linear velocity 3 × i16 at 1 cm/s.
   Angular velocity is not sent (the client never integrates rotation).
 
@@ -76,20 +89,34 @@ Overhead is counted at 42 bytes per packet (IPv4 20 + UDP 8 + ENet ≈ 14).
 | INPUT (4 ticks) | 6 + 4 × 9 = 42 | 60 Hz | 5.0 KB/s |
 | **Client → host total** | | | **~5 KB/s** |
 
-Measured (sims below): host→client 17.1 KB/s average, 18.4 KB/s peak 1 s window; client→host 5.0 KB/s.
+Measured (sims below): host→client 17-18 KB/s average, 19 KB/s peak 1 s window (two armor props off included); client→host 5.0 KB/s.
 Headroom: snapshots could go to 40 Hz (`SNAP_EVERY_TICKS` can't express that at 60 Hz; 60 Hz would be 34 KB/s), or
 the budget can be cut in half with delta compression against the last acked snapshot if mobile data matters.
 
 ## Latency handling
 
 - Client render clock (`NetInterpBuffer`) runs in host ticks, `delay` behind the host's newest tick:
-  one snapshot interval + 1 + 2 × measured arrival jitter, clamped 3..24 ticks (50..400 ms). It eases at up to
+  one snapshot interval + 0.25 + 1 × measured arrival jitter, clamped 2.25..24 ticks (38..400 ms). The offset already
+  follows the late edge of the stream, so the jitter term is only a margin; 0.5 × made the clock outrun the stream on
+  the lossy link (a third of the snapshots arrived "too old"), so 1 × is the floor `test_net_interp_buffer` guards. It eases at up to
   ±10% speed toward its target, jumps on a 30-tick error, never runs backwards. The host-minus-local offset tracks
   the late edge of the stream (falls fast on a late packet, rises slowly).
+- Four snapshots in a row arriving behind the render clock (the clock ran ahead of the stream: the host paused, or
+  the offset was wrong) restart the clock from the stream instead of dropping them for good.
+- ENet's packet throttle is switched off for unreliable traffic (`throttle_configure(..., deceleration 0)` on connect):
+  a frame hitch looked like congestion and ENet then dropped half of the snapshots on a clean link.
 - Past the newest snapshot it extrapolates by velocity for up to 6 ticks (100 ms), then holds.
-- Input to screen (client presses, sees the host's answer): round trip + input buffer (2 ticks) + half a snapshot
-  interval + interpolation delay. Measured 8.5 ticks (142 ms) on a clean localhost, 18.6 ticks (310 ms) with a
-  fake 50-83 ms one-way link and 5% loss. The cursor is 0 ticks.
+- Input to screen (client presses, sees the host's answer): round trip + input buffer (1 tick) + half a snapshot
+  interval + interpolation delay. `NetClientDriver` measures it as the newest input index read minus the input
+  index the shown (blended) pose had applied. Measured: clean localhost 4.0-4.5 ticks (67-75 ms; was 8.5 / 142 ms),
+  50 ms + 0-33 ms jitter + 5% loss each way 14.0 ticks (233 ms; was 18.6 / 310 ms), of which the link's own round trip
+  is 133 ms. The first version's meter read the older snapshot's ack and counted one tick more; read that way the
+  same builds are 6.5 ticks (108 ms) and 16.3 (272 ms). `NetSession` flushes ENet right after each send instead of at
+  the next poll. The cursor is 0 ticks.
+- While the Esc menu is open (`NetSession.input_blocked`, set by MenuFlow) the client sends neutral input and the
+  host's own reader is switched to a device that does not exist; the fight itself goes on.
+- After the host has sent OVER it sends no more events (hits in the end pause are dropped), and the client drops any
+  event stamped after the result's last tick or arriving after the match ended.
 - `--net-lag=<ms> --net-jitter=<ms> --net-loss=<0..1>` fake a bad link on what this machine sends (NetLinkSim).
 - 5 s without a packet during a match, or 10 s without reaching the host, closes the session with a reason.
 
@@ -111,7 +138,7 @@ poses it), `OnlineScreen` (lobby UI).
   or Join by `ip[:port]`, your loadout with the usual pickers, the opponent's shown). The host's FIGHT sends START;
   both `MenuFlow`s build the match with `NetLobby.match_config(start, true)` and call `NetSession.attach_match()`.
   Result screen: host gets Rematch / Back to lobby / Leave, the client Back to lobby / Leave. Esc in an online match
-  opens a menu without pausing the tree. A dropped connection shows "Connection closed" with the reason.
+  opens a menu without pausing the tree, with this side's input neutral (and the result shown on Resume if the fight ended behind it). A dropped connection shows "Connection closed" with the reason.
 - **Match** (unchanged): both sides set it up as `player_vs_cpu`. Host: `brains[1]` is replaced by a
   `NetRemoteBrain`. Client: `Match.set_physics_process(false)`; its `readers[0]` (device "auto") is the local
   input; the driver feeds `presenter.tick()`, sets `tick`, `over`, `result` and emits `match_over`.

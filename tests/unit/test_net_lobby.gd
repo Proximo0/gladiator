@@ -44,3 +44,36 @@ func test_over_drops_stats() -> void:
 	assert_eq(int(d["winner"]), 1)
 	assert_eq(d["reason"], "ko")
 	assert_false(d.has("stats"))
+
+
+func test_content_hash_ignores_formatting_and_order_but_not_values() -> void:
+	var a: String = NetLobby.content_hash(['{"a": 1, "b": [1, 2]}', '{"x": 0.5}'], {"k": 1.0, "j": 2.0})
+	assert_eq(a.length(), NetLobby.CONTENT_HASH_CHARS)
+	assert_eq(NetLobby.content_hash(['{"x":0.5}\r\n', '{\n\t"b": [1,2], "a": 1}'], {"j": 2.0, "k": 1.0}), a, "spacing, key order, file order")
+	assert_true(NetLobby.content_hash(['{"a": 1, "b": [1, 3]}', '{"x": 0.5}'], {"k": 1.0, "j": 2.0}) != a, "data value")
+	assert_true(NetLobby.content_hash(['{"a": 1, "b": [1, 2]}', '{"x": 0.5}'], {"k": 1.0, "j": 2.5}) != a, "tuning value")
+	assert_true(NetLobby.content_hash(['{"a": 1, "b": [1, 2]}'], {"k": 1.0, "j": 2.0}) != a, "missing file")
+
+
+func test_content_mismatch_refused_with_clear_message_on_both_sides() -> void:
+	var mine: String = "aaaaaaaaaaaaaaaa"
+	var theirs: String = "bbbbbbbbbbbbbbbb"
+	var d: Dictionary = NetLobby.decode(NetLobby.hello("x", {"weapon": "spear"}, theirs))
+	assert_eq(NetLobby.check_hello(d, theirs), "")
+	var why: String = NetLobby.check_hello(d, mine)
+	assert_true(why.begins_with("version mismatch"), why)
+	assert_true(why.contains("bbbbbbbb") and why.contains("aaaaaaaa"), why)
+	# The host's refusal reaches the client as the same text.
+	var l: Dictionary = NetLobby.decode(NetLobby.lobby("h", {}, false, why, mine))
+	assert_false(bool(l["accepted"]))
+	assert_eq(str(l["reason"]), why)
+	# A host that accepted but runs other data is caught by the client too.
+	var accepted: Dictionary = NetLobby.decode(NetLobby.lobby("h", {}, true, "", theirs))
+	assert_true(NetLobby.check_peer(accepted, mine, true).begins_with("version mismatch: different game data"))
+	assert_eq(NetLobby.check_peer(accepted, theirs, true), "")
+
+
+func test_hello_without_a_hash_is_refused_when_checking() -> void:
+	var d: Dictionary = NetLobby.decode(NetLobby.hello("x", {}))
+	assert_true(NetLobby.check_hello(d, "aaaaaaaaaaaaaaaa").begins_with("version mismatch"))
+	assert_eq(NetLobby.check_hello(d), "", "no own hash: only the protocol version is checked")

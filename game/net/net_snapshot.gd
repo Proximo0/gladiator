@@ -8,6 +8,7 @@ const HEADER_BYTES: int = 12  ## type 1, tick 4, input ack 4, flags 1, time scal
 
 var tick: int = 0
 var ack_input_tick: int = -1
+var ack_older: int = -1  ## blend() only: the older snapshot's ack (what the first version of the latency meter counted)
 var over: bool = false
 var time_scale: float = 1.0
 var fighters: Array[NetFighterSnap] = []
@@ -54,6 +55,10 @@ static func blend(a: NetSnapshot, b: NetSnapshot, t: float) -> NetSnapshot:
 	var src: NetSnapshot = b if t >= 1.0 else a
 	o.tick = a.tick + floori(float(b.tick - a.tick) * t)
 	o.ack_input_tick = src.ack_input_tick
+	o.ack_older = a.ack_input_tick
+	if a.ack_input_tick >= 0 and b.ack_input_tick >= 0:
+		# The pose shows this much of the client's input stream: blend it like the bodies.
+		o.ack_input_tick = a.ack_input_tick + roundi(float(b.ack_input_tick - a.ack_input_tick) * t)
 	o.over = src.over
 	o.time_scale = src.time_scale
 	for i: int in range(mini(a.fighters.size(), b.fighters.size())):

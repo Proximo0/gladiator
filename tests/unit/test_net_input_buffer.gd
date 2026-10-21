@@ -74,3 +74,37 @@ func test_lossy_stream_plays_every_tick_with_redundancy() -> void:
 		distinct[x] = true
 	assert_true(distinct.size() > 590, "played %d distinct ticks" % distinct.size())
 	assert_eq(b.late, 0)
+
+
+func test_default_target_is_one_tick_on_a_clean_stream() -> void:
+	var b := NetInputBuffer.new()
+	assert_eq(b.target, 1)
+	for t: int in range(400):
+		b.push(t, _inp(t % 1000))
+		b.pop()
+	assert_eq(b.underruns, 0)
+	assert_eq(b.skipped, 0)
+	assert_true(b.depth() <= 2, "depth %d" % b.depth())
+
+
+func test_jitter_grows_the_buffer_by_itself_and_calm_gives_it_back() -> void:
+	var b := NetInputBuffer.new()
+	# A stall (nothing arrives for 3 ticks, then the burst): underruns, and the buffer ends up deeper.
+	for t: int in range(30):
+		b.push(t, _inp(t))
+		b.pop()
+	var next_tick: int = 30
+	for _i: int in range(3):
+		b.pop()
+	for _i: int in range(3):
+		b.push(next_tick, _inp(next_tick))
+		next_tick += 1
+	assert_true(b.underruns >= 1)
+	var deep: int = b.depth()
+	# Clean again for a few windows: the extra depth is given back, one tick per window, down to target.
+	for _i: int in range(NetInputBuffer.SHRINK_WINDOW * 4):
+		b.push(next_tick, _inp(next_tick % 1000))
+		next_tick += 1
+		b.pop()
+	assert_true(b.depth() < deep or deep <= b.target + 1, "depth %d -> %d" % [deep, b.depth()])
+	assert_true(b.depth() <= b.target + 1, "back to about the target: %d" % b.depth())

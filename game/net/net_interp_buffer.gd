@@ -2,7 +2,7 @@ class_name NetInterpBuffer
 extends RefCounted
 ## Client side of the snapshot stream: keeps recent snapshots and a render clock in host ticks that runs a little
 ## behind the host, so there is (almost) always a snapshot on each side of it to blend between. The delay adapts:
-## one snapshot interval plus twice the measured arrival jitter, clamped to INTERP_MIN_DELAY..INTERP_MAX_DELAY.
+## one snapshot interval plus the measured arrival jitter, clamped to INTERP_MIN_DELAY..INTERP_MAX_DELAY.
 ## The clock eases toward its target at up to +-10% speed and jumps when it is INTERP_RESYNC ticks off. When the
 ## stream stops it extrapolates by velocity for up to MAX_EXTRAPOLATE ticks, then holds. Hit and gore events wait
 ## here too and come out when the render clock reaches their tick, in step with the bodies.
@@ -14,6 +14,9 @@ const OFFSET_FALL: float = 0.3  ## ... and falling (a packet came late)
 const JITTER_EASE: float = 0.1
 const RATE_GAIN: float = 0.05  ## clock speed change per tick of error
 const RATE_LIMIT: float = 0.1
+const STALE_RESTART: int = 4  ## snapshots in a row that arrive behind the render clock before it starts over
+const JITTER_MARGIN: float = 1.0  ## delay = one snapshot interval + BASE_MARGIN + this many mean arrival deviations (the offset already sits at the late edge)
+const BASE_MARGIN: float = 0.25
 
 var interval: float = float(NetConfig.SNAP_EVERY_TICKS)
 var render_tick: float = -1.0
@@ -30,11 +33,12 @@ var _events: Array = []  ## [[tick, side, kind, ev], ...] in arrival order
 var _offset: float = 0.0
 var _have_offset: bool = false
 var _started: bool = false
+var _stale_run: int = 0
 
 
 func _init(p_interval: float = float(NetConfig.SNAP_EVERY_TICKS)) -> void:
 	interval = maxf(p_interval, 1.0)
-	delay = maxf(NetConfig.INTERP_MIN_DELAY, interval + 1.0)
+	delay = maxf(NetConfig.INTERP_MIN_DELAY, interval + BASE_MARGIN)
 
 
 func newest_tick() -> int:
@@ -48,9 +52,21 @@ func size() -> int:
 func push(s: NetSnapshot, local_tick: int) -> void:
 	if s == null:
 		return
-	if (not _snaps.is_empty() and s.tick <= newest_tick()) or (_started and float(s.tick) < render_tick - interval):
+	if not _snaps.is_empty() and s.tick <= newest_tick():
 		dropped_old += 1
 		return
+	if _started and float(s.tick) < render_tick - interval:
+		# Behind the clock. A packet or two is just late; a run of them means the clock ran ahead of the stream (the
+		# host paused, or the offset was wrong), so start the clock over from the stream.
+		dropped_old += 1
+		_stale_run += 1
+		if _stale_run < STALE_RESTART:
+			return
+		resyncs += 1
+		_snaps.clear()
+		_have_offset = false
+		_started = false
+	_stale_run = 0
 	received += 1
 	_snaps.append(s)
 	while _snaps.size() > CAPACITY:
@@ -64,7 +80,7 @@ func push(s: NetSnapshot, local_tick: int) -> void:
 		# stream; the jitter around it sets how far behind the clock runs.
 		jitter = lerpf(jitter, absf(off - _offset), JITTER_EASE)
 		_offset = lerpf(_offset, off, OFFSET_FALL if off < _offset else OFFSET_EASE)
-	delay = clampf(interval + 1.0 + 2.0 * jitter, maxf(NetConfig.INTERP_MIN_DELAY, interval + 1.0), NetConfig.INTERP_MAX_DELAY)
+	delay = clampf(interval + BASE_MARGIN + JITTER_MARGIN * jitter, maxf(NetConfig.INTERP_MIN_DELAY, interval + BASE_MARGIN), NetConfig.INTERP_MAX_DELAY)
 
 
 func push_event(tick: int, side: int, kind: String, ev: Dictionary) -> void:

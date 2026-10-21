@@ -27,6 +27,7 @@ var result: Dictionary = {}
 var local_input: FighterInput = FighterInput.new()
 var lag_sum: int = 0  ## sum over shown ticks of (local input tick - input tick the shown snapshot had applied)
 var lag_count: int = 0
+var lag_sum_older: int = 0  ## same, counting the older snapshot's ack (the meter before the pose's ack was blended)
 
 var _armor: Array = [[], []]
 var _cursor_mesh: MeshInstance3D = null
@@ -83,6 +84,10 @@ func input_to_screen_ticks() -> float:
 	return float(lag_sum) / float(maxi(lag_count, 1))
 
 
+func input_to_screen_older_ticks() -> float:
+	return float(lag_sum_older) / float(maxi(lag_count, 1))
+
+
 func on_snapshot(bytes: PackedByteArray) -> void:
 	var s: NetSnapshot = NetSnapshot.decode(bytes)
 	if s == null:
@@ -92,6 +97,8 @@ func on_snapshot(bytes: PackedByteArray) -> void:
 
 
 func on_events(bytes: PackedByteArray) -> void:
+	if match_node != null and match_node.over:
+		return  # after the result: late events are dropped
 	for r: Array in NetEvents.decode(bytes):
 		interp.push_event(int(r[0]), int(r[1]), str(r[2]), r[3] as Dictionary)
 
@@ -111,10 +118,12 @@ func _physics_process(delta: float) -> void:
 		if shown != null:
 			_show(shown, delta)
 			if shown.ack_input_tick >= 0:
-				lag_sum += _input_tick - shown.ack_input_tick
+				lag_sum += (_input_tick - 1) - shown.ack_input_tick
+				lag_sum_older += (_input_tick - 1) - (shown.ack_older if shown.ack_older >= 0 else shown.ack_input_tick)
 				lag_count += 1
 	for e: Array in interp.take_due_events():
-		_play_event(e)
+		if not match_node.over:
+			_play_event(e)
 	if not result.is_empty() and not match_node.over:
 		# End when the picture reaches the host's last tick (or a moment later if snapshots stopped).
 		_over_wait += 1
@@ -123,7 +132,12 @@ func _physics_process(delta: float) -> void:
 
 
 func _send_input() -> void:
-	if input_source.is_valid():
+	if session != null and session.input_blocked:
+		local_input = FighterInput.new()  # the Esc menu is open: nothing from the keys reaches the fight
+		var rd: Variant = match_node.readers[0]
+		if rd != null and is_instance_valid(rd):
+			(rd as InputReader).read()  # keeps its mouse delta from piling up behind the menu
+	elif input_source.is_valid():
 		local_input = input_source.call() as FighterInput
 	else:
 		var r: Variant = match_node.readers[0]
@@ -181,8 +195,10 @@ func _play_event(e: Array) -> void:
 
 ## The host's result: play what is left of the events, then end the match like an offline one.
 func _finish() -> void:
+	var last_tick: int = int(result.get("ticks", 0))
 	for e: Array in interp.take_all_events():
-		_play_event(e)
+		if int(e[0]) <= last_tick:  # anything stamped after the host's last tick belongs to the end pause: dropped
+			_play_event(e)
 	match_node.over = true
 	var full: Dictionary = result.duplicate()
 	full["loadouts"] = (match_node.config.get("loadouts", []) as Array).duplicate(true)

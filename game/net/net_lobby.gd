@@ -6,6 +6,7 @@ extends RefCounted
 
 const MAX_NAME: int = 24
 const MAX_BYTES: int = 4096
+const CONTENT_HASH_CHARS: int = 16
 
 
 static func encode(msg_type: int, body: Dictionary) -> PackedByteArray:
@@ -35,8 +36,28 @@ static func clean_name(n: String) -> String:
 	return s if s != "" else "Gladiator"
 
 
-static func hello(player_name: String, loadout: Dictionary) -> PackedByteArray:
-	return encode(NetConfig.MSG_HELLO, {"v": NetConfig.PROTOCOL_VERSION, "name": clean_name(player_name),
+## Short hex digest of the game content both sides must share: the data JSON files (`json_texts`, any order; parsed and
+## re-written with sorted keys so line endings and spacing do not matter) and the Tuning values. Different digest =
+## different weapons, armor or numbers = the host's picture of the fight would not match what the client builds.
+static func content_hash(json_texts: Array, tuning: Dictionary) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	for t: Variant in json_texts:
+		var parsed: Variant = JSON.parse_string(str(t))
+		parts.append(JSON.stringify(parsed, "", true) if parsed != null else str(t).strip_edges())
+	parts.sort()
+	var keys: Array = tuning.keys()
+	keys.sort()
+	var tp: PackedStringArray = PackedStringArray()
+	for k: Variant in keys:
+		tp.append("%s=%.5f" % [str(k), float(tuning[k])])
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	ctx.update(("\n".join(parts) + "\n#tuning\n" + "\n".join(tp)).to_utf8_buffer())
+	return ctx.finish().hex_encode().left(CONTENT_HASH_CHARS)
+
+
+static func hello(player_name: String, loadout: Dictionary, content: String = "") -> PackedByteArray:
+	return encode(NetConfig.MSG_HELLO, {"v": NetConfig.PROTOCOL_VERSION, "h": content, "name": clean_name(player_name),
 		"loadout": LoadoutRules.sanitize(loadout)})
 
 
@@ -45,17 +66,29 @@ static func loadout_msg(loadout: Dictionary) -> PackedByteArray:
 
 
 ## The host's answer to a HELLO: accepted, or refused with a reason.
-static func lobby(host_name: String, host_loadout: Dictionary, accepted: bool, reason: String = "") -> PackedByteArray:
-	return encode(NetConfig.MSG_LOBBY, {"v": NetConfig.PROTOCOL_VERSION, "name": clean_name(host_name),
+static func lobby(host_name: String, host_loadout: Dictionary, accepted: bool, reason: String = "", content: String = "") -> PackedByteArray:
+	return encode(NetConfig.MSG_LOBBY, {"v": NetConfig.PROTOCOL_VERSION, "h": content, "name": clean_name(host_name),
 		"loadout": LoadoutRules.sanitize(host_loadout), "accepted": accepted, "reason": reason})
 
 
-## "" when a HELLO is acceptable, else why not.
-static func check_hello(d: Dictionary) -> String:
+## "" when a HELLO is acceptable, else why not. `own_hash` is this build's content_hash ("" skips that check).
+static func check_hello(d: Dictionary, own_hash: String = "") -> String:
 	if int(d.get("_type", 0)) != NetConfig.MSG_HELLO:
 		return "not a hello"
-	if int(d.get("v", -1)) != NetConfig.PROTOCOL_VERSION:
-		return "version mismatch (host %d, client %d)" % [NetConfig.PROTOCOL_VERSION, int(d.get("v", -1))]
+	return check_peer(d, own_hash, false)
+
+
+## "" when the other side's HELLO or LOBBY (`d`) has our protocol version and content digest, else a "version mismatch"
+## line naming the difference. `from_host`: d came from the host (so "yours" is the client).
+static func check_peer(d: Dictionary, own_hash: String, from_host: bool) -> String:
+	var theirs: int = int(d.get("v", -1))
+	if theirs != NetConfig.PROTOCOL_VERSION:
+		return "version mismatch: different protocol (%s %d, %s %d)" % [
+			"host" if from_host else "client", theirs, "client" if from_host else "host", NetConfig.PROTOCOL_VERSION]
+	if own_hash != "" and str(d.get("h", "")) != own_hash:
+		return "version mismatch: different game data (%s build %s, %s build %s)" % [
+			"host" if from_host else "client", str(d.get("h", "")).left(8) if str(d.get("h", "")) != "" else "unknown",
+			"client" if from_host else "host", own_hash.left(8)]
 	return ""
 
 
