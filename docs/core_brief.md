@@ -181,3 +181,18 @@ material (the arena builds only the flat collider at y = 0 and calls `SandSurfac
 - DamageModel input gains the optional key `blood_frac` (0..1, default 1, from `health.blood_frac()`). Output gains `finisher` (String:
   "", "run_through", "gut", "behead", "skull_crush"). `FighterHealth.apply` emits a gore event with that kind and sets
   `dead`. Presentation (slow motion, camera, crowd roar, HUD announce) keys on `finisher != ""`.
+
+## Sound (Curtis, 2026-10-21; music later)
+`class_name SfxDirector extends Node` (`game/audio/`, owner: audio worker), sounds in `assets/audio/` (CC0 or
+otherwise free-for-commercial-use only, every file credited in `docs/audio_credits.md`).
+- `func track(f: Fighter) -> void` listens to `hit`, `gore`, `died` and polls `debug_frame()` for swing whooshes
+  (pitch and volume from `tip_speed`), footsteps and body falls in sand, and armor rattle.
+- Impacts by material pair: steel on steel (clang, ring), steel on wood/shield (thunk), wood/aluminium bat on body
+  (crack, thud; the bat rings "tink" when aluminium), blade into flesh (wet cut), pierce, bone crack, armor (iron
+  clank, mail jingle, leather slap), helmet knocked off (clang plus tumble), dropped weapon in sand.
+- Gore: sever, behead, gut and run-through stingers; arterial spurt hiss; blood spatter on sand.
+- Voices: effort grunts, pain cries scaled by damage, death gurgle (non-verbal only).
+- Crowd: a looping arena ambience that swells with action; reactions (gasp, cheer, roar, boo) keyed on hit size,
+  disarm, armor knocked off, KO, and a huge roar plus chant on a finisher. `func crowd_excitement() -> float`.
+- Spatial 3D players (`AudioStreamPlayer3D`), pooled, random pitch/variant per play, a bus layout of Master > SFX,
+  Crowd, Voice (Music reserved).
