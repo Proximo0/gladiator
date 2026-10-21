@@ -159,3 +159,14 @@ material (the arena builds only the flat collider at y = 0 and calls `SandSurfac
   own body is ON for parts other than the holding hand and forearm, and it goes through the same DamageModel.
 - There is no health bar. The HUD shows a blood meter per fighter (litres left out of 5, draining live with the
   bleed rate, pulsing faster as it drops), plus stamina. Death and KO come from the health model, not a bar.
+
+## Disarms and knocked-off armor (Curtis, 2026-10-21)
+- A weapon can be knocked out of a hand: when a hit lands on the held weapon (weapon-on-weapon or shield) or on the
+  holding forearm, compare the impulse at the grip with grip strength (arm hp, stamina, two hands on it). Above it the
+  hand lets go and the weapon flies as a free RigidBody3D prop. Anyone can pick up a prop on the ground with GRAB
+  (hand near the handle). Fists are always available.
+- Armor pieces are real objects: each worn piece has a strap integrity (from its durability and wear). A strong hit
+  on it, especially blunt or upward, can tear it off: the piece detaches as a free prop (a helmet flies and rolls in
+  the sand), and the part is unarmored from then on. Props can be picked up but not re-equipped in v1.
+- DamageModel output gains `dislodge` (bool, the armor piece hit comes off) and `disarm_impulse` (N·s at the grip,
+  the fighter decides with its grip strength). New keys only; nothing existing changes.
