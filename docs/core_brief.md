@@ -170,3 +170,14 @@ material (the arena builds only the flat collider at y = 0 and calls `SandSurfac
   the sand), and the part is unarmored from then on. Props can be picked up but not re-equipped in v1.
 - DamageModel output gains `dislodge` (bool, the armor piece hit comes off) and `disarm_impulse` (N·s at the grip,
   the fighter decides with its grip strength). New keys only; nothing existing changes.
+
+## Finishing blows (Curtis, 2026-10-21)
+- When the target's blood meter is low (`blood / 5.0` under `Tuning.finisher_blood_frac`, default 0.4), a good enough
+  hit becomes a killing blow chosen by weapon and contact: a thrust with a point to the torso or pelvis runs the target
+  through (the weapon stays lodged, impaled), a strong edged cut across the torso guts them, a strong edged hit to the
+  head or neck beheads, and a heavy blunt hit to the head crushes the skull. Any of these kills.
+- The lower the blood, the less force a finisher needs (scaled from the normal sever/gut thresholds down to about a
+  third near `blood_death`).
+- DamageModel input gains the optional key `blood_frac` (0..1, default 1). Output gains `finisher` (String:
+  "", "run_through", "gut", "behead", "skull_crush"). `FighterHealth.apply` emits a gore event with that kind and sets
+  `dead`. Presentation (slow motion, camera, crowd roar, HUD announce) keys on `finisher != ""`.
