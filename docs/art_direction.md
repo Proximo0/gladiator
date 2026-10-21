@@ -1,6 +1,6 @@
 # Art direction: Roman (Curtis, 2026-10-21)
 
-Sandblood looks like a provincial Roman amphitheatre in the 1st to 2nd century AD, grounded and gritty rather than
+The Sandblood setting (arena and UI) looks like a provincial Roman amphitheatre in the 1st to 2nd century AD, grounded and gritty rather than
 cartoonish, built from simple procedural shapes and shaders until real assets arrive.
 
 - Arena: travertine and tuff stone (warm cream to honey, weathered, soot near torches), arches and pilasters, a
@@ -9,12 +9,10 @@ cartoonish, built from simple procedural shapes and shaders until real assets ar
 - Banners and symbols: SPQR, eagles (aquila), laurel wreaths, Greek key (meander) borders. Square Roman capitals in
   any text (Trajan-like proportions; use a free font only if licensed OFL, otherwise draw).
 - Crowd: togas and tunics in undyed wool, madder red, saffron, and the odd purple stripe; seated by class (rich low).
-- Fighters: gladiator classes as loadout looks. Murmillo (crested brimmed helmet, scutum, gladius, manica on the
-  sword arm, greave on the left leg), Secutor (smooth egg helmet), Hoplomachus (spear, small round shield, crested
-  helmet), Thraex (griffin crest, curved sica). Subligaculum loincloth and balteus belt; bare skin shows wounds and blood.
-- Weapons are NOT Roman-styled (Curtis): each looks like what it is, and modern items stay modern. A garden rake
-  with a metal head and wooden handle, an aluminium or ash baseball bat with grip tape, a modern-looking club; swords,
-  spears and shields look like plain real-world versions. The anachronism is deliberate.
+- Fighters, armor and weapons are NOT tied to the Roman theme (Curtis): keep them open to anything from any era,
+  ancient to modern (a gladiator helmet next to a hockey mask, a baseball bat next to a gladius). Each item looks like
+  what it is. Build them as data-driven slots (mesh, material, attach point per part) so any item can be added later.
+  The anachronism is deliberate. Bare skin shows wounds and blood.
 - Materials: bronze (warm, patinated), iron (dark, scratched), leather (oiled brown), linen. No chrome, no neon.
 - UI: bronze and parchment frames, meander borders, Roman numerals for rounds, Latin flavour words with plain
   English underneath (VICTORIA / Victory, MORS / Death, MISSIO / Spared).
