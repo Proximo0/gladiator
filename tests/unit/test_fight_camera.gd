@@ -57,3 +57,24 @@ func test_wall_clamped_camera_gets_a_wider_lens_that_frames_both() -> void:
 	var ratio: float = FightCamera.frame_ratio(pos, pose["look"], 55.0, ASPECT, pts)
 	var fov: float = FightCamera.fov_to_fit(ratio, 55.0, 0.82, 18.0)
 	assert_true(FightCamera.frame_ratio(pos, pose["look"], fov, ASPECT, pts) <= 0.82 + 0.02)
+
+
+func test_fighters_sit_in_the_lower_middle_with_sand_under_their_feet() -> void:
+	var a := Vector3(-1.2, 0.95, 0)
+	var b := Vector3(1.2, 0.95, 0)
+	var poses: Array = [
+		FightCamera.wide_pose(a, b, 55.0, FightCamera.WIDE_HEIGHT, 6.0),
+		FightCamera.follow_pose(a, b, 3.4, 2.3, 0.7),
+	]
+	for pose: Dictionary in poses:
+		var look: Vector3 = pose["look"]
+		var pts: Array = FightCamera.frame_points(a) + FightCamera.frame_points(b)
+		var raw: Vector3 = pose["pos"]
+		var pull: float = FightCamera.pull_back_for(raw, look, 55.0, ASPECT, pts, 0.82, 5.0)
+		var pos: Vector3 = raw + (raw - look).normalized() * pull
+		for p: Vector3 in [a, b]:
+			var feet: float = FightCamera.screen_y(pos, look, 55.0, Vector3(p.x, 0.0, p.z))
+			var head: float = FightCamera.screen_y(pos, look, 55.0, Vector3(p.x, 1.8, p.z))
+			assert_true(feet < 0.82, "feet on screen with sand below: %f" % feet)
+			assert_true(head > 0.2, "head on screen: %f" % head)
+			assert_true((feet + head) * 0.5 > 0.42 and (feet + head) * 0.5 < 0.7, "body centre in the lower middle: %f" % ((feet + head) * 0.5))

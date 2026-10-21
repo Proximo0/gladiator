@@ -8,6 +8,15 @@ const FOV_EXTRA_MAX: float = 18.0  ## most the lens widens to keep both fighters
 const WALL_MARGIN: float = 0.7  ## how far inside the wall the camera stays
 const SQUEEZE_FREE_M: float = 0.8  ## wall push-in the follow shot tolerates before it moves aside
 const SQUEEZE_FULL_M: float = 2.0  ## further push-in over which it blends fully into the side-on shot
+## Aim and height: look a little below head height from above, so the fighters sit in the lower-middle of the frame
+## with sand under their feet and the wall kept to the top third.
+const FOLLOW_LOOK_Y: float = 0.9
+const WIDE_LOOK_Y: float = 0.6
+const WIDE_HEIGHT: float = 4.4
+## Vertical room above and below the screen centre (half-heights): less above, so heads clear the top, and less
+## below, so there is sand under the feet and the fighters sit in the lower-middle of the frame.
+const FRAME_UP: float = 1.0
+const FRAME_DOWN: float = 0.75
 const MODES: PackedStringArray = ["follow", "orbit", "wide"]
 
 var target: Node3D
@@ -15,7 +24,7 @@ var look_at_node: Node3D
 var mode: String = "follow"
 var arena_radius: float = 11.0
 var follow_distance: float = 3.4
-var follow_height: float = 1.9
+var follow_height: float = 2.3
 var shoulder: float = 0.7
 var follow_rate: float = 5.0
 var orbit_yaw: float = 0.0
@@ -50,7 +59,7 @@ static func follow_pose(me: Vector3, opp: Vector3, distance: float, height: floa
 	var f: Vector3 = flat_dir(me, opp)
 	var right: Vector3 = f.cross(Vector3.UP)
 	var pos: Vector3 = me - f * distance + right * shoulder_off + Vector3(0.0, height, 0.0)
-	var look: Vector3 = me.lerp(opp, 0.6) + Vector3(0.0, 1.3, 0.0)
+	var look: Vector3 = me.lerp(opp, 0.6) + Vector3(0.0, FOLLOW_LOOK_Y, 0.0)
 	return {"pos": pos, "look": look}
 
 
@@ -69,7 +78,7 @@ static func wide_pose(a: Vector3, b: Vector3, fov_deg: float, height: float, min
 		if Vector2(outer.x, outer.z).length() > arena_r and Vector2(inner.x, inner.z).length() < Vector2(outer.x, outer.z).length():
 			side = -side
 	var pos: Vector3 = mid + side * dist + Vector3(0.0, height, 0.0)
-	return {"pos": pos, "look": mid + Vector3(0.0, 1.0, 0.0)}
+	return {"pos": pos, "look": mid + Vector3(0.0, WIDE_LOOK_Y, 0.0)}
 
 
 ## Distance at which two points `sep` apart fit within the horizontal field of view (with margin).
@@ -118,8 +127,20 @@ static func frame_ratio(pos: Vector3, look: Vector3, fov_deg: float, aspect: flo
 		var z: float = v.dot(fwd)
 		if z < 0.1:
 			return 99.0
-		worst = maxf(worst, maxf(absf(v.dot(right)) / (z * th), absf(v.dot(up)) / (z * tv)))
+		var yn: float = v.dot(up) / (z * tv)  ## vertical, in half-heights from the screen centre (up positive)
+		var vert: float = yn / FRAME_UP if yn > 0.0 else -yn / FRAME_DOWN
+		worst = maxf(worst, maxf(absf(v.dot(right)) / (z * th), vert))
 	return worst
+
+
+## Where `p` lands vertically on screen when `pos` looks at `look`: 0 top edge, 1 bottom edge (vertical fov `fov_deg`).
+static func screen_y(pos: Vector3, look: Vector3, fov_deg: float, p: Vector3) -> float:
+	var fwd: Vector3 = (look - pos).normalized()
+	var right: Vector3 = fwd.cross(Vector3.UP).normalized()
+	var up: Vector3 = right.cross(fwd)
+	var v: Vector3 = p - pos
+	var z: float = maxf(v.dot(fwd), 0.1)
+	return 0.5 - 0.5 * v.dot(up) / (z * tan(deg_to_rad(fov_deg) * 0.5))
 
 
 ## Metres to pull `pos` straight back from `look` (steps of 0.25 m, at most `max_pull`) until `points` sit inside
@@ -190,7 +211,7 @@ func update_camera(delta: float) -> void:
 			var sep_o: float = Vector2(me.x - opp.x, me.z - opp.z).length()
 			pose = orbit_pose((me + opp) * 0.5 + Vector3(0, 1.1, 0), orbit_yaw, 0.28, wide_distance(sep_o, fov, 5.0))
 		"wide":
-			pose = wide_pose(me, opp, fov, 3.2, 6.0, arena_radius - WALL_MARGIN)
+			pose = wide_pose(me, opp, fov, WIDE_HEIGHT, 6.0, arena_radius - WALL_MARGIN)
 		_:
 			pose = follow_pose(me, opp, follow_distance, follow_height, shoulder)
 	var tun: Tuning = Tuning.shared()
@@ -213,7 +234,7 @@ func update_camera(delta: float) -> void:
 		# Squeezed against the wall behind the fighter: slide toward a side-on shot from the inner side.
 		var squeeze: float = want_pos.distance_to(raw_pos + away * pull)
 		if squeeze > SQUEEZE_FREE_M:
-			var alt: Dictionary = wide_pose(me, opp, _base_fov, 3.2, 6.0, arena_radius - WALL_MARGIN)
+			var alt: Dictionary = wide_pose(me, opp, _base_fov, WIDE_HEIGHT, 6.0, arena_radius - WALL_MARGIN)
 			var t: float = clampf((squeeze - SQUEEZE_FREE_M) / SQUEEZE_FULL_M, 0.0, 1.0)
 			want_pos = want_pos.lerp(clamp_to_arena(alt["pos"], arena_radius, WALL_MARGIN, 0.5), t)
 			want_look = want_look.lerp(alt["look"], t)

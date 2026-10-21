@@ -31,3 +31,19 @@ func test_quality_picker_ids_match_levels() -> void:
 	assert_eq(MenuSettings.QUALITY_NAMES.size(), 3)
 	for i: int in 3:
 		assert_eq(int(MenuSettings.QUALITY_NAMES[i][0]), i)
+
+
+func test_feel_options_default_and_apply() -> void:
+	var s := MenuSettings.new()
+	assert_false(s.reduced_motion)
+	assert_true(s.rumble)
+	s.reduced_motion = true
+	s.rumble = false
+	s.apply()
+	assert_true(FeelOptions.reduced_motion)
+	assert_false(FeelOptions.rumble_enabled)
+	s.reduced_motion = false
+	s.rumble = true
+	s.apply()
+	assert_false(FeelOptions.reduced_motion)
+	assert_true(FeelOptions.rumble_enabled)

@@ -13,6 +13,7 @@ const METER_TARGET_PX: float = 150.0  ## Smallest on-screen width of a meter; ph
 const METER_MAX_SCALE: float = 3.0
 const BANNER_TARGET_PX: float = 360.0  ## On-screen width the banner aims for.
 const BANNER_MAX_SCALE: float = 3.0
+const BANNER_FIT_FRAC: float = 0.9  ## Widest banner line, as a share of the viewport width.
 const BANNER_W: float = 1200.0
 const BANNER_H: float = 280.0
 const LATIN_FONT: int = 120
@@ -38,6 +39,7 @@ var _banner: Control = null
 var _latin: Label = null
 var _english: Label = null
 var _banner_tween: Tween = null
+var _text_w: float = 0.0  ## widest banner line, px at scale 1
 var _rules: PackedVector2Array = PackedVector2Array()  ## Meander segments of both rules (one multiline call).
 var _hairlines: PackedVector2Array = PackedVector2Array()
 
@@ -83,6 +85,22 @@ func _make_line(top: float, font_px: int, colour: Color) -> Label:
 	return label
 
 
+## Scale at which a line `text_w` wide fits `frac` of `vp_w` (no limit for an empty line).
+static func fit_scale(text_w: float, vp_w: float, frac: float) -> float:
+	if text_w <= 1.0:
+		return BANNER_MAX_SCALE
+	return maxf(vp_w * frac / text_w, 0.05)
+
+
+## Pixel width of `text` in the label's font, outline included.
+func _line_w(label: Label, text: String) -> float:
+	if text == "":
+		return 0.0
+	var f: Font = label.get_theme_font("font")
+	var px: int = label.get_theme_font_size("font_size")
+	return f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, px).x + float(OUTLINE_PX)
+
+
 func _process(_delta: float) -> void:
 	_layout()
 
@@ -102,6 +120,7 @@ func _layout() -> void:
 	opponent_meter.scale = Vector2(ms, ms)
 	opponent_meter.position = Vector2(vp.x - MARGIN - BloodMeter.METER_SIZE.x * ms, meter_y)
 	var bs: float = clampf(BANNER_TARGET_PX / (BANNER_W * k), 1.0, BANNER_MAX_SCALE)
+	bs = minf(bs, fit_scale(_text_w, vp.x, BANNER_FIT_FRAC))
 	_banner.scale = Vector2(bs, bs)
 	_banner.position = Vector2(vp.x * 0.5 - BANNER_W * bs * 0.5, vp.y * BANNER_Y_FRAC)
 
@@ -124,6 +143,7 @@ func announce(text: String) -> void:
 	_latin.text = latin.strip_edges().to_upper()
 	_english.text = english.strip_edges()
 	_english.visible = english != ""
+	_text_w = maxf(_line_w(_latin, _latin.text), _line_w(_english, _english.text))
 	_banner.queue_redraw()
 	if _banner_tween != null and _banner_tween.is_valid():
 		_banner_tween.kill()

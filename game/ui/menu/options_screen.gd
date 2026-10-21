@@ -87,6 +87,23 @@ func _build_main() -> void:
 			settings.apply()
 			settings.save_file())
 		v.add_child(_fullscreen)
+	v.add_child(MenuTheme.label("Feel", MenuTheme.FONT_SMALL, MenuTheme.OCHRE))
+	var motion := MenuPicker.new()
+	motion.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
+	motion.setup("Reduced motion (no camera shake)", [["0", "Off"], ["1", "On"]], "1" if settings.reduced_motion else "0")
+	motion.changed.connect(func(id: String) -> void:
+		settings.reduced_motion = id == "1"
+		settings.apply()
+		settings.save_file())
+	v.add_child(motion)
+	var rumble := MenuPicker.new()
+	rumble.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
+	rumble.setup("Controller rumble and vibration", [["1", "On"], ["0", "Off"]], "1" if settings.rumble else "0")
+	rumble.changed.connect(func(id: String) -> void:
+		settings.rumble = id == "1"
+		settings.apply()
+		settings.save_file())
+	v.add_child(rumble)
 	var controls := MenuTheme.button("Controls")
 	controls.pressed.connect(_show_controls.bind(true))
 	v.add_child(controls)

@@ -10,6 +10,8 @@ const QUALITY_NAMES: Array = [["0", "Low"], ["1", "Medium"], ["2", "High"]]
 var volumes: Dictionary = {"master": 1.0, "sfx": 1.0, "crowd": 1.0}
 var gfx_quality: int = GfxQuality.default_level()
 var fullscreen: bool = false
+var reduced_motion: bool = false  ## no camera kick, shake or zoom punch (FeelOptions)
+var rumble: bool = true  ## gamepad rumble and phone vibration (FeelOptions)
 var _base_db: Dictionary = {}
 
 
@@ -32,6 +34,8 @@ func load_file() -> void:
 	var old: Variant = cf.get_value("graphics", "blood_quality", gfx_quality)
 	gfx_quality = clampi(int(cf.get_value("graphics", "gfx_quality", old)), GfxQuality.LOW, GfxQuality.HIGH)
 	fullscreen = bool(cf.get_value("graphics", "fullscreen", false))
+	reduced_motion = bool(cf.get_value("feel", "reduced_motion", false))
+	rumble = bool(cf.get_value("feel", "rumble", true))
 
 
 func save_file() -> void:
@@ -42,6 +46,8 @@ func save_file() -> void:
 		cf.set_value("audio", k, volumes[k])
 	cf.set_value("graphics", "gfx_quality", gfx_quality)
 	cf.set_value("graphics", "fullscreen", fullscreen)
+	cf.set_value("feel", "reduced_motion", reduced_motion)
+	cf.set_value("feel", "rumble", rumble)
 	cf.save(PATH)
 
 
@@ -58,6 +64,8 @@ func apply_quality() -> void:
 
 
 func apply() -> void:
+	FeelOptions.reduced_motion = reduced_motion
+	FeelOptions.rumble_enabled = rumble
 	for k: String in BUSES:
 		var idx: int = AudioServer.get_bus_index(BUSES[k])
 		if idx < 0:

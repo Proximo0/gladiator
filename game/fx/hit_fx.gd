@@ -25,8 +25,8 @@ var _light_t: float = 0.0
 
 func _ready() -> void:
 	var mesh := SphereMesh.new()
-	mesh.radius = 0.012
-	mesh.height = 0.024
+	mesh.radius = 0.022
+	mesh.height = 0.044
 	mesh.radial_segments = 4
 	mesh.rings = 2
 	var smat := StandardMaterial3D.new()
@@ -34,7 +34,7 @@ func _ready() -> void:
 	smat.vertex_color_use_as_albedo = true
 	smat.emission_enabled = true
 	smat.emission = Color(1.0, 0.7, 0.25)
-	smat.emission_energy_multiplier = 3.0
+	smat.emission_energy_multiplier = 4.0
 	mesh.material = smat
 	var grad := Gradient.new()
 	grad.set_color(0, Color(1.0, 0.95, 0.7, 1.0))
@@ -156,7 +156,7 @@ func _burst(ev: Dictionary, count: int) -> void:
 	var out: Vector3 = -dir * 0.6 + Vector3.UP * 0.7
 	p.global_position = at
 	p.direction = out.normalized() if out.length() > 0.01 else Vector3.UP
-	p.amount_ratio = clampf(float(count) / float(SPARK_AMOUNT), 0.02, 1.0)
+	p.amount = clampi(count, 1, SPARK_AMOUNT)
 	p.restart()
 	p.emitting = true
 	if _light != null:

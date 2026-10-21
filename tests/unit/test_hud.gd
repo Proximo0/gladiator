@@ -176,3 +176,11 @@ func test_idle_banner_is_hidden() -> void:
 	var h := HUD.new()
 	assert_false(h.get("_banner").visible)
 	h.free()
+
+
+func test_banner_fit_scale_never_overflows() -> void:
+	# A 1500 px line on a 1920 wide viewport must shrink to 90 percent of it; short lines keep the usual scale.
+	var k: float = HUD.fit_scale(1500.0, 1920.0, 0.9)
+	assert_true(1500.0 * k <= 1920.0 * 0.9 + 0.01)
+	assert_true(HUD.fit_scale(300.0, 1920.0, 0.9) > 1.0)
+	assert_eq(HUD.fit_scale(0.0, 1920.0, 0.9), HUD.BANNER_MAX_SCALE)
