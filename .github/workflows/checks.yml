@@ -1,0 +1,50 @@
+# Every check as a parallel job matrix, one GitHub runner per job. Locally the same checks run together with
+# tools/check_all.sh; here each one gets its own machine.
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+  GODOT: godot
+
+jobs:
+  check:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: unit, cmd: "tools/run_tests.sh" }
+          - { name: lint, cmd: "tools/lint.sh" }
+          - { name: sims, cmd: "tools/run_sims.sh" }
+          # Play-bot / sweep fan-out: once tests/bot/bot.tscn exists, uncomment one row per shard and keep
+          # --nshards equal to the number of rows. Each shard gets its own runner, so scale it as high as you like.
+          # - { name: bot-0, cmd: "timeout 300 godot --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=0 --nshards=3 | tee out.log; grep -q '^BOT score=' out.log && ! grep -q '^BOT .* FAIL ' out.log" }
+          # - { name: bot-1, cmd: "timeout 300 godot --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=1 --nshards=3 | tee out.log; grep -q '^BOT score=' out.log && ! grep -q '^BOT .* FAIL ' out.log" }
+          # - { name: bot-2, cmd: "timeout 300 godot --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=2 --nshards=3 | tee out.log; grep -q '^BOT score=' out.log && ! grep -q '^BOT .* FAIL ' out.log" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+      - name: Run ${{ matrix.name }}
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --import > /tmp/import.log 2>&1 || { cat /tmp/import.log; exit 1; }
+          bash -c "${{ matrix.cmd }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.name }}
+          path: out.log
+          if-no-files-found: ignore

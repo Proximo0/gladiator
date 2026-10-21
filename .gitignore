@@ -1,0 +1,5 @@
+.godot/
+/build/
+/out/
+
+__pycache__/
