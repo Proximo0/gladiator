@@ -4,8 +4,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_NAME="Gladiator"
-PROJECT_SLUG="Gladiator"  # no spaces: used for file names
+PROJECT_NAME="Sandblood"
+PROJECT_SLUG="Sandblood"  # no spaces: used for file names
 GODOT_VERSION="4.7.2"
 TEMPLATE_TAG="4.7.2-stable"
 TEMPLATE_DIR="${HOME}/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
@@ -49,6 +49,7 @@ fi
 [[ -f "${EXE_OUT}" ]] || fail "exe not produced at ${EXE_OUT}"
 
 rm -f "${ZIP_OUT}"
+cp "${ROOT}"/tools/windows/*.bat build/windows/ 2>/dev/null || true  # mode launchers
 (cd build && zip -q -r "$(basename "${ZIP_OUT}")" windows) || fail "zip not produced"
 [[ -f "${ZIP_OUT}" ]] || fail "zip not produced"
 

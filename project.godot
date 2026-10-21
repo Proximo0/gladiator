@@ -2,7 +2,7 @@
 config_version=5
 
 [application]
-config/name="Gladiator"
+config/name="Sandblood"
 run/main_scene="res://game/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
