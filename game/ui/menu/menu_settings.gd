@@ -1,0 +1,57 @@
+class_name MenuSettings
+extends RefCounted
+## Player options: master, sfx and crowd volume (audio buses Master, SFX, Crowd), blood quality, fullscreen.
+## Saved to user://settings.cfg, never in scripted runs (CLAUDE.md). `apply()` pushes the values to the engine.
+
+const PATH: String = "user://settings.cfg"
+const BUSES: Dictionary = {"master": "Master", "sfx": "SFX", "crowd": "Crowd"}
+const QUALITY_NAMES: Array = [["0", "Low"], ["1", "Medium"], ["2", "High"]]
+
+var volumes: Dictionary = {"master": 1.0, "sfx": 1.0, "crowd": 1.0}
+var blood_quality: int = 0 if OS.has_feature("mobile") else 2
+var fullscreen: bool = false
+var _base_db: Dictionary = {}
+
+
+## Slider fraction 0..1 to a dB offset: 1 is unchanged, 0 is silent.
+static func fraction_to_db(f: float) -> float:
+	if f <= 0.001:
+		return -80.0
+	return linear_to_db(clampf(f, 0.0, 1.0))
+
+
+func load_file() -> void:
+	if Flags.is_scripted_run():
+		return
+	var cf := ConfigFile.new()
+	if cf.load(PATH) != OK:
+		return
+	for k: String in volumes:
+		volumes[k] = clampf(float(cf.get_value("audio", k, 1.0)), 0.0, 1.0)
+	blood_quality = clampi(int(cf.get_value("graphics", "blood_quality", blood_quality)), 0, 2)
+	fullscreen = bool(cf.get_value("graphics", "fullscreen", false))
+
+
+func save_file() -> void:
+	if Flags.is_scripted_run():
+		return
+	var cf := ConfigFile.new()
+	for k: String in volumes:
+		cf.set_value("audio", k, volumes[k])
+	cf.set_value("graphics", "blood_quality", blood_quality)
+	cf.set_value("graphics", "fullscreen", fullscreen)
+	cf.save(PATH)
+
+
+func apply() -> void:
+	for k: String in BUSES:
+		var idx: int = AudioServer.get_bus_index(BUSES[k])
+		if idx < 0:
+			continue
+		if not _base_db.has(k):
+			_base_db[k] = AudioServer.get_bus_volume_db(idx)
+		AudioServer.set_bus_volume_db(idx, float(_base_db[k]) + fraction_to_db(float(volumes[k])))
+	if DisplayServer.get_name() != "headless" and not OS.has_feature("mobile"):
+		var mode: DisplayServer.WindowMode = DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
+		if DisplayServer.window_get_mode() != mode:
+			DisplayServer.window_set_mode(mode)

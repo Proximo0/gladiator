@@ -1,28 +1,60 @@
 extends Node3D
-## Main scene: one Match (bot vs bot by default; `-- --mode=player_vs_cpu` etc.) plus the debug layer
-## (F10 frame stamp, F4/F6-F9 render toggles, F1 fight overlay, F12 save recording, backquote tuning panel).
+## Main scene: boots to the title screen (MenuFlow). With `-- --mode=...` it skips the menus and starts that match
+## (bots, CI, tools/windows/*.bat). Debug layer: F10 frame stamp, F4/F6-F9 render toggles, F1 fight overlay,
+## F12 save recording, backquote tuning panel.
 
-var _match: Match
+var _match: Match = null
 var _overlay: FightOverlay
+var _rec: FlightRecorder
+var _flow: MenuFlow = null
 var _attached: Array = []
 
 
 func _ready() -> void:
 	add_child(FrameStamp.new())
 	add_child(RenderToggles.new())
-	_match = Match.new()
-	add_child(_match)
-	_match.setup({"mode": Flags.get_arg("mode", "bot_vs_bot"), "seed": Flags.seed_value()})
 	_overlay = FightOverlay.new()
 	add_child(_overlay)
-	var rec: FlightRecorder = FlightRecorder.new()  # F12 saves a recording to user://recordings
-	add_child(rec)
-	rec.attach(_match)
+	_rec = FlightRecorder.new()  # F12 saves a recording to user://recordings
+	add_child(_rec)
+	if Flags.args.has("mode"):
+		var mode: String = Flags.get_arg("mode", "bot_vs_bot")
+		_match = Match.new()
+		add_child(_match)
+		_match.setup({"mode": mode, "seed": Flags.seed_value()})
+		_rec.attach(_match)
+		if mode != "bot_vs_bot" and not Flags.is_scripted_run():
+			# Keep Esc pause and the end-of-match menu for command-line player matches.
+			_flow = _new_flow()
+			_flow.adopt(_match, mode)
+	else:
+		_flow = _new_flow()
+		_flow.setup(self)
+
+
+func _new_flow() -> MenuFlow:
+	var flow := MenuFlow.new()
+	add_child(flow)
+	flow.match_started.connect(_on_match_started)
+	flow.match_closed.connect(_on_match_closed)
+	return flow
+
+
+func _on_match_started(m: Match) -> void:
+	_match = m
+	_attached = []
+	_rec.attach(m)
+
+
+func _on_match_closed() -> void:
+	_match = null
+	_attached = []
+	_overlay.attach([])
 
 
 func _process(_delta: float) -> void:
 	# The bot loop replaces the fighters after each match, so re-attach the overlay when they change.
-	if _match.fighters.size() < 2 or _match.fighters == _attached:
+	if _match == null or not is_instance_valid(_match) or _match.fighters.size() < 2 or _match.fighters == _attached:
 		return
 	_attached = _match.fighters.duplicate()
 	_overlay.attach(_attached)
