@@ -21,7 +21,18 @@ const AIM_LEFT_LIMIT: float = -0.55  ## aim x below this sweeps the weapon throu
 const AIM_LOW_LIMIT: float = -0.75
 const SLEW_RECOVER: float = 0.045
 const SLEW_GUARD: float = 0.2
-const BLUNT_HEAD_BIAS: float = 2.0  ## blunt weapons do not bleed: they win by knocking the head (consciousness)
+const DISARM_SCALE: float = 0.3  ## share of the personality's disarm_aim actually used (round 1 over-disarmed: 57 per 24 matches)
+const GROUND_PROP_Y: float = 0.5  ## props lower than this are picked up by crouching
+const GRAB_REACH: float = 0.45  ## the hand reaches about this far ahead of the torso at full downward aim
+const STAMINA_FLOOR: float = 0.15  ## below this the weapon arm's carry cost cancels stamina recovery (a fighter at 0 never recovers)
+const REST_FAIL_TICKS: int = 300  ## ticks at near-zero stamina after which resting is abandoned
+const BEHEAD_BIAS: float = 3.0  ## finisher choice: an edged weapon prefers the neck over the gut (foes usually bleed out before a second try)
+const NECK_LIFT: float = 0.05  ## aim offset from the head centre for neck cuts: negative aims at the neck, but the swung tip sags about 0.15 m below its aim at full speed
+const STALE_START: int = 360  ## ticks without decisive damage before the brain starts forcing the issue
+const STALE_RAMP: int = 480  ## further ticks until it is fully desperate
+const STALE_HP_DROP: float = 1.5  ## head/torso/pelvis hp loss that counts as decisive damage
+const STALE_CONSC_DROP: float = 0.03
+const BLUNT_HEAD_BIAS: float = 4.0  ## blunt weapons do not bleed: they win by knocking the head (consciousness)
 
 const ST_APPROACH: int = 0
 const ST_FEINT: int = 1
@@ -78,6 +89,10 @@ var _grab_ticks: int = 0
 var _weapon_giveup: int = 0  ## tick before which the brain does not go for a prop again (a grab that never worked)
 var _main_weapon: String = ""
 var _last_aim: Vector2 = Vector2(0.0, 0.15)  ## aim sent last tick (the hand is eased, not snapped, after a strike)
+var _stale_ticks: int = 0  ## ticks since either fighter lost blood, consciousness or core hp (a stalemate clock)
+var _stale_prev: Dictionary = {}
+var _low_ticks: int = 0  ## ticks spent tired with stamina near zero
+var _no_rest_until: int = 0
 var _idle_ticks: int = 0  ## ticks spent circling in approach without starting an attack
 
 # Per-tick geometry (set by _geometry).
@@ -140,6 +155,7 @@ func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 	if str(obs.get("state", "standing")) == "dead":
 		return out
 	_geometry(me, obs)
+	_track_stale(me, foe)
 	if _tick <= int(_p.get("spawn_hold", SPAWN_HOLD_TICKS)):
 		_neutral_aim(out)
 		return out
@@ -169,11 +185,45 @@ func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 
 # ---------------------------------------------------------------- state selection
 
+## Stalemate clock: reset by decisive damage on either side (blood, consciousness, core hp), read as `_desperation()`.
+func _track_stale(me: Dictionary, foe: Dictionary) -> void:
+	var cur: Dictionary = {}
+	var decisive: bool = false
+	var i: int = 0
+	for f: Dictionary in [me, foe]:
+		var blood: float = float(f.get("blood_frac", 1.0))
+		var consc: float = float(f.get("consciousness", 1.0))
+		var core: float = 0.0
+		var parts: Dictionary = f.get("parts", {})
+		for n: String in ["head", "torso", "pelvis"]:
+			if parts.has(n) and parts[n] is Dictionary:
+				core += float((parts[n] as Dictionary).get("hp", 0.0))
+		cur[i] = [blood, consc, core]
+		if _stale_prev.has(i):
+			var pv: Array = _stale_prev[i]
+			if blood < float(pv[0]) - 0.002 or consc < float(pv[1]) - STALE_CONSC_DROP or core < float(pv[2]) - STALE_HP_DROP:
+				decisive = true
+		i += 1
+	_stale_prev = cur
+	_stale_ticks = 0 if decisive else _stale_ticks + 1
+
+
+## 0 while fights produce decisive damage, ramping to 1 once nothing decisive has happened for a while.
+func _desperation() -> float:
+	return clampf(float(_stale_ticks - STALE_START) / float(STALE_RAMP), 0.0, 1.0)
+
 func _update_state(me: Dictionary, obs: Dictionary) -> void:
 	var stamina: float = float(me.get("stamina", 1.0))
-	var rs: float = _pf("retreat_stamina")
-	if stamina < rs or float(me.get("blood_frac", 1.0)) < _pf("retreat_blood"):
+	var rs: float = maxf(_pf("retreat_stamina"), STAMINA_FLOOR)
+	_low_ticks = _low_ticks + 1 if (_tired and stamina < STAMINA_FLOOR * 0.7) else 0
+	if _low_ticks > REST_FAIL_TICKS:  # resting does not refill the bar (seeds 5007, 9008, 9019): fight on exhausted
+		_low_ticks = 0
+		_no_rest_until = _tick + REST_FAIL_TICKS * 3
+	var stamina_low: bool = stamina < rs and _tick >= _no_rest_until
+	if stamina_low or float(me.get("blood_frac", 1.0)) < _pf("retreat_blood"):
 		_tired = true
+	elif _tick < _no_rest_until:
+		_tired = float(me.get("blood_frac", 1.0)) < _pf("retreat_blood")
 	elif stamina > rs + 0.3 and float(me.get("blood_frac", 1.0)) >= _pf("retreat_blood") + 0.05:
 		_tired = false
 	var finishing: bool = _want_finish(obs)
@@ -181,7 +231,7 @@ func _update_state(me: Dictionary, obs: Dictionary) -> void:
 
 	var thr: bool = _threat(me, obs)
 	if thr and not _thr_prev:
-		_reflex_ok = _rng.randf() <= clampf(1.0 - _pf("risk") * 0.7, 0.2, 1.0)
+		_reflex_ok = _rng.randf() <= clampf(1.0 - _pf("risk") * 0.7, 0.2, 1.0) * (1.0 - 0.7 * _desperation())
 	_thr_prev = thr
 	if thr and _reflex_ok and _state != ST_GUARD:
 		if not (_state == ST_STRIKE and _pf("risk") > 0.5):
@@ -196,14 +246,15 @@ func _update_state(me: Dictionary, obs: Dictionary) -> void:
 		return
 	if busy:
 		return
-	if _disarmed(me) and _tick >= _weapon_giveup and not _props(me, obs).is_empty():
+	if _disarmed(me) and _tick >= _weapon_giveup and _arm_can_hold(me) and not _props(me, obs).is_empty():
 		if _state != ST_WEAPON:
 			_enter(ST_WEAPON, 0)
 			_grab_ticks = 0
 		return
 	if _state == ST_WEAPON:
 		_enter(ST_APPROACH, 0)
-	var press: bool = finishing and (_pf("risk") > 0.5 or (stamina > 0.12 and float(me.get("blood_frac", 1.0)) > 0.3))
+	# Round 2 trace: seeds 5007 and 9019 sat at stamina 0.00 for 40 s after pressing on below STAMINA_FLOOR.
+	var press: bool = (finishing or _desperation() > 0.5) and ((_pf("risk") > 0.5 and stamina > STAMINA_FLOOR + 0.03) or (stamina > STAMINA_FLOOR + 0.08 and float(me.get("blood_frac", 1.0)) > 0.3))
 	if _tired and not press:
 		if _state != ST_RETREAT:
 			_enter(ST_RETREAT, 0)
@@ -239,6 +290,8 @@ func _want_finish(obs: Dictionary) -> bool:
 	var st: String = str(obs.get("state", "standing"))
 	if st == "down" or st == "ko" or st == "getting_up":
 		return true
+	if float(obs.get("consciousness", 1.0)) < Tuning.shared().finisher_consc:
+		return true  # dazed: a killing blow lands at any blood level
 	return _foe_blood(obs) < Tuning.shared().finisher_blood_frac
 
 
@@ -284,6 +337,20 @@ func _disarmed(me: Dictionary) -> bool:
 	return str(me.get("weapon_id", "fists")) == "fists" and _main_weapon != "fists" and _main_weapon != ""
 
 
+## False when the weapon arm is so hurt that the fighter drops whatever it picks up (it would re-grab and re-drop forever).
+func _arm_can_hold(me: Dictionary) -> bool:
+	var parts: Dictionary = me.get("parts", {})
+	var worst: float = 1.0
+	for n: String in ["forearm_r", "upper_arm_r"]:
+		var pd: Dictionary = parts.get(n, {}) if parts.get(n, {}) is Dictionary else {}
+		var hp0: float = float(CombatData.part_info(n).get("hp", 0.0))
+		if hp0 > 0.0 and pd.has("hp"):
+			worst = minf(worst, float(pd["hp"]) / hp0)
+		if bool(pd.get("severed", false)):
+			return false
+	return worst >= Tuning.shared().weapon_drop_hp * 1.5
+
+
 func _props(me: Dictionary, obs: Dictionary) -> Array:
 	var out: Array = []
 	for src: Dictionary in [me, obs]:
@@ -301,7 +368,7 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var finishing: bool = _state == ST_FINISH
 	var hold: float = _reach * _pf("range_frac")
 	_idle_ticks += 1
-	var committed: bool = _idle_ticks > int(_pf("commit_ticks"))
+	var committed: bool = _idle_ticks > int(_pf("commit_ticks")) or _desperation() > 0.0
 	if committed:
 		hold = minf(hold, _reach * 0.85)  # waited long enough: step into striking range
 	if finishing:
@@ -447,16 +514,40 @@ func _do_weapon(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var to: Vector3 = best - mp
 	to.y = 0.0
 	var near: float = to.length()
-	_set_aim(out, _clamp_aim(_aim_for(best)))
-	if near > 0.35:
-		_move_world(to / maxf(near, 0.001), 1.0 if near > 1.0 else 0.4, out)
-		if near > 4.0 and float(me.get("stamina", 1.0)) > 0.4:
-			out.buttons |= FighterInput.SPRINT
-	if near < 1.2:
-		if _grab_ticks % 12 < 6:  # the fighter grabs on a rising edge: pulse the button
+	if best.y >= GROUND_PROP_Y:
+		# A prop in the air or in a hand-high rack: steer the hand at it and walk over.
+		_set_aim(out, _clamp_aim(_aim_for(best)))
+		if near > 0.35:
+			_move_world(to / maxf(near, 0.001), 1.0 if near > 1.0 else 0.4, out)
+			if near > 4.0 and float(me.get("stamina", 1.0)) > 0.4:
+				out.buttons |= FighterInput.SPRINT
+		if near < 1.2 and _grab_ticks % 12 < 6:  # the fighter grabs on a rising edge: pulse the button
 			out.buttons |= FighterInput.GRAB
-		if best.y < 0.5:
-			out.buttons |= FighterInput.CROUCH
+		return
+	# A prop on the ground: the hand only reaches y~0.5 at full downward aim and a crouch, GRAB_REACH ahead of the
+	# torso, so walk to the spot GRAB_REACH behind the prop (the body faces the foe, not the prop), crouch, reach down.
+	var tp: Vector3 = _part_pos(me, "torso", mp)
+	var stand: Vector3 = best - _fwd * GRAB_REACH
+	var go: Vector3 = stand - tp
+	go.y = 0.0
+	var gl: float = go.length()
+	var hand: Vector3 = me.get("hand_pos", Vector3(0.0, 1.0, 0.0))
+	var hand_d: float = hand.distance_to(best)
+	if gl > 0.1:
+		_move_world(go / gl, 1.0 if gl > 1.0 else clampf(gl * 2.0, 0.25, 0.6), out)
+		if gl > 4.0 and float(me.get("stamina", 1.0)) > 0.4:
+			out.buttons |= FighterInput.SPRINT
+	if gl < 1.0:
+		out.buttons |= FighterInput.CROUCH
+		var c := Vector2(0.0, -1.0)  # straight down: skips _set_aim's low limit on purpose (the hand holds no weapon)
+		_last_aim = c
+		out.aim_x = 0
+		out.aim_y = -1000
+	else:
+		_set_aim(out, _last_aim.move_toward(Vector2(0.0, -0.5), 0.1))
+	if gl < 0.6 or hand_d < GRAB_REACH:
+		if _grab_ticks % 12 < 6:
+			out.buttons |= FighterInput.GRAB
 
 
 # ---------------------------------------------------------------- attack planning
@@ -496,7 +587,7 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 			var torso_open: float = 1.0 - _armor_score(armor, "torso", blunt)
 			var belly_open: float = 1.0 - _armor_score(armor, "pelvis", blunt)
 			if edged:
-				opts["behead"] = head_open * 1.2
+				opts["behead"] = head_open * BEHEAD_BIAS
 				opts["gut"] = maxf(torso_open, belly_open) * 1.0
 			if pointy:
 				opts["run_through"] = torso_open * (2.0 if shape == "spear" else 1.0)
@@ -525,7 +616,7 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 			kind = "thrust"
 			half = true
 		part = _pick_part(obs, armor, kind, blunt)
-		if kind != "thrust" and kind != "low" and _rng.randf() < _pf("disarm_aim"):
+		if kind != "thrust" and kind != "low" and _rng.randf() < _pf("disarm_aim") * DISARM_SCALE:
 			part = "forearm_r"  # knock the weapon out of the hand: strike the holding forearm
 			if kind == "overhead":
 				kind = "diag"
@@ -684,7 +775,7 @@ func _plan_target(me: Dictionary, obs: Dictionary) -> Vector2:
 		part = "torso"
 	var p: Vector3 = _part_pos(obs, part, fallback)
 	if bool(_plan.get("neck", false)) and part == "head":
-		p.y -= 0.12
+		p.y += NECK_LIFT
 	var wob: float = sin(float(_tick) * 0.07) * 0.05 * _pf("aim_noise")
 	return _clamp_aim(_aim_for(p) + (_plan.get("noise", Vector2.ZERO) as Vector2) + Vector2(wob, 0.0))
 

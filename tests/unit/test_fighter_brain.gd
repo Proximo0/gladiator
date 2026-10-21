@@ -299,3 +299,84 @@ func test_duelist_sometimes_aims_at_the_weapon_forearm() -> void:
 				hit += 1
 				break
 	assert_true(hit > 0, "disarm attempts happen")
+
+
+func test_dazed_foe_is_finished_at_full_blood() -> void:
+	var b := _brain({"preset": "berserker"})
+	var f: Array = _pair(1.2, "club")
+	(f[1] as Dictionary)["consciousness"] = 0.1
+	(f[1] as Dictionary)["blood_frac"] = 1.0
+	for i in 60:
+		b.think(f[0], f[1], DT)
+	assert_true(bool(b.plan().get("finishing", false)), "a dazed foe is pressed with a killing blow")
+
+
+func test_conscious_foe_at_full_blood_is_not_finished() -> void:
+	var b := _brain({"preset": "berserker"})
+	var f: Array = _pair(1.2, "club")
+	(f[1] as Dictionary)["blood_frac"] = 1.0
+	for i in 60:
+		b.think(f[0], f[1], DT)
+	assert_false(bool(b.plan().get("finishing", false)), "no finisher on a healthy foe")
+
+
+func _disarmed_pair(forearm_hp: float, prop_y: float) -> Array:
+	var f: Array = _pair(3.0, "gladius")
+	var b := _brain({"preset": "duelist"})
+	b.think(f[0], f[1], DT)  # remembers the main weapon
+	(f[0] as Dictionary)["weapon_id"] = "fists"
+	((f[0] as Dictionary)["parts"] as Dictionary)["forearm_r"]["hp"] = forearm_hp
+	(f[0] as Dictionary)["props"] = [{"pos": Vector3(1.0, prop_y, 1.0), "weapon_id": "gladius"}]
+	for i in 3:
+		b.think(f[0], f[1], DT)
+	return [b, f]
+
+
+func test_disarmed_fighter_goes_for_a_prop() -> void:
+	var r: Array = _disarmed_pair(40.0, 0.02)
+	assert_eq((r[0] as FighterBrain).state_name(), "weapon")
+
+
+func test_crippled_weapon_arm_does_not_chase_props() -> void:
+	var r: Array = _disarmed_pair(1.0, 0.02)
+	assert_true((r[0] as FighterBrain).state_name() != "weapon", "it would drop the weapon again at once")
+
+
+func test_ground_prop_pickup_crouches_and_reaches_down() -> void:
+	var r: Array = _disarmed_pair(40.0, 0.02)
+	var b: FighterBrain = r[0]
+	var f: Array = r[1]
+	# Stand on the spot GRAB_REACH behind the prop (the body faces -Z).
+	for k in ["pelvis_pos"]:
+		(f[0] as Dictionary)[k] = Vector3(1.0, 0.95, 1.0 + FighterBrain.GRAB_REACH)
+	for n: String in ((f[0] as Dictionary)["parts"] as Dictionary):
+		(((f[0] as Dictionary)["parts"] as Dictionary)[n] as Dictionary)["pos"].x = 1.0
+		(((f[0] as Dictionary)["parts"] as Dictionary)[n] as Dictionary)["pos"].z = 1.0 + FighterBrain.GRAB_REACH
+	var inp: FighterInput = null
+	for i in 12:
+		inp = b.think(f[0], f[1], DT)
+	assert_true(inp.has(FighterInput.CROUCH), "crouches")
+	assert_eq(inp.aim_y, -1000, "hand straight down")
+
+
+func test_stalemate_builds_desperation_and_decisive_damage_resets_it() -> void:
+	var b := _brain({"preset": "coward"})
+	var f: Array = _pair(4.0)
+	for i in FighterBrain.STALE_START + FighterBrain.STALE_RAMP + 10:
+		b.think(f[0], f[1], DT)
+	assert_true(b._desperation() > 0.99, "fully desperate after a long stalemate")
+	((f[1] as Dictionary)["parts"] as Dictionary)["torso"]["hp"] = 10.0
+	b.think(f[0], f[1], DT)
+	assert_true(b._desperation() < 0.01, "core damage resets the clock")
+
+
+func test_exhausted_fighter_stops_resting_when_resting_fails() -> void:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(1.5, "club")
+	(f[0] as Dictionary)["stamina"] = 0.0
+	for i in 40:
+		b.think(f[0], f[1], DT)
+	assert_eq(b.state_name(), "retreat", "tired at first")
+	for i in FighterBrain.REST_FAIL_TICKS + 40:
+		b.think(f[0], f[1], DT)
+	assert_true(b.state_name() != "retreat", "fights on once resting is hopeless")
