@@ -71,7 +71,7 @@ static func ensure_buses() -> void:
 		AudioServer.set_bus_layout(layout)
 
 
-func track(f: Fighter) -> void:
+func track(f: Node3D) -> void:
 	for t: Dictionary in _tracked:
 		if t["f"] == f:
 			return
