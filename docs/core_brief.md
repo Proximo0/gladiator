@@ -148,3 +148,14 @@ material (the arena builds only the flat collider at y = 0 and calls `SandSurfac
 - Droplets that land call `SandSurface.add_blood` (small clumps darken the sand), droplets that hit a body or
   weapon leave a stain (a per-fighter blood mask or decals).
 - `var sand: SandSurface`, `func set_quality(level: int) -> void` (0 mobile .. 2 desktop high).
+
+## Active damage and the blood meter (Curtis, 2026-10-21)
+- Damage is active for both fighters, the player included: every wound shows on the body (cuts, bruises, stains,
+  missing limbs) and changes how that fighter works. A hurt arm loses strength in proportion to its hp (slower,
+  weaker swings, may drop the weapon when it is badly hurt or severed); a hurt leg slows walking, makes the fighter
+  limp and stumble, and a severed leg drops them to the ground; head blows blur and slow (consciousness); blood loss
+  weakens everything. The fighter reads `health.hp_frac(part)` every tick to scale per-limb strength.
+- Your own weapon can hurt you (a wild swing into your own leg). Self-collision between a fighter's weapon and its
+  own body is ON for parts other than the holding hand and forearm, and it goes through the same DamageModel.
+- There is no health bar. The HUD shows a blood meter per fighter (litres left out of 5, draining live with the
+  bleed rate, pulsing faster as it drops), plus stamina. Death and KO come from the health model, not a bar.
