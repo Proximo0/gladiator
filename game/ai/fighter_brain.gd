@@ -14,7 +14,14 @@ const RING: int = 64
 const GUARD_W: float = 0.55  ## half width of the guard plane (m), mirrors Tuning guard_width
 const GUARD_H: float = 0.45  ## half height of the guard plane (m), mirrors Tuning guard_height
 const WINDUP_AMP: float = 0.85
-const FINISHER_BLOOD: float = 0.4  ## mirrors Tuning finisher_blood_frac
+const SPAWN_HOLD_TICKS: int = 24  ## stand still while the spawn pose settles (a lunging start whips the weapon into the own body)
+const FINISH_STRIKE_SCALE: float = 0.8  ## finisher strikes sweep this much faster (shorter strike)
+const SLEW_NEUTRAL: float = 0.07  ## max aim travel per tick when returning to the neutral guard (no whip-back through the body)
+const AIM_LEFT_LIMIT: float = -0.55  ## aim x below this sweeps the weapon through the own offhand arm (self hits)
+const AIM_LOW_LIMIT: float = -0.75
+const SLEW_RECOVER: float = 0.045
+const SLEW_GUARD: float = 0.2
+const BLUNT_HEAD_BIAS: float = 2.0  ## blunt weapons do not bleed: they win by knocking the head (consciousness)
 
 const ST_APPROACH: int = 0
 const ST_FEINT: int = 1
@@ -36,16 +43,18 @@ const ARMOR_KIND: Dictionary = {"cloth": 0.1, "leather": 0.3, "mail": 0.65, "pla
 const PRESETS: Dictionary = {
 	"brute": {"aggression": 0.7, "patience": 0.2, "reaction_ms": 260.0, "aim_noise": 0.3,
 		"preferred_attacks": ["overhead", "horizontal"], "risk": 0.6, "range_frac": 0.8, "retreat_stamina": 0.2,
-		"retreat_blood": 0.15, "feint": 0.05, "cripple": 0.0},
+		"retreat_blood": 0.15, "feint": 0.05, "cripple": 0.0, "disarm_aim": 0.08, "commit_ticks": 70},
 	"duelist": {"aggression": 0.5, "patience": 0.8, "reaction_ms": 140.0, "aim_noise": 0.1,
 		"preferred_attacks": ["diag", "thrust", "horizontal"], "risk": 0.3, "range_frac": 0.9,
-		"retreat_stamina": 0.3, "retreat_blood": 0.3, "feint": 0.35, "cripple": 0.5},
+		"retreat_stamina": 0.3, "retreat_blood": 0.3, "feint": 0.35, "cripple": 0.5, "disarm_aim": 0.4,
+		"commit_ticks": 120},
 	"coward": {"aggression": 0.2, "patience": 0.9, "reaction_ms": 200.0, "aim_noise": 0.25,
 		"preferred_attacks": ["thrust", "low"], "risk": 0.05, "range_frac": 1.3, "retreat_stamina": 0.45,
-		"retreat_blood": 0.6, "feint": 0.1, "cripple": 1.0},
+		"retreat_blood": 0.6, "feint": 0.1, "cripple": 1.0, "disarm_aim": 0.15,
+		"commit_ticks": 150},
 	"berserker": {"aggression": 1.0, "patience": 0.0, "reaction_ms": 220.0, "aim_noise": 0.4,
 		"preferred_attacks": ["horizontal", "diag"], "risk": 1.0, "range_frac": 0.7, "retreat_stamina": 0.06,
-		"retreat_blood": 0.0, "feint": 0.0, "cripple": 0.0},
+		"retreat_blood": 0.0, "feint": 0.0, "cripple": 0.0, "disarm_aim": 0.0, "commit_ticks": 40},
 }
 
 var _rng := RandomNumberGenerator.new()
@@ -66,7 +75,10 @@ var _tired: bool = false
 var _thr_prev: bool = false
 var _reflex_ok: bool = true
 var _grab_ticks: int = 0
+var _weapon_giveup: int = 0  ## tick before which the brain does not go for a prop again (a grab that never worked)
 var _main_weapon: String = ""
+var _last_aim: Vector2 = Vector2(0.0, 0.15)  ## aim sent last tick (the hand is eased, not snapped, after a strike)
+var _idle_ticks: int = 0  ## ticks spent circling in approach without starting an attack
 
 # Per-tick geometry (set by _geometry).
 var _fwd: Vector3 = Vector3(0.0, 0.0, -1.0)
@@ -128,6 +140,9 @@ func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 	if str(obs.get("state", "standing")) == "dead":
 		return out
 	_geometry(me, obs)
+	if _tick <= int(_p.get("spawn_hold", SPAWN_HOLD_TICKS)):
+		_neutral_aim(out)
+		return out
 	_update_state(me, obs)
 	match _state:
 		ST_APPROACH, ST_FINISH:
@@ -181,13 +196,15 @@ func _update_state(me: Dictionary, obs: Dictionary) -> void:
 		return
 	if busy:
 		return
-	if _disarmed(me) and not _props(me, obs).is_empty():
+	if _disarmed(me) and _tick >= _weapon_giveup and not _props(me, obs).is_empty():
 		if _state != ST_WEAPON:
 			_enter(ST_WEAPON, 0)
+			_grab_ticks = 0
 		return
 	if _state == ST_WEAPON:
 		_enter(ST_APPROACH, 0)
-	if _tired and not (finishing and _pf("risk") > 0.5):
+	var press: bool = finishing and (_pf("risk") > 0.5 or (stamina > 0.12 and float(me.get("blood_frac", 1.0)) > 0.3))
+	if _tired and not press:
 		if _state != ST_RETREAT:
 			_enter(ST_RETREAT, 0)
 		return
@@ -211,6 +228,8 @@ func _after_guard(me: Dictionary, obs: Dictionary) -> void:
 
 
 func _enter(s: int, len_ticks: int) -> void:
+	if s == ST_WINDUP or s == ST_FEINT:
+		_idle_ticks = 0
 	_state = s
 	_st_ticks = 0
 	_st_len = len_ticks
@@ -220,7 +239,7 @@ func _want_finish(obs: Dictionary) -> bool:
 	var st: String = str(obs.get("state", "standing"))
 	if st == "down" or st == "ko" or st == "getting_up":
 		return true
-	return _foe_blood(obs) < FINISHER_BLOOD
+	return _foe_blood(obs) < Tuning.shared().finisher_blood_frac
 
 
 func _foe_blood(obs: Dictionary) -> float:
@@ -281,8 +300,12 @@ func _props(me: Dictionary, obs: Dictionary) -> Array:
 func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var finishing: bool = _state == ST_FINISH
 	var hold: float = _reach * _pf("range_frac")
+	_idle_ticks += 1
+	var committed: bool = _idle_ticks > int(_pf("commit_ticks"))
+	if committed:
+		hold = minf(hold, _reach * 0.85)  # waited long enough: step into striking range
 	if finishing:
-		hold = _reach * 0.75
+		hold = _reach * 0.85
 	var stamina: float = float(me.get("stamina", 1.0))
 	_neutral_aim(out)
 	_shield_up(me, out)
@@ -301,7 +324,7 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		out.move_x = _circle_dir * 600
 		out.move_y = roundi(clampf((_dist - hold) * 1.5, -0.6, 0.6) * 1000.0)
 		_wait = maxi(_wait - 1, 0)
-	if finishing:
+	if finishing or committed:
 		_wait = 0
 	if _wait > 0:
 		return
@@ -309,8 +332,10 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var p: float = lerpf(0.3, 1.0, _pf("aggression")) + (0.3 if opp else 0.0)
 	if not opp and not finishing:
 		p *= lerpf(1.0, 0.25, _pf("patience"))
+	if committed:
+		p = maxf(p, 0.5)
 	var in_reach: bool = _dist <= _reach * 1.05
-	var lunge: bool = _dist <= _reach * 1.9 and (_pf("aggression") > 0.5 or opp or finishing)
+	var lunge: bool = _dist <= _reach * (1.3 if finishing else 1.9) and (_pf("aggression") > 0.5 or opp or finishing or committed)
 	if _rng.randf() <= p and (in_reach or lunge):
 		_plan = _make_plan(me, obs, finishing)
 		if not finishing and _rng.randf() < _pf("feint"):
@@ -370,7 +395,7 @@ func _do_strike(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 
 
 func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
-	_neutral_aim(out)
+	_neutral_aim(out, SLEW_RECOVER)
 	_shield_up(me, out)
 	out.move_y = roundi(-300.0 * (1.0 - _pf("aggression")))
 	if _st_ticks + 1 >= _st_len:
@@ -387,13 +412,13 @@ func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 func _do_guard(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var tip: Vector3 = obs.get("tip_pos", Vector3.ZERO)
 	var a: Vector2 = _clamp_aim(Vector2((tip - _origin).dot(_right) / GUARD_W * 0.7, (tip.y - _origin.y) / GUARD_H * 0.7))
-	_set_aim(out, a)
+	_set_aim(out, _last_aim.move_toward(a, SLEW_GUARD))
 	out.buttons |= FighterInput.SWING | FighterInput.OFFHAND
 	out.move_y = -250 if _dist < _reach * 1.2 else 0
 
 
 func _do_retreat(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
-	_set_aim(out, Vector2(0.0, 0.2))
+	_set_aim(out, _last_aim.move_toward(Vector2(0.0, 0.2), SLEW_NEUTRAL))
 	_shield_up(me, out)
 	if _dist < _reach * 2.2:
 		out.move_y = -800
@@ -414,16 +439,22 @@ func _do_weapon(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		if d < bd:
 			bd = d
 			best = pp
+	_grab_ticks += 1
+	if _grab_ticks > 240:  # the prop cannot be picked up (or the foe stands on it): fight with fists for a while
+		_weapon_giveup = _tick + 600
+		_enter(ST_APPROACH, 0)
+		return
 	var to: Vector3 = best - mp
 	to.y = 0.0
 	var near: float = to.length()
 	_set_aim(out, _clamp_aim(_aim_for(best)))
-	if near > 0.6:
-		_move_world(to / maxf(near, 0.001), 1.0, out)
+	if near > 0.35:
+		_move_world(to / maxf(near, 0.001), 1.0 if near > 1.0 else 0.4, out)
 		if near > 4.0 and float(me.get("stamina", 1.0)) > 0.4:
 			out.buttons |= FighterInput.SPRINT
 	if near < 1.2:
-		out.buttons |= FighterInput.GRAB
+		if _grab_ticks % 12 < 6:  # the fighter grabs on a rising edge: pulse the button
+			out.buttons |= FighterInput.GRAB
 		if best.y < 0.5:
 			out.buttons |= FighterInput.CROUCH
 
@@ -458,17 +489,35 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 				kind = "thrust"
 				part = "torso"
 		else:
-			if edged and _armor_score(armor, "head", false) < 0.7:
-				kind = "horizontal"
-				part = "head"
-				neck = true
-			elif pointy:
-				kind = "thrust"
-				part = "torso" if _armor_score(armor, "torso", false) < 0.6 else "head"
-				neck = part == "head"
-			else:
-				kind = "overhead"
-				part = "head"
+			# Pick the killing blow the weapon can deliver (core brief: behead / gut / run through / skull crush),
+			# weighted toward the least armored target.
+			var opts: Dictionary = {}
+			var head_open: float = 1.0 - _armor_score(armor, "head", blunt)
+			var torso_open: float = 1.0 - _armor_score(armor, "torso", blunt)
+			var belly_open: float = 1.0 - _armor_score(armor, "pelvis", blunt)
+			if edged:
+				opts["behead"] = head_open * 1.2
+				opts["gut"] = maxf(torso_open, belly_open) * 1.0
+			if pointy:
+				opts["run_through"] = torso_open * (2.0 if shape == "spear" else 1.0)
+			if blunt and shape != "fist":
+				opts["skull_crush"] = head_open
+			if opts.is_empty():
+				opts["skull_crush"] = 1.0
+			match _pick(opts):
+				"behead":
+					kind = "horizontal"
+					part = "head"
+					neck = true
+				"gut":
+					kind = "horizontal"
+					part = "pelvis" if belly_open >= torso_open else "torso"
+				"run_through":
+					kind = "thrust"
+					part = "torso"
+				_:
+					kind = "overhead"
+					part = "head"
 		half = can_half and kind == "thrust" and _armor_score(armor, part, false) >= 0.4
 	else:
 		kind = _pick(_kind_weights(def))
@@ -476,6 +525,10 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 			kind = "thrust"
 			half = true
 		part = _pick_part(obs, armor, kind, blunt)
+		if kind != "thrust" and kind != "low" and _rng.randf() < _pf("disarm_aim"):
+			part = "forearm_r"  # knock the weapon out of the hand: strike the holding forearm
+			if kind == "overhead":
+				kind = "diag"
 		neck = part == "head" and edged and (kind == "horizontal" or kind == "diag")
 	var dir := Vector2.ZERO
 	match kind:
@@ -542,6 +595,8 @@ func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool) -
 				wt *= 1.6 if n == "torso" else (0.3 if leg else (0.4 if arm else 1.0))
 		if leg:
 			wt *= 1.0 + _pf("cripple") * 2.5
+		if blunt and n == "head":
+			wt *= BLUNT_HEAD_BIAS
 		var sc: float = _armor_score(armor, n, blunt)
 		wt *= 1.3 if sc <= 0.0 else (1.0 - 0.85 * sc)
 		var info: Dictionary = CombatData.part_info(n)
@@ -650,13 +705,16 @@ func _clamp_aim(v: Vector2) -> Vector2:
 
 func _set_aim(out: FighterInput, v: Vector2) -> void:
 	var c: Vector2 = _clamp_aim(v)
+	c.x = maxf(c.x, AIM_LEFT_LIMIT)
+	c.y = maxf(c.y, AIM_LOW_LIMIT)  # a hand driven to the lowest aim drags the blade through the own thigh and pelvis  # the weapon hand stays off the offhand arm/shield side of the body
+	_last_aim = c
 	out.aim_x = roundi(c.x * 1000.0)
 	out.aim_y = roundi(c.y * 1000.0)
 
 
-func _neutral_aim(out: FighterInput) -> void:
+func _neutral_aim(out: FighterInput, step: float = SLEW_NEUTRAL) -> void:
 	var s: float = sin(float(_tick) * 0.05) * 0.08 * _pf("aim_noise")
-	_set_aim(out, Vector2(s, 0.15))
+	_set_aim(out, _last_aim.move_toward(Vector2(s, 0.15), step))
 
 
 func _shield_up(me: Dictionary, out: FighterInput) -> void:
@@ -700,9 +758,10 @@ func _windup_len(me: Dictionary) -> int:
 func _strike_len(me: Dictionary) -> int:
 	var def: Dictionary = CombatData.weapon(str(me.get("weapon_id", "fists")))
 	var m: float = float(def.get("mass", 1.0))
+	var fast: float = FINISH_STRIKE_SCALE if bool(_plan.get("finishing", false)) else 1.0  # a killing blow wants speed
 	if _plan.get("kind", "") == "thrust":
-		return clampi(roundi(8.0 + m * 2.0), 8, 16)
-	return clampi(roundi(12.0 + m * 5.0), 12, 30)
+		return clampi(roundi((8.0 + m * 2.0) * fast), 6, 16)
+	return clampi(roundi((12.0 + m * 5.0) * fast), 9, 30)
 
 
 func _new_wait() -> int:

@@ -25,7 +25,7 @@ func _pair(dist: float, weapon: String = "gladius") -> Array:
 
 
 func _brain(personality: Dictionary = {}) -> FighterBrain:
-	var p: Dictionary = {"reaction_ms": 0.0, "aim_noise": 0.0}
+	var p: Dictionary = {"reaction_ms": 0.0, "aim_noise": 0.0, "spawn_hold": 0}
 	p.merge(personality, true)
 	return FighterBrain.new(7, p)
 
@@ -117,9 +117,15 @@ func test_finishes_a_fallen_foe() -> void:
 	assert_eq(str(b.plan()["kind"]), "overhead")
 
 
+## Runs past the spawn hold (the brain stands still for its first ticks).
+func _warm(b: FighterBrain, f: Array) -> void:
+	b.think(f[0], f[1], DT)
+
+
 func test_retreats_when_stamina_low() -> void:
 	var b := _brain({"preset": "duelist"})
 	var f: Array = _pair(2.0)
+	_warm(b, f)
 	(f[0] as Dictionary)["stamina"] = 0.05
 	var inp: FighterInput = null
 	for i in 5:
@@ -141,7 +147,7 @@ func test_berserker_keeps_fighting_when_tired() -> void:
 func test_picks_up_a_dropped_weapon() -> void:
 	var b := _brain({"preset": "duelist"})
 	var f: Array = _pair(5.0)
-	b.think(f[0], f[1], DT)
+	_warm(b, f)
 	var me: Dictionary = f[0]
 	me["weapon_id"] = "fists"
 	me["props"] = [{"pos": Vector3(1.0, 0.05, -1.0), "weapon_id": "gladius"}]
@@ -214,3 +220,82 @@ func test_different_seeds_diverge() -> void:
 func test_presets_differ() -> void:
 	assert_true(FighterBrain.preset("coward")["aggression"] < FighterBrain.preset("berserker")["aggression"])
 	assert_true(FighterBrain.preset("berserker")["risk"] > FighterBrain.preset("duelist")["risk"])
+
+
+func test_holds_still_while_spawn_settles() -> void:
+	var b := _brain({"preset": "berserker", "spawn_hold": 24})
+	var f: Array = _pair(5.0)
+	var inp: FighterInput = b.think(f[0], f[1], DT)
+	assert_eq(inp.move_y, 0, "no lunge on the first tick")
+	assert_false(inp.has(FighterInput.SWING))
+
+
+func test_cowardly_pair_still_closes_and_swings() -> void:
+	# range_frac 1.3 holds outside striking range; after commit_ticks the coward steps in and attacks.
+	var b := _brain({"preset": "coward"})
+	var f: Array = _pair(2.4)
+	var swung: bool = false
+	for i in 900:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		if inp.has(FighterInput.SWING) and b.state_name() == "windup":
+			swung = true
+			break
+	assert_true(swung, "a coward eventually commits to an attack")
+
+
+func _finish_plan(weapon: String, armor: Dictionary, seed_value: int) -> Dictionary:
+	var b := FighterBrain.new(seed_value, {"preset": "duelist", "reaction_ms": 0.0, "aim_noise": 0.0, "spawn_hold": 0})
+	var f: Array = _pair(1.0, weapon)
+	(f[1] as Dictionary)["blood_frac"] = 0.1
+	(f[1] as Dictionary)["armor"] = armor
+	for i in 400:
+		b.think(f[0], f[1], DT)
+		if not b.plan().is_empty() and bool(b.plan().get("finishing", false)):
+			return b.plan()
+	return {}
+
+
+func test_spear_finisher_is_a_thrust_to_the_torso() -> void:
+	var p: Dictionary = _finish_plan("spear", {}, 3)
+	assert_false(p.is_empty(), "plans a finisher")
+	assert_eq(str(p["kind"]), "thrust")
+	assert_eq(str(p["part"]), "torso")
+
+
+func test_blunt_finisher_is_overhead_to_the_head() -> void:
+	var p: Dictionary = _finish_plan("club", {}, 3)
+	assert_false(p.is_empty(), "plans a finisher")
+	assert_eq(str(p["kind"]), "overhead")
+	assert_eq(str(p["part"]), "head")
+
+
+func test_sword_finisher_is_a_behead_gut_or_run_through() -> void:
+	var kinds: Dictionary = {}
+	for sd in 12:
+		var p: Dictionary = _finish_plan("gladius", {}, sd)
+		if p.is_empty():
+			continue
+		kinds["%s/%s" % [p["kind"], p["part"]]] = true
+		assert_true(["head", "torso", "pelvis"].has(str(p["part"])), "a killing target")
+	assert_true(kinds.size() >= 2, "varies between killing blows")
+
+
+func test_aim_never_sweeps_to_the_offhand_side() -> void:
+	var b := _brain({"preset": "berserker"})
+	var f: Array = _pair(1.2)
+	for i in 300:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		assert_true(inp.aim_x >= int(FighterBrain.AIM_LEFT_LIMIT * 1000.0) - 1, "aim x stays right of the limit")
+
+
+func test_duelist_sometimes_aims_at_the_weapon_forearm() -> void:
+	var hit: int = 0
+	for sd in 30:
+		var b := FighterBrain.new(sd, {"preset": "duelist", "reaction_ms": 0.0, "spawn_hold": 0})
+		var f: Array = _pair(1.0)
+		for i in 200:
+			b.think(f[0], f[1], DT)
+			if str(b.plan().get("part", "")) == "forearm_r":
+				hit += 1
+				break
+	assert_true(hit > 0, "disarm attempts happen")
