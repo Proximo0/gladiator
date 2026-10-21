@@ -82,3 +82,21 @@ func test_orbit_pose_distance() -> void:
 	var pose: Dictionary = FightCamera.orbit_pose(Vector3(1, 1, 1), 0.7, 0.3, 6.0)
 	var pos: Vector3 = pose["pos"]
 	assert_near(pos.distance_to(Vector3(1, 1, 1)), 6.0, 0.001)
+
+
+func test_text_width_scales_with_height() -> void:
+	assert_near(RomanDecor.text_width("SPQR", 2.0), 2.0 * RomanDecor.text_width("SPQR", 1.0), 0.0001)
+	assert_true(RomanDecor.text_width("AVE CAESAR", 1.0) > RomanDecor.text_width("AVE", 1.0))
+	assert_near(RomanDecor.text_width("", 1.0), 0.0)
+
+
+func test_face_basis_faces_the_viewer() -> void:
+	var fb: Basis = RomanDecor.face_basis(0.0)
+	assert_near(fb.z.x, -1.0, 0.001, "wall at +X faces back toward the centre")
+	assert_near(fb.x.cross(fb.y).dot(fb.z), 1.0, 0.001, "right handed")
+
+
+func test_letters_cover_plaque_words() -> void:
+	for word: String in Arena.PLAQUES:
+		for i: int in word.length():
+			assert_true(RomanDecor.LETTERS.has(word[i]), "letter %s" % word[i])
