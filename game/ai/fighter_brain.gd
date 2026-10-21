@@ -28,8 +28,18 @@ const STAMINA_FLOOR: float = 0.15  ## below this the weapon arm's carry cost can
 const REST_FAIL_TICKS: int = 300  ## ticks at near-zero stamina after which resting is abandoned
 const BEHEAD_BIAS: float = 3.0  ## finisher choice: an edged weapon prefers the neck over the gut (foes usually bleed out before a second try)
 const NECK_LIFT: float = 0.05  ## aim offset from the head centre for neck cuts: negative aims at the neck, but the swung tip sags about 0.15 m below its aim at full speed
-const STALE_START: int = 360  ## ticks without decisive damage before the brain starts forcing the issue
+const STALE_START: int = 360  ## ticks without decisive damage before the brain starts forcing the issue (long: footwork between bursts is not a stalemate)
 const STALE_RAMP: int = 480  ## further ticks until it is fully desperate
+const REPOS_DESPERATE: float = 0.5  ## above this desperation the brain stops breaking off and presses
+const WALL_SOFT: float = 6.5  ## steering starts bending toward the arena centre beyond this radius (m)
+const PIN_RADIUS: float = 7.0  ## a foe farther out than this can be pinned against the wall
+const BURST_TICKS: int = 150  ## committed attacking after a footwork phase (a re-engagement, not a slow drift in)
+const LONG_REACH: float = 2.5  ## weapons reaching farther than this (spear, rake) sidestep little while guarding
+const LONG_GUARD_SCALE: float = 0.5
+const REPOS_ORBIT: int = 0
+const REPOS_BACK: int = 1
+const REPOS_GOAL: int = 2
+const GOAL_RADIUS_MAX: float = 8.0  ## repositioning goals stay inside this radius
 const STALE_HP_DROP: float = 1.5  ## head/torso/pelvis hp loss that counts as decisive damage
 const STALE_CONSC_DROP: float = 0.03
 const BLUNT_HEAD_BIAS: float = 4.0  ## blunt weapons do not bleed: they win by knocking the head (consciousness)
@@ -54,18 +64,22 @@ const ARMOR_KIND: Dictionary = {"cloth": 0.1, "leather": 0.3, "mail": 0.65, "pla
 const PRESETS: Dictionary = {
 	"brute": {"aggression": 0.7, "patience": 0.2, "reaction_ms": 260.0, "aim_noise": 0.3,
 		"preferred_attacks": ["overhead", "horizontal"], "risk": 0.6, "range_frac": 0.8, "retreat_stamina": 0.2,
-		"retreat_blood": 0.15, "feint": 0.05, "cripple": 0.0, "disarm_aim": 0.08, "commit_ticks": 70},
+		"retreat_blood": 0.15, "feint": 0.05, "cripple": 0.0, "disarm_aim": 0.08, "commit_ticks": 70,
+		"engage": [240, 440], "repos": [150, 320], "disengage": 0.25, "orbit_r": [1.8, 3.0], "repos_goal": 0.55},
 	"duelist": {"aggression": 0.5, "patience": 0.8, "reaction_ms": 140.0, "aim_noise": 0.1,
 		"preferred_attacks": ["diag", "thrust", "horizontal"], "risk": 0.3, "range_frac": 0.9,
 		"retreat_stamina": 0.3, "retreat_blood": 0.3, "feint": 0.35, "cripple": 0.5, "disarm_aim": 0.4,
-		"commit_ticks": 120},
+		"commit_ticks": 120,
+		"engage": [180, 340], "repos": [270, 480], "disengage": 0.5, "orbit_r": [2.0, 3.6], "repos_goal": 0.55},
 	"coward": {"aggression": 0.2, "patience": 0.9, "reaction_ms": 200.0, "aim_noise": 0.25,
 		"preferred_attacks": ["thrust", "low"], "risk": 0.05, "range_frac": 1.3, "retreat_stamina": 0.45,
 		"retreat_blood": 0.6, "feint": 0.1, "cripple": 1.0, "disarm_aim": 0.15,
-		"commit_ticks": 150},
+		"commit_ticks": 150,
+		"engage": [140, 260], "repos": [400, 700], "disengage": 0.7, "orbit_r": [3.5, 5.5], "repos_goal": 0.6},
 	"berserker": {"aggression": 1.0, "patience": 0.0, "reaction_ms": 220.0, "aim_noise": 0.4,
 		"preferred_attacks": ["horizontal", "diag"], "risk": 1.0, "range_frac": 0.7, "retreat_stamina": 0.06,
-		"retreat_blood": 0.0, "feint": 0.0, "cripple": 0.0, "disarm_aim": 0.0, "commit_ticks": 40},
+		"retreat_blood": 0.0, "feint": 0.0, "cripple": 0.0, "disarm_aim": 0.0, "commit_ticks": 40,
+		"engage": [340, 560], "repos": [90, 200], "disengage": 0.1, "orbit_r": [1.5, 2.5], "repos_goal": 0.45},
 }
 
 var _rng := RandomNumberGenerator.new()
@@ -94,6 +108,21 @@ var _stale_prev: Dictionary = {}
 var _low_ticks: int = 0  ## ticks spent tired with stamina near zero
 var _no_rest_until: int = 0
 var _idle_ticks: int = 0  ## ticks spent circling in approach without starting an attack
+var _phase: int = 0  ## 0 = engage burst, 1 = footwork between bursts (circle, back off, reposition)
+var _phase_t: int = 0
+var _repos_style: int = REPOS_ORBIT
+var _repos_goal: Vector3 = Vector3.ZERO
+var _orbit_r: float = 3.0
+var _flip_t: int = 0
+var _range_off: float = 0.0  ## range work: how far past the base hold distance the fighter stands right now (m)
+var _range_t: int = 0
+var _was_down: bool = false
+var _venue: Vector3 = Vector3.ZERO  ## where this fighter would like the duel to drift to; steps back and circling lean toward it
+var _venue_t: int = 0
+var _burst_t: int = 0  ## ticks left of a committed attack burst after re-engaging
+var _seen: Dictionary = {}  ## own 1 m grid cells visited (Vector2i -> ticks), so repositioning goals favour unused sand
+var _mp: Vector3 = Vector3.ZERO
+var _fp: Vector3 = Vector3.ZERO
 
 # Per-tick geometry (set by _geometry).
 var _fwd: Vector3 = Vector3(0.0, 0.0, -1.0)
@@ -122,6 +151,7 @@ func _init(seed: int, personality: Dictionary = {}) -> void:
 	_ring.resize(RING)
 	_circle_dir = 1 if _rng.randf() < 0.5 else -1
 	_wait = _new_wait()
+	_phase_t = _span("engage")
 
 
 func state_name() -> String:
@@ -151,7 +181,19 @@ func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 	if my_state == "down" or my_state == "getting_up" or my_state == "ko" or my_state == "dead":
 		_enter(ST_APPROACH, 0)
 		_wait = 20
+		_was_down = true
 		return out
+	if _was_down:  # back on my feet: take some room before re-engaging
+		_was_down = false
+		_begin_repos(REPOS_BACK, 90 + _rng.randi_range(0, 90))
+	if _phase_t > 0:
+		_phase_t -= 1
+	if _burst_t > 0:
+		_burst_t -= 1
+	_venue_t -= 1
+	if _venue_t <= 0 or Vector2(_venue.x - _mp.x, _venue.z - _mp.z).length() < 1.5:
+		_venue_t = _rng.randi_range(360, 800)
+		_venue = _pick_spot()
 	if str(obs.get("state", "standing")) == "dead":
 		return out
 	_geometry(me, obs)
@@ -159,6 +201,8 @@ func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 	if _tick <= int(_p.get("spawn_hold", SPAWN_HOLD_TICKS)):
 		_neutral_aim(out)
 		return out
+	if _tick == int(_p.get("spawn_hold", SPAWN_HOLD_TICKS)) + 1 and _rng.randf() < 0.75 * (1.0 - _pf("aggression")) + 0.1:
+		_begin_repos(-1, 0)  # size the foe up instead of rushing into the middle
 	_update_state(me, obs)
 	match _state:
 		ST_APPROACH, ST_FINISH:
@@ -273,6 +317,8 @@ func _update_state(me: Dictionary, obs: Dictionary) -> void:
 
 func _after_guard(me: Dictionary, obs: Dictionary) -> void:
 	var p_rip: float = _pf("patience") * 0.6 + _pf("aggression") * 0.2
+	if _want_finish(obs):
+		p_rip = maxf(p_rip, 0.9)  # the foe is beaten: answer his last swing with the killing blow
 	if not _tired and _dist <= _reach * 1.15 and _rng.randf() <= p_rip:
 		_plan = _make_plan(me, obs, _want_finish(obs))
 		_enter(ST_WINDUP, roundi(float(_windup_len(me)) * 0.5))
@@ -371,7 +417,7 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var finishing: bool = _state == ST_FINISH
 	var hold: float = _reach * _pf("range_frac")
 	_idle_ticks += 1
-	var committed: bool = _idle_ticks > int(_pf("commit_ticks")) or _desperation() > 0.0
+	var committed: bool = _idle_ticks > int(_pf("commit_ticks")) or _desperation() > 0.0 or _burst_t > 0
 	if committed:
 		hold = minf(hold, _reach * 0.85)  # waited long enough: step into striking range
 	if finishing:
@@ -379,8 +425,29 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var stamina: float = float(me.get("stamina", 1.0))
 	_neutral_aim(out)
 	_shield_up(me, out)
+	if not finishing:
+		if _phase == 0 and _phase_t <= 0 and _desperation() < REPOS_DESPERATE:
+			_begin_repos(-1, 0)
+		elif _phase == 1 and (_phase_t <= 0 or _desperation() >= REPOS_DESPERATE):
+			_end_repos()
+		if _phase == 1:
+			if _opportunity(obs) and _dist <= _reach * 1.4:  # the foe just whiffed: dart in
+				_end_repos()
+			else:
+				_do_reposition(me, obs, out)
+				return
+	else:
+		_phase = 0
+		_phase_t = maxi(_phase_t, 60)
+	_range_t -= 1
+	if _range_t <= 0:  # range work: drift the standing distance in and out
+		_range_t = _rng.randi_range(50, 140)
+		_range_off = _rng.randf_range(-0.1, 1.0) * _reach * (1.0 - _pf("aggression") * 0.5)
+	if not finishing:
+		hold += _range_off
 	if _dist > hold + 0.25:
-		out.move_y = 1000 if _dist > hold + 1.0 else 600
+		if not _pin_target(hold, out):
+			out.move_y = 1000 if _dist > hold + 1.0 else 600
 		var sprint_from: float = hold + (2.0 if _pf("risk") > 0.7 else 3.5)
 		if (_dist > sprint_from and stamina > 0.5) or (finishing and _dist > hold + 1.5 and stamina > 0.25):
 			out.buttons |= FighterInput.SPRINT
@@ -390,9 +457,8 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		_circle_t -= 1
 		if _circle_t <= 0:
 			_circle_t = _rng.randi_range(40, 110)
-			_circle_dir = 1 if _rng.randf() < 0.5 else -1
-		out.move_x = _circle_dir * 600
-		out.move_y = roundi(clampf((_dist - hold) * 1.5, -0.6, 0.6) * 1000.0)
+			_circle_dir = _pick_side()
+		_steer(_tangent() * 0.7 + _dir * clampf((_dist - hold) * 1.5, -0.6, 0.6) + _venue_lean() * 0.9, 0.7, out)
 		_wait = maxi(_wait - 1, 0)
 	if finishing or committed:
 		_wait = 0
@@ -414,6 +480,141 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 			_enter(ST_WINDUP, _windup_len(me))
 	else:
 		_wait = _rng.randi_range(8, 24)
+
+
+## Start a footwork phase. style < 0 picks one at random; ticks <= 0 draws the length from the personality.
+func _begin_repos(style: int, ticks: int) -> void:
+	_phase = 1
+	_phase_t = ticks if ticks > 0 else _span("repos")
+	if style >= 0:
+		_repos_style = style
+	else:
+		var wg: float = _pf("repos_goal")
+		var r: float = _rng.randf()
+		_repos_style = REPOS_GOAL if r < wg else (REPOS_BACK if r < wg + 0.25 else REPOS_ORBIT)
+	var rr: Array = _p.get("orbit_r", [2.0, 3.5])
+	_orbit_r = _rng.randf_range(float(rr[0]), float(rr[1]))
+	_circle_dir = _pick_side()
+	_flip_t = _rng.randi_range(90, 220)
+	if _repos_style == REPOS_GOAL:
+		_pick_goal()
+
+
+func _end_repos() -> void:
+	_phase = 0
+	_phase_t = _span("engage")
+	_wait = 0
+	_burst_t = BURST_TICKS
+
+
+## The least-visited of a few random spots, so fights range over the whole sand; never on top of the foe.
+func _pick_goal() -> void:
+	_repos_goal = _pick_spot()
+	_venue = _repos_goal
+
+
+func _pick_spot() -> Vector3:
+	var spot: Vector3 = Vector3.ZERO
+	var best: float = 1.0e9
+	for k: int in 5:
+		var a: float = _rng.randf() * TAU
+		var rad: float = _rng.randf_range(1.0, GOAL_RADIUS_MAX)
+		var g := Vector3(cos(a) * rad, 0.0, sin(a) * rad)
+		var score: float = float(_seen.get(Vector2i(floori(g.x), floori(g.z)), 0)) + _rng.randf() * 30.0
+		if Vector2(g.x - _mp.x, g.z - _mp.z).length() < 3.0 or Vector2(g.x - _fp.x, g.z - _fp.z).length() < _reach * 1.5:
+			score += 100000.0
+		if score < best:
+			best = score
+			spot = g
+	return spot
+
+
+## Unit vector toward the venue (zero when already there), for leaning footwork toward it.
+func _venue_lean() -> Vector3:
+	var v: Vector3 = _venue - _mp
+	v.y = 0.0
+	return v.normalized() if v.length() > 1.5 else Vector3.ZERO
+
+
+func _span(key: String) -> int:
+	var a: Array = _p.get(key, [200, 400])
+	return _rng.randi_range(int(a[0]), int(a[1]))
+
+
+## Circling direction (+1 / -1) toward the side that takes me off the wall; random when roomy.
+func _pick_side() -> int:
+	var r: float = Vector2(_mp.x, _mp.z).length()
+	if r > PIN_RADIUS:
+		var sgn: int = _circle_dir
+		_circle_dir = 1
+		var t: Vector3 = _tangent()
+		_circle_dir = sgn
+		var out_rate: float = (_mp.x * t.x + _mp.z * t.z) / r  # radius change per unit step along +tangent
+		if absf(out_rate) > 0.2:
+			return -1 if out_rate > 0.0 else 1
+	return 1 if _rng.randf() < 0.5 else -1
+
+
+## World direction at 90 degrees to the line to the foe, signed by the circling direction.
+func _tangent() -> Vector3:
+	return Vector3(-_dir.z, 0.0, _dir.x) * float(_circle_dir)
+
+
+## Walk along `wdir` (world, need not be unit) at `speed`, bending toward the arena centre near the wall.
+func _steer(wdir: Vector3, speed: float, out: FighterInput) -> void:
+	var v: Vector3 = wdir
+	v.y = 0.0
+	var r: float = Vector2(_mp.x, _mp.z).length()
+	if r > WALL_SOFT:
+		var w: float = clampf((r - WALL_SOFT) / 3.0, 0.0, 1.0)
+		var c: Vector3 = Vector3(-_mp.x, 0.0, -_mp.z) / r
+		v = v.normalized() * (1.0 - w * 0.5) + c * w * 1.4
+	if v.length() < 0.001:
+		return
+	_move_world(v.normalized(), speed, out)
+
+
+## Chasing a foe who stands near the wall from inside: head for the point on the centre side of him, so he is pinned.
+func _pin_target(hold: float, out: FighterInput) -> bool:
+	var fr: float = Vector2(_fp.x, _fp.z).length()
+	var mr: float = Vector2(_mp.x, _mp.z).length()
+	if fr < PIN_RADIUS or mr > fr - 1.0 or _dist < hold + 1.0:
+		return false
+	var inward: Vector3 = Vector3(-_fp.x, 0.0, -_fp.z) / fr
+	var goal: Vector3 = _fp + inward * hold
+	var go: Vector3 = goal - _mp
+	go.y = 0.0
+	if go.length() < 0.3:
+		return false
+	_move_world(go.normalized(), 1.0, out)
+	return true
+
+
+func _do_reposition(me: Dictionary, _obs: Dictionary, out: FighterInput) -> void:
+	_flip_t -= 1
+	if _flip_t <= 0:
+		_flip_t = _rng.randi_range(90, 220)
+		_circle_dir = _pick_side()
+	var stamina: float = float(me.get("stamina", 1.0))
+	match _repos_style:
+		REPOS_GOAL:
+			var go: Vector3 = _repos_goal - _mp
+			go.y = 0.0
+			var gl: float = go.length()
+			if gl < 0.8:
+				_phase_t = mini(_phase_t, 20)  # arrived: the next burst starts here
+			else:
+				_steer(go / gl, 1.0 if gl > 2.0 else 0.5, out)
+				if gl > 5.0 and stamina > 0.6 and _dist > _reach * 2.0 and _reach < LONG_REACH:
+					out.buttons |= FighterInput.SPRINT
+		REPOS_BACK:
+			if _dist < _orbit_r + 1.0:
+				_steer(-_dir + _tangent() * 0.3, 0.9, out)
+			else:
+				_steer(_tangent(), 0.35, out)
+		_:
+			var e: float = _dist - _orbit_r
+			_steer(_tangent() + _dir * clampf(e * 0.8, -0.8, 0.8), 0.8, out)
 
 
 func _do_feint(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
@@ -467,32 +668,52 @@ func _do_strike(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	_neutral_aim(out, SLEW_RECOVER)
 	_shield_up(me, out)
-	out.move_y = roundi(-300.0 * (1.0 - _pf("aggression")))
+	if _want_finish(obs):
+		out.move_y = roundi(-300.0 * (1.0 - _pf("aggression")))
+	else:
+		_steer(-_dir * (1.0 - _pf("aggression")) + _tangent() * 0.5 + _venue_lean() * 0.6, 0.35 + 0.35 * (1.0 - _pf("aggression")), out)
 	if _st_ticks + 1 >= _st_len:
 		var finishing: bool = _want_finish(obs)
 		var stamina: float = float(me.get("stamina", 1.0))
-		if not _tired and _dist <= _reach * 1.1 and _rng.randf() <= _pf("aggression") * 0.6 * minf(stamina * 1.5, 1.0):
+		if not _tired and _dist <= _reach * 1.1 and _rng.randf() <= maxf(_pf("aggression") * 0.6 * minf(stamina * 1.5, 1.0), 0.8 if finishing else 0.0):
 			_plan = _make_plan(me, obs, finishing)
 			_enter(ST_WINDUP, roundi(float(_windup_len(me)) * 0.7))
 		else:
 			_enter(ST_APPROACH, 0)
 			_wait = _new_wait()
+			if not finishing and _phase == 0 and _desperation() < REPOS_DESPERATE and _rng.randf() < _pf("disengage"):
+				_begin_repos(-1, 0)
 
 
 func _do_guard(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var tip: Vector3 = obs.get("tip_pos", Vector3.ZERO)
 	var a: Vector2 = _clamp_aim(Vector2((tip - _origin).dot(_right) / GUARD_W * 0.7, (tip.y - _origin.y) / GUARD_H * 0.7))
+	if _reach > LONG_REACH:
+		a *= LONG_GUARD_SCALE  # a spear parried far off centre swings its butt and shaft through the own body
 	_set_aim(out, _last_aim.move_toward(a, SLEW_GUARD))
 	out.buttons |= FighterInput.SWING | FighterInput.OFFHAND
-	out.move_y = -250 if _dist < _reach * 1.2 else 0
+	# Guard on the move: slip back and to the side rather than standing in the foe's swing. A long weapon swung round
+	# by footwork hits the own body (spear self hits), so it only gives ground.
+	if _dist < _reach * 1.4:
+		if _reach > LONG_REACH:
+			out.move_y = -250
+		else:
+			_steer(-_dir * (0.2 + 0.3 * (1.0 - _pf("risk"))) + _tangent() * 0.7 + _venue_lean() * 0.4, 0.55, out)
 
 
 func _do_retreat(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	_set_aim(out, _last_aim.move_toward(Vector2(0.0, 0.2), SLEW_NEUTRAL))
 	_shield_up(me, out)
-	if _dist < _reach * 2.2:
-		out.move_y = -800
-		out.move_x = _circle_dir * 200
+	# Breaking off to recover: keep well out of reach, circling slowly rather than backing into the wall.
+	var keep: float = _reach * 2.2 + 1.0 - _pf("risk") + (1.0 if _pf("range_frac") > 1.0 else 0.0)
+	_flip_t -= 1
+	if _flip_t <= 0:
+		_flip_t = _rng.randi_range(80, 200)
+		_circle_dir = _pick_side()
+	if _dist < keep:
+		_steer(-_dir + _tangent() * 0.6, 0.9 if _dist < keep - 1.0 else 0.6, out)
+	elif _dist < keep + 1.5:
+		_steer(_tangent(), 0.3, out)
 
 
 func _do_weapon(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
@@ -753,6 +974,10 @@ func _geometry(me: Dictionary, obs: Dictionary) -> void:
 	var fp: Vector3 = obs.get("pelvis_pos", Vector3(0.0, 0.0, -5.0))
 	var d: Vector3 = fp - mp
 	d.y = 0.0
+	_mp = mp
+	_fp = fp
+	var cell := Vector2i(floori(mp.x), floori(mp.z))
+	_seen[cell] = int(_seen.get(cell, 0)) + 1
 	_dist = d.length()
 	_dir = d / _dist if _dist > 0.001 else _fwd
 	_origin = _part_pos(me, "torso", mp + Vector3(0.0, 0.5, 0.0)) + Vector3(0.0, 0.05, 0.0)

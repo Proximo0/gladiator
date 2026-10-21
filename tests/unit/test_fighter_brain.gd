@@ -394,3 +394,70 @@ func test_exhausted_fighter_stops_resting_when_resting_fails() -> void:
 	for i in FighterBrain.REST_FAIL_TICKS + 40:
 		b.think(f[0], f[1], DT)
 	assert_true(b.state_name() != "retreat", "fights on once resting is hopeless")
+
+
+## Ticks (of `n`, foe fixed at `dist`) the brain spends in a footwork phase between engagement bursts.
+func _footwork_ticks(personality: Dictionary, dist: float, n: int, seed_value: int = 7) -> int:
+	var p: Dictionary = {"reaction_ms": 0.0, "aim_noise": 0.0, "spawn_hold": 0}
+	p.merge(personality, true)
+	var b := FighterBrain.new(seed_value, p)
+	var f: Array = _pair(dist)
+	var c: int = 0
+	for i in n:
+		b.think(f[0], f[1], DT)
+		if b._phase == 1:
+			c += 1
+	return c
+
+
+func test_fights_come_in_bursts_with_footwork_between() -> void:
+	var c: int = _footwork_ticks({"preset": "duelist"}, 1.4, 540)  # before the stalemate clock presses
+	assert_true(c > 80, "a duelist spends part of 9 s in footwork: %d ticks" % c)
+	assert_true(c < 440, "but not all of it: %d ticks" % c)
+
+
+func test_coward_breaks_off_more_than_berserker() -> void:
+	var cow: int = _footwork_ticks({"preset": "coward"}, 1.4, 3000)
+	var ber: int = _footwork_ticks({"preset": "berserker"}, 1.4, 3000)
+	assert_true(cow > ber * 2, "coward %d vs berserker %d footwork ticks" % [cow, ber])
+
+
+func test_footwork_walks_around_the_foe_instead_of_standing_in_range() -> void:
+	var b := _brain({"preset": "coward"})
+	var f: Array = _pair(1.4)
+	var moved_back: bool = false
+	var sideways: bool = false
+	for i in 1500:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		if b._phase == 1 and b.state_name() == "approach" and not inp.has(FighterInput.SWING):
+			moved_back = moved_back or inp.move_y < -100
+			sideways = sideways or absi(inp.move_x) > 200
+	assert_true(moved_back and sideways, "steps back and strafes (back %s, side %s)" % [moved_back, sideways])
+
+
+func test_repositioning_goals_stay_inside_the_arena() -> void:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(4.0)
+	b.think(f[0], f[1], DT)
+	for i in 40:
+		var g: Vector3 = b._pick_spot()
+		assert_true(Vector2(g.x, g.z).length() <= FighterBrain.GOAL_RADIUS_MAX + 0.01, "goal %s inside" % g)
+
+
+func test_stalemate_ends_the_footwork_and_presses() -> void:
+	var b := _brain({"preset": "coward"})
+	var f: Array = _pair(3.0)
+	for i in 400:
+		b.think(f[0], f[1], DT)
+	b._stale_ticks = FighterBrain.STALE_START + FighterBrain.STALE_RAMP
+	var phase_one: int = 0
+	for i in 300:
+		b._stale_ticks = FighterBrain.STALE_START + FighterBrain.STALE_RAMP
+		b.think(f[0], f[1], DT)
+		if i > 5 and b._phase == 1:
+			phase_one += 1
+	assert_eq(phase_one, 0, "a desperate brain stops circling")
+
+
+func test_footwork_is_deterministic() -> void:
+	assert_eq(_footwork_ticks({"preset": "duelist"}, 1.4, 1200, 11), _footwork_ticks({"preset": "duelist"}, 1.4, 1200, 11))
