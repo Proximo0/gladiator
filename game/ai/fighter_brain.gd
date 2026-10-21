@@ -229,6 +229,14 @@ func _update_state(me: Dictionary, obs: Dictionary) -> void:
 	var finishing: bool = _want_finish(obs)
 	var busy: bool = _state == ST_STRIKE or _state == ST_GUARD
 
+	# Disarmed with a weapon to pick up: go for it rather than guard with bare fists (round 3: disarmed bots stood
+	# in a fist guard next to their sword until the match ended). Only a strike already under way finishes first.
+	if _state != ST_STRIKE and _disarmed(me) and _tick >= _weapon_giveup and _arm_can_hold(me) and not _props(me, obs).is_empty():
+		if _state != ST_WEAPON:
+			_enter(ST_WEAPON, 0)
+			_grab_ticks = 0
+		_thr_prev = _threat(me, obs)
+		return
 	var thr: bool = _threat(me, obs)
 	if thr and not _thr_prev:
 		_reflex_ok = _rng.randf() <= clampf(1.0 - _pf("risk") * 0.7, 0.2, 1.0) * (1.0 - 0.7 * _desperation())
@@ -245,11 +253,6 @@ func _update_state(me: Dictionary, obs: Dictionary) -> void:
 		_after_guard(me, obs)
 		return
 	if busy:
-		return
-	if _disarmed(me) and _tick >= _weapon_giveup and _arm_can_hold(me) and not _props(me, obs).is_empty():
-		if _state != ST_WEAPON:
-			_enter(ST_WEAPON, 0)
-			_grab_ticks = 0
 		return
 	if _state == ST_WEAPON:
 		_enter(ST_APPROACH, 0)

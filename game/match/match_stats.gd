@@ -7,6 +7,11 @@ extends RefCounted
 ## "Swinging" is a tip speed of SWING_SPEED or more. "Stuck" is both fighters' pelvis speed under STUCK_SPEED and
 ## both tips slower than STUCK_TIP; `stuck_s` is the time spent stuck beyond STUCK_GRACE_S, summed over the match.
 ## An "explosion" is a tick where any body part moves faster than EXPLODE_SPEED, is NaN/inf, or falls below FALL_Y.
+## Weapons: `disarms` are weapons knocked out of a hand by a hit (hit events with "disarmed"); `arm_drops` are
+## weapons let go because the holding arm got too hurt or was cut off, and `rearms` are weapons picked up, both from
+## the fighters' cumulative "weapon_log" in debug_frame (`rearms_after_disarm`: pickups that replaced a weapon
+## knocked out of hand). `stamina0_max_s` is the longest run any fighter spent at
+## zero stamina; `getup_fails` counts get-ups that fell back down.
 
 const SWING_SPEED: float = 2.5
 const STUCK_SPEED: float = 0.2
@@ -16,6 +21,7 @@ const EXPLODE_SPEED: float = 40.0
 const FALL_Y: float = -3.0
 const FINISHERS: PackedStringArray = ["run_through", "gut", "behead", "skull_crush"]
 const DOWN_STATES: PackedStringArray = ["down", "ko", "getting_up"]
+const STAMINA_ZERO: float = 0.005
 
 var ticks: int = 0
 var hits: int = 0
@@ -26,6 +32,8 @@ var max_tip_speed: float = 0.0
 var severs: int = 0
 var finisher: String = ""
 var disarms: int = 0
+var stamina0_max_s: float = 0.0
+var getup_fails: int = 0
 var armor_dislodged: int = 0
 var self_hits: int = 0
 var knockdowns: int = 0
@@ -40,6 +48,8 @@ var _swing_ticks: int = 0
 var _stuck_run: float = 0.0
 var _prev_pos: Dictionary = {}
 var _prev_state: Array = ["", ""]
+var _weapon_log: Array = [{}, {}]
+var _stamina0_run: Array = [0.0, 0.0]
 
 
 ## A resolved hit event (Fighter.hit payload).
@@ -96,7 +106,18 @@ func on_frames(frames: Array, dt: float) -> void:
 			var prev: String = _prev_state[side]
 			if state == "down" and prev != "" and prev != "down" and prev != "ko":
 				knockdowns += 1
+			if state == "down" and prev == "getting_up":
+				getup_fails += 1
 			_prev_state[side] = state
+			var wl: Variant = fr.get("weapon_log", null)
+			if wl is Dictionary:
+				_weapon_log[side] = (wl as Dictionary).duplicate()
+			var dead: bool = state == "dead"
+			if float(fr.get("stamina", 1.0)) <= STAMINA_ZERO and not dead:
+				_stamina0_run[side] = float(_stamina0_run[side]) + dt
+				stamina0_max_s = maxf(stamina0_max_s, float(_stamina0_run[side]))
+			else:
+				_stamina0_run[side] = 0.0
 		var pv: Vector3 = fr.get("pelvis_vel", Vector3.ZERO)
 		if not (pv.length() < STUCK_SPEED) or not (tip < STUCK_TIP):
 			still = false
@@ -131,6 +152,14 @@ func _check_explosion(fr: Dictionary, dt: float) -> bool:
 	return bad
 
 
+## Sum over both sides of a counter from the fighters' latest "weapon_log".
+func _log_sum(key: String) -> int:
+	var n: int = 0
+	for wl: Dictionary in _weapon_log:
+		n += int(wl.get(key, 0))
+	return n
+
+
 func mean_tip_speed() -> float:
 	return _swing_sum / float(_swing_ticks) if _swing_ticks > 0 else 0.0
 
@@ -140,7 +169,9 @@ func to_dict() -> Dictionary:
 		"ticks": ticks, "hits": hits, "hits_by_side": hits_by_side.duplicate(),
 		"contact_kinds": contact_kinds.duplicate(), "parries": parries,
 		"max_tip_speed": max_tip_speed, "mean_tip_speed": mean_tip_speed(), "severs": severs, "finisher": finisher,
-		"disarms": disarms, "armor_dislodged": armor_dislodged, "self_hits": self_hits, "knockdowns": knockdowns,
+		"disarms": disarms, "arm_drops": _log_sum("arm_drops"), "rearms": _log_sum("rearms"),
+		"rearms_after_disarm": _log_sum("rearms_after_disarm"),
+		"stamina0_max_s": stamina0_max_s, "getup_fails": getup_fails, "armor_dislodged": armor_dislodged, "self_hits": self_hits, "knockdowns": knockdowns,
 		"time_down_s": time_down_s, "stuck_s": stuck_s, "explosions": explosions, "wall_time_s": wall_time_s,
 		"blood_left": blood_left.duplicate(),
 	}

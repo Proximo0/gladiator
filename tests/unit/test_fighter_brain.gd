@@ -337,6 +337,20 @@ func test_disarmed_fighter_goes_for_a_prop() -> void:
 	assert_eq((r[0] as FighterBrain).state_name(), "weapon")
 
 
+func test_disarmed_fighter_under_attack_still_goes_for_a_prop() -> void:
+	var f: Array = _pair(1.2, "gladius")
+	var b := _brain({"preset": "duelist"})
+	b.think(f[0], f[1], DT)  # remembers the main weapon
+	(f[0] as Dictionary)["weapon_id"] = "fists"
+	(f[0] as Dictionary)["props"] = [{"pos": Vector3(1.0, 0.02, 1.0), "weapon_id": "gladius"}]
+	# The foe's blade comes at the torso fast: a threat that would normally raise a guard.
+	(f[1] as Dictionary)["tip_speed"] = 9.0
+	for i in 6:
+		(f[1] as Dictionary)["tip_pos"] = Vector3(0.0, 1.3, -1.0 + 0.1 * i)
+		b.think(f[0], f[1], DT)
+	assert_eq(b.state_name(), "weapon", "a bare-fist guard is no use: pick the weapon up")
+
+
 func test_crippled_weapon_arm_does_not_chase_props() -> void:
 	var r: Array = _disarmed_pair(1.0, 0.02)
 	assert_true((r[0] as FighterBrain).state_name() != "weapon", "it would drop the weapon again at once")

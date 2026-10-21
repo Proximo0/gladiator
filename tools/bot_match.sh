@@ -86,8 +86,13 @@ print("  outcomes (winner)    %s" % ", ".join("%s %d" % kv for kv in sorted(winn
 print("  mean match length    %.1f s" % (ticks / 60.0 / n))
 print("  hits per minute      %.1f" % (hits / mins if mins > 0 else 0.0))
 print("  finisher kinds       %s" % ", ".join("%s %d" % kv for kv in sorted(fin.items())))
-print("  disarms %d  armor off %d  self hits %d  knockdowns %d  severs %d" % (
-    tot("disarms"), tot("armor_dislodged"), tot("self_hits"), tot("knockdowns"), tot("severs")))
+print("  disarms %d  arm drops %d  rearms %d (after a disarm %d)" % (tot("disarms"), tot("arm_drops"), tot("rearms"),
+    tot("rearms_after_disarm")))
+print("  armor off %d  self hits %d  knockdowns %d  getup fails %d  severs %d" % (
+    tot("armor_dislodged"), tot("self_hits"), tot("knockdowns"), tot("getup_fails"), tot("severs")))
+s0 = [(float(s.get("stamina0_max_s", 0.0)), r[0]) for s, r in zip(stats, rows)]
+s0_max = max(s0) if s0 else (0.0, "-")
+print("  stamina 0 longest    %.1f s (seed %s), over 10 s: %d" % (s0_max[0], s0_max[1], sum(1 for v in s0 if v[0] > 10.0)))
 print("  max tip speed        %.1f m/s" % max([float(s.get("max_tip_speed", 0.0)) for s in stats] + [0.0]))
 print("  stuck_s total %.1f  explosions %d" % (sum(float(s.get("stuck_s", 0.0)) for s in stats), tot("explosions")))
 print("  ms per tick          %.2f" % wall)

@@ -107,7 +107,17 @@ const FIELDS: Array = [
 	["swing_hand_speed", 30.0, 5.0, 60.0, 1.0, "Arms", "Max speed of the hand goal while swinging or thrusting, m/s."],
 	["offhand_hand_speed", 5.0, 0.5, 15.0, 0.5, "Arms", "Max speed of the left hand goal, m/s."],
 	["hit_debounce", 0.25, 0.05, 1.0, 0.05, "Damage", "Min time between hits by the same weapon on the same part, s."],
-	["grab_radius", 0.6, 0.1, 1.0, 0.05, "Arms", "GRAB pickup radius from the hand, m."],
+	["arm_exertion", 0.7, 0.0, 1.0, 0.05, "Health", "Stamina cost of arm force, as a share of the fresh arm's cap (force used x strength)."],
+	["reach_height", 0.5, 0.3, 0.8, 0.01, "Arms", "Pelvis height when kneeling to pick a prop off the ground (CROUCH + GRAB), m."],
+	["reach_pitch", 0.55, 0.0, 1.0, 0.05, "Arms", "Forward pitch of the pelvis in the pick-up bow, rad."],
+	["reach_bend", 0.65, 0.0, 0.7, 0.05, "Arms", "Torso bend over the hips in the pick-up bow, rad (joint limit 0.7)."],
+	["reach_time", 0.35, 0.05, 1.0, 0.05, "Arms", "Seconds to blend into or out of the pick-up bow."],
+	["reach_hold", 0.4, 0.1, 1.0, 0.05, "Arms", "Seconds a GRAB press keeps the pick-up bow wanted (covers a pulsed button)."],
+	["reach_scan", 1.1, 0.3, 2.0, 0.05, "Arms", "Horizontal distance from the pelvis within which a prop starts the pick-up bow, m."],
+	["reach_hand_lift", 0.05, 0.0, 0.2, 0.01, "Arms", "Height above the prop that the reaching hand aims for, m."],
+	["reach_hand_speed", 3.0, 0.5, 10.0, 0.1, "Arms", "Speed of the hand goal while reaching down, m/s."],
+	["reach_foot_fwd", 0.12, 0.0, 0.3, 0.01, "Arms", "How far the feet step forward under the pick-up bow, m."],
+	["grab_radius", 0.4, 0.1, 1.0, 0.05, "Arms", "GRAB pickup radius from the hand, m."],
 	["knockback_scale", 1.0, 0.0, 3.0, 0.05, "Damage", "Multiplier on hit knockback impulses."],
 	["match_pause_s", 4.0, 1.0, 15.0, 0.5, "Match", "Pause after a match before the next bot match starts, s."],
 	["match_slowmo_scale", 0.4, 0.1, 1.0, 0.05, "Match", "Time scale during the finisher slow motion."],
@@ -221,6 +231,16 @@ var swing_hand_speed: float
 var offhand_hand_speed: float
 var hit_debounce: float
 var grab_radius: float
+var arm_exertion: float
+var reach_height: float
+var reach_pitch: float
+var reach_bend: float
+var reach_time: float
+var reach_hold: float
+var reach_scan: float
+var reach_hand_lift: float
+var reach_hand_speed: float
+var reach_foot_fwd: float
 var knockback_scale: float
 var match_pause_s: float
 var match_slowmo_scale: float

@@ -34,6 +34,9 @@ const FALLBACK: Dictionary = {
 	"down_time": 1.5, "getup_time": 1.4, "down_strength": 0.3, "limp_strength": 0.04, "stamina_floor": 0.45,
 	"limb_floor": 0.25, "weapon_drop_hp": 0.15, "stride_base": 0.15, "stride_per_speed": 0.08, "stride_max": 0.45,
 	"foot_lift": 0.13, "pelvis_inertia": 2.0, "torso_inertia": 2.5, "balance_inertia": 3.0, "leg_reaction": 0.25, "pd_margin": 0.5, "self_hit_min_speed": 6.0, "hold_freq": 2.0, "blade_pivot_back": 0.45, "swing_reach": 0.35, "guard_hand_speed": 2.5, "swing_hand_speed": 30.0, "offhand_hand_speed": 5.0, "hit_debounce": 0.25, "grab_radius": 0.3, "knockback_scale": 1.0,
+	"arm_exertion": 0.7,
+	"reach_height": 0.5, "reach_pitch": 0.55, "reach_bend": 0.65, "reach_time": 0.35, "reach_hold": 0.4,
+	"reach_scan": 1.1, "reach_hand_lift": 0.05, "reach_hand_speed": 3.0, "reach_foot_fwd": 0.12,
 }
 
 const SWING: int = 1
@@ -97,9 +100,18 @@ var _hand_target_l: Vector3 = Vector3.ZERO
 var _goal_r: Vector3 = Vector3.ZERO
 var _goal_l: Vector3 = Vector3.ZERO
 var _grab_latch: bool = false
+## Reaching down for a prop on the ground (CROUCH + GRAB, empty right hand): 0..1 blend of the kneel-and-bow pose,
+## the seconds the last GRAB press keeps it wanted, and the world point the right hand goes for.
+var _reach: float = 0.0
+var _reach_hold: float = 0.0
+var _reach_point: Vector3 = Vector3.ZERO
 var _prop_serial: int = 0
 var _anchor: Vector3 = Vector3.ZERO
 var _anchor_set: bool = false
+## Cumulative weapon losses and pickups for the match stats (debug_frame "weapon_log").
+## "rearms_after_disarm" counts pickups made while a weapon knocked out of hand was still not replaced.
+var _wlog: Dictionary = {"disarms": 0, "arm_drops": 0, "rearms": 0, "rearms_after_disarm": 0}
+var _unreplaced_disarms: int = 0
 
 
 func _init() -> void:
@@ -508,9 +520,24 @@ func _hp(n: String) -> float:
 func tilt() -> float:
 	var t: RigidBody3D = parts["torso"]
 	var p: RigidBody3D = parts["pelvis"]
-	var up_t: float = t.global_transform.basis.y.normalized().dot(Vector3.UP)
-	var up_p: float = p.global_transform.basis.y.normalized().dot(Vector3.UP)
-	return acos(clampf((up_t + up_p) * 0.5, -1.0, 1.0))
+	var rk: float = smoothstep(0.0, 1.0, _reach)
+	var ut: Vector3 = t.global_transform.basis.y.normalized()
+	var upv: Vector3 = p.global_transform.basis.y.normalized()
+	var want_t: Vector3 = Vector3.UP
+	var want_p: Vector3 = Vector3.UP
+	if rk > 0.0:
+		# While reaching down the bow is intended: a forward pitch anywhere between upright and the reach pose
+		# does not count as tilt (sideways lean and bending past the pose still do).
+		var fwd: Vector3 = -Basis(Vector3.UP, _yaw).z
+		want_t = _bow_up(ut, fwd, _t("reach_pitch") + _t("reach_bend"), rk)
+		want_p = _bow_up(upv, fwd, _t("reach_pitch"), rk)
+	return acos(clampf((ut.dot(want_t) + upv.dot(want_p)) * 0.5, -1.0, 1.0))
+
+
+## The up vector nearest `up` on the forward arc from straight up to a bow of `full` * `rk` radians.
+func _bow_up(up: Vector3, fwd: Vector3, full: float, rk: float) -> Vector3:
+	var pitch: float = clampf(atan2(up.dot(fwd), up.y), 0.0, full * rk)
+	return Vector3.UP * cos(pitch) + fwd * sin(pitch)
 
 
 func balance() -> float:
@@ -541,7 +568,10 @@ func _update_state(delta: float) -> void:
 		"ko":
 			_set_state("down")
 		"standing", "stumbling":
-			if not _legs_ok() or tl > _t("fall_tilt") or h < _t("stand_height") * 0.5 or _stagger >= _t("stagger_down"):
+			var low: float = _t("stand_height") * 0.5
+			if _reach > 0.0:
+				low = minf(low, _t("reach_height") - 0.2)
+			if not _legs_ok() or tl > _t("fall_tilt") or h < low or _stagger >= _t("stagger_down"):
 				_set_state("down")
 			elif tl > _t("stumble_tilt") or _stagger > 0.25:
 				if _state != "stumbling":
@@ -616,7 +646,11 @@ func _control(delta: float) -> void:
 	var total_mass: float = _total_mass()
 	var g: float = _t("gravity")
 	var crouch: bool = inp.has(CROUCH)
+	_update_reach(inp, crouch, delta)
+	var rk: float = smoothstep(0.0, 1.0, _reach)
 	var h_target: float = _t("crouch_height") if crouch else _t("stand_height")
+	if rk > 0.0:
+		h_target = lerpf(h_target, _t("reach_height"), rk)
 	if _state == "getting_up":
 		h_target = lerpf(pelvis.global_position.y, h_target, clampf(_state_t / maxf(_t("getup_time"), 0.01), 0.3, 1.0))
 	var grounded: bool = _lowest_foot() < 0.3 or pelvis.global_position.y < h_target + 0.15
@@ -629,6 +663,7 @@ func _control(delta: float) -> void:
 	speed *= lerpf(0.35, 1.0, leg_factor)
 	if crouch:
 		speed *= 0.6
+	speed *= lerpf(1.0, 0.5, rk)
 	var v_des: Vector3 = (right * move.x + fwd * move.y) * speed
 	if _state != "standing":
 		v_des *= 0.3 if _state == "stumbling" else 0.0
@@ -655,10 +690,10 @@ func _control(delta: float) -> void:
 	if bal_scale > 0.0:
 		var bf: float = _t("balance_freq")
 		var cap: float = _t("balance_torque") * bal_scale * s
-		var err: Vector3 = FighterMath.rotation_error(pelvis.global_transform.basis, yb)
+		var err: Vector3 = FighterMath.rotation_error(pelvis.global_transform.basis, yb * _reach_pitch(rk, false))
 		pelvis.apply_torque(FighterMath.pd_torque(err, pelvis.angular_velocity, _t("balance_inertia"), bf, 1.0, cap))
 		var torso: RigidBody3D = parts["torso"]
-		var terr: Vector3 = FighterMath.rotation_error(torso.global_transform.basis, yb)
+		var terr: Vector3 = FighterMath.rotation_error(torso.global_transform.basis, yb * _reach_pitch(rk, true))
 		var tf: float = _t("torso_assist")
 		torso.apply_torque(FighterMath.pd_torque(terr, torso.angular_velocity, _inertia["torso"], bf, 1.0, cap * tf))
 
@@ -675,17 +710,20 @@ func _control(delta: float) -> void:
 	var targets: Dictionary = {}
 	var aim: Vector2 = inp.aim()
 	var twist: float = -aim.x * _t("torso_twist") if active else 0.0
-	var lean: float = 0.06 + (0.25 if crouch else 0.0)
+	var lean: float = lerpf(0.06 + (0.25 if crouch else 0.0), _t("reach_bend"), rk)
 	targets["torso"] = Basis(Vector3.UP, twist) * Basis(Vector3.RIGHT, -lean)
 	targets["head"] = Basis(Vector3.UP, -twist * 0.8) * Basis(Vector3.RIGHT, lean * 0.5)
 	if active:
-		_leg_targets(targets, yb, amp * (1.0 if _state == "standing" else 0.6), mdir)
+		# Kneeling to reach down, the legs fold toward the lower target height themselves (the support force only
+		# pushes up) and the feet go a little forward under the bowed body.
+		var drop: float = maxf(pelvis.global_position.y - h_target, 0.0) * rk
+		_leg_targets(targets, yb, amp * (1.0 if _state == "standing" else 0.6), mdir, drop, _t("reach_foot_fwd") * rk)
 	else:
 		for n: String in ["thigh_l", "thigh_r"]:
 			targets[n] = Basis(Vector3.RIGHT, 0.25)
 		for n: String in ["shin_l", "shin_r"]:
 			targets[n] = Basis(Vector3.RIGHT, -0.4)
-	var used: float = _arms(targets, yb, fwd, right, active, s, delta)
+	var used: float = _arms(targets, yb, fwd, right, active, s, delta, rk)
 
 	# Joint PD.
 	for pd: Dictionary in FighterRig.PARTS:
@@ -725,7 +763,10 @@ func _control(delta: float) -> void:
 		par.apply_torque(react)
 
 	var sprinting: bool = inp.has(SPRINT) and move.length() > 0.1
-	_exertion = clampf(used * 0.7 + (0.6 if sprinting else 0.0) + (0.2 if inp.has(SWING) else 0.0), 0.0, 1.0)
+	# Arm effort is the force used measured against the fresh arm (`used` is against the cap, which shrinks with
+	# stamina). Round 3 trace, seed 9008: a club guard used all of the shrunken cap at 0 stamina, so exertion stayed
+	# above the recovery line and stamina sat at 0 for 14 s; now a spent arm costs less and stamina comes back.
+	_exertion = clampf(used * s * _t("arm_exertion") + (0.6 if sprinting else 0.0) + (0.2 if inp.has(SWING) else 0.0), 0.0, 1.0)
 	if not active:
 		_exertion = 0.0
 	_handle_grab(inp)
@@ -762,7 +803,7 @@ func _lowest_foot() -> float:
 	return lo
 
 
-func _leg_targets(targets: Dictionary, yb: Basis, amp: float, mdir: Vector2) -> void:
+func _leg_targets(targets: Dictionary, yb: Basis, amp: float, mdir: Vector2, drop: float = 0.0, foot_fwd: float = 0.0) -> void:
 	var pelvis: RigidBody3D = parts["pelvis"]
 	var pinv: Basis = pelvis.global_transform.basis.inverse()
 	for i: int in range(2):
@@ -771,8 +812,8 @@ func _leg_targets(targets: Dictionary, yb: Basis, amp: float, mdir: Vector2) -> 
 		var hip: Vector3 = pelvis.global_transform * hip_local
 		var off: Vector3 = FighterMath.foot_offset(_phase + PI * i, mdir, amp, _t("foot_lift"))
 		var stance := Vector3(hip_local.x * 0.25, 0.0, 0.0)
-		var foot_w: Vector3 = hip + yb * Vector3(off.x + stance.x, 0.0, off.z)
-		foot_w.y = FighterRig.ANKLE_HEIGHT + off.y
+		var foot_w: Vector3 = hip + yb * Vector3(off.x + stance.x, 0.0, off.z - foot_fwd)
+		foot_w.y = FighterRig.ANKLE_HEIGHT + off.y + drop
 		var rel: Vector3 = pinv * (foot_w - hip)
 		var ang: Vector3 = FighterMath.leg_ik(rel, FighterRig.THIGH_LEN, FighterRig.SHIN_LEN)
 		var bases: Array[Basis] = FighterMath.leg_bases(ang)
@@ -796,7 +837,7 @@ func grip() -> String:
 
 
 ## Hand forces, arm IK targets and wrist torques. Returns the fraction of arm force used (0..1).
-func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active: bool, s: float, _delta: float) -> float:
+func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active: bool, s: float, _delta: float, rk: float = 0.0) -> float:
 	var inp: FighterInput = _input
 	var torso: RigidBody3D = parts["torso"]
 	var tb: Basis = torso.global_transform.basis
@@ -818,6 +859,11 @@ func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active:
 	var pp: Vector3 = (parts["pelvis"] as RigidBody3D).global_position
 	var raw_r: Vector3 = FighterMath.guard_target(aim, thrust, origin, right, up, fwd, shoulder_r, reach, gp)
 	var rate_r: float = _t("swing_hand_speed") if inp.has(SWING) or inp.has(THRUST) else _t("guard_hand_speed")
+	if rk > 0.0:
+		# Reaching down: the empty hand goes for the prop (as far as the arm reaches from the bowed shoulder).
+		var to_p: Vector3 = _reach_point - shoulder_r
+		raw_r = raw_r.lerp(shoulder_r + to_p.limit_length(reach), rk)
+		rate_r = maxf(rate_r, _t("reach_hand_speed"))
 	_goal_r = _goal_r.move_toward(raw_r - pp, rate_r * _delta)
 	_hand_target = pp + _goal_r
 	if not active:
@@ -838,6 +884,10 @@ func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active:
 		lt = chest + fwd * 0.38 - right * 0.08 + up * 0.15
 	else:
 		lt = chest + fwd * 0.3 - right * 0.22 - up * 0.2
+		if rk > 0.0 and not _is_cut_off("thigh_l"):
+			# Bowing down to pick something up, the free hand braces on the left knee.
+			var knee: Vector3 = (parts["thigh_l"] as RigidBody3D).global_transform * Vector3(0, -0.2, -0.06)
+			lt = lt.lerp(knee, rk)
 	var on_weapon: bool = (half or bool(main_w.def.get("two_handed", false))) if main_w != null else false
 	if on_weapon or not active:
 		_goal_l = (lt if active else _hand_pos("l")) - pp
@@ -956,10 +1006,14 @@ func _handle_grab(inp: FighterInput) -> void:
 		var w: Weapon = weapon if h == "r" else offhand
 		if w != null and w.holder == self:
 			var hpf: float = minf(_hp("forearm_" + h), _hp("upper_arm_" + h))
-			if _is_cut_off("forearm_" + h) or hpf < _t("weapon_drop_hp") or _state == "ko" or _state == "dead":
+			var crippled: bool = _is_cut_off("forearm_" + h) or hpf < _t("weapon_drop_hp")
+			if crippled or _state == "ko" or _state == "dead":
+				if crippled:
+					_wlog["arm_drops"] = int(_wlog["arm_drops"]) + 1
 				_release(w)
 	var want: bool = inp.has(GRAB)
-	if want and not _grab_latch and weapon == null and not _is_cut_off("forearm_r") and _state == "standing":
+	var upright: bool = _state == "standing" or (_state == "stumbling" and _reach > 0.5)
+	if want and not _grab_latch and weapon == null and not _is_cut_off("forearm_r") and upright:
 		var hand: Vector3 = _hand_pos("r")
 		var best: Weapon = null
 		var best_d: float = _t("grab_radius")
@@ -967,14 +1021,74 @@ func _handle_grab(inp: FighterInput) -> void:
 			var pw: Weapon = n as Weapon
 			if pw == null or pw.is_fist or pw.lodged_in != null:
 				continue
+			# Never into a hand too hurt to hold it: it would drop at once and be grabbed again every pulse.
+			if not _hand_can_hold(_grab_hand(pw)):
+				continue
 			var d: float = pw.global_position.distance_to(hand)
 			if d < best_d:
 				best_d = d
 				best = pw
 		if best != null:
-			_attach(best, "r" if best.shape_kind != "shield" or offhand != null else "l")
+			_attach(best, _grab_hand(best))
 			_compute_inertia()
+			_wlog["rearms"] = int(_wlog["rearms"]) + 1
+			if _unreplaced_disarms > 0:
+				_unreplaced_disarms -= 1
+				_wlog["rearms_after_disarm"] = int(_wlog["rearms_after_disarm"]) + 1
 	_grab_latch = want
+
+
+## Reach-down state: CROUCH with GRAB pressed recently, an empty right hand and a free prop near the feet bows the
+## fighter down (pelvis low and pitched, torso bent) and sends the right hand to the prop.
+func _update_reach(inp: FighterInput, crouch: bool, delta: float) -> void:
+	var can: bool = crouch and weapon == null and not _is_cut_off("forearm_r") and (_state == "standing" or _state == "stumbling")
+	if can and inp.has(GRAB):
+		_reach_hold = _t("reach_hold")
+	var want: bool = false
+	if can and _reach_hold > 0.0:
+		var pw: Weapon = _reach_prop()
+		if pw != null:
+			want = true
+			_reach_point = pw.global_position + Vector3.UP * _t("reach_hand_lift")
+	if not can:
+		_reach_hold = 0.0
+	_reach_hold = maxf(_reach_hold - delta, 0.0)
+	_reach = move_toward(_reach, 1.0 if want else 0.0, delta / maxf(_t("reach_time"), 0.01))
+
+
+## The free prop nearest the pelvis (horizontally) within reach_scan, or null.
+func _reach_prop() -> Weapon:
+	if not is_inside_tree():
+		return null
+	var pp: Vector3 = (parts["pelvis"] as RigidBody3D).global_position
+	var best: Weapon = null
+	var best_d: float = _t("reach_scan")
+	for n: Node in get_tree().get_nodes_in_group(Weapon.PROP_GROUP):
+		var pw: Weapon = n as Weapon
+		if pw == null or pw.is_fist or pw.lodged_in != null or pw.holder != null or not _hand_can_hold(_grab_hand(pw)):
+			continue
+		var d: float = Vector2(pw.global_position.x - pp.x, pw.global_position.z - pp.z).length()
+		if d < best_d:
+			best_d = d
+			best = pw
+	return best
+
+
+## Forward pitch (in the facing frame) of the reach pose at blend `rk`: the pelvis tips by reach_pitch, the torso
+## by reach_pitch plus its bend over the hips.
+func _reach_pitch(rk: float, torso: bool) -> Basis:
+	var a: float = _t("reach_pitch") + (_t("reach_bend") if torso else 0.0)
+	return Basis(Vector3.RIGHT, -a * rk)
+
+
+## The hand a picked-up prop goes to: a shield to the free left hand, anything else to the right.
+func _grab_hand(w: Weapon) -> String:
+	return "r" if w.shape_kind != "shield" or offhand != null else "l"
+
+
+## False when hand `h` is cut off or its arm is below weapon_drop_hp (it would let go at once).
+func _hand_can_hold(h: String) -> bool:
+	return not _is_cut_off("forearm_" + h) and minf(_hp("forearm_" + h), _hp("upper_arm_" + h)) >= _t("weapon_drop_hp")
 
 
 ## Releases the right-hand weapon (it becomes a prop). Public for scripted tests.
@@ -1160,6 +1274,7 @@ func _take_hit(ev: Dictionary, body: RigidBody3D, w: Weapon, attacker: Fighter) 
 			_armor_wear[aid] = float(wear[aid])
 	# Disarm: the hand holding the struck weapon (or forearm) checks its grip.
 	var dis: float = float(ev.get("disarm_impulse", 0.0))
+	var lost_h: String = ""
 	if dis > 0.0:
 		var h: String = "r" if part == "forearm_r" else ("l" if part == "forearm_l" else "")
 		var held: Weapon = weapon if h == "r" else (offhand if h == "l" else null)
@@ -1168,13 +1283,31 @@ func _take_hit(ev: Dictionary, body: RigidBody3D, w: Weapon, attacker: Fighter) 
 			if not DamageModel.grip_holds(dis, minf(_hp("forearm_" + h), _hp("upper_arm_" + h)), health.stamina, two, _tun, float(held.def.get("mass", 0.0))):
 				_release(held)
 				ev["disarmed"] = true
+				lost_h = h
 	if bool(ev.get("hit_on_weapon", false)):
+		if lost_h != "":
+			_wlog["disarms"] = int(_wlog["disarms"]) + 1
+			_unreplaced_disarms += 1
 		hit.emit(ev)
 		return
 	_stagger = minf(_stagger + float(ev.get("stagger", 0.0)), 1.5)
 	if bool(ev.get("dislodge", false)):
 		_dislodge(str(ev.get("dislodged_id", "")), part, kb)
 	var gore_events: Array = health.apply(ev, part) if health != null else []
+	if lost_h != "":
+		# The same blow crippled or cut the arm: it would have let go anyway, so this is an arm drop, not a disarm.
+		var cut: bool = false
+		for g: Variant in gore_events:
+			var gk: String = str((g as Dictionary).get("kind", ""))
+			if (gk == "sever" or gk == "behead") and FighterRig.subtree(str((g as Dictionary).get("part", ""))).has("forearm_" + lost_h):
+				cut = true
+		if cut or minf(_hp("forearm_" + lost_h), _hp("upper_arm_" + lost_h)) < _t("weapon_drop_hp"):
+			ev["disarmed"] = false
+			ev["arm_drop"] = true
+			_wlog["arm_drops"] = int(_wlog["arm_drops"]) + 1
+		else:
+			_wlog["disarms"] = int(_wlog["disarms"]) + 1
+			_unreplaced_disarms += 1
 	hit.emit(ev)
 	if str(ev.get("finisher", "")) == "run_through" and w != null and not w.is_fist and w.holder == attacker:
 		_lodge(w, body, attacker)
@@ -1202,6 +1335,7 @@ func _sever(n: String) -> void:
 		if _is_cut_off("forearm_" + h):
 			var w: Weapon = weapon if h == "r" else offhand
 			if w != null:
+				_wlog["arm_drops"] = int(_wlog["arm_drops"]) + 1
 				_release(w)
 	if n == "head":
 		_die()
@@ -1239,7 +1373,10 @@ func _dislodge(aid: String, part: String, kb: Vector3) -> void:
 			prop.name = "ArmorProp%d_%d" % [side, _prop_serial]
 			_prop_serial += 1
 			prop.mass = maxf(float(CombatData.armor(aid).get("mass", 1.0)) / maxf(float(meshes.size()), 1.0), 0.2)
-			prop.collision_layer = Weapon.LAYER_WEAPONS
+			# On no layer, so nothing pushes against it: it only rests on the arena. With a layer the fighters scan but
+			# a mask that ignored them, Godot made it an immovable block to them, and a cuirass knocked off onto a
+			# fallen fighter's thigh pinned him in the sand for 40 s (round 3 trace, seed 5007).
+			prop.collision_layer = 0
 			prop.collision_mask = 1
 			prop.top_level = true
 			var cs := CollisionShape3D.new()
@@ -1280,8 +1417,9 @@ func snapshot() -> Dictionary:
 		"tick": _tick, "state": _state, "state_t": _state_t, "yaw": _yaw, "phase": _phase, "stagger": _stagger,
 		"severed": Array(_severed), "armor": _armor.duplicate(), "armor_wear": _armor_wear.duplicate(),
 		"debounce": _debounce.duplicate(), "died": _died_emitted, "exertion": _exertion, "grab_latch": _grab_latch,
+		"reach": _reach, "reach_hold": _reach_hold, "reach_point": _reach_point,
 		"input": _input.to_array(), "bodies": bodies, "weapons": ws, "anchor": _anchor, "anchor_set": _anchor_set,
-		"goal_r": _goal_r, "goal_l": _goal_l,
+		"goal_r": _goal_r, "goal_l": _goal_l, "wlog": _wlog.duplicate(), "unreplaced_disarms": _unreplaced_disarms,
 		"weapon": weapon.name if weapon != null else "", "offhand": offhand.name if offhand != null else "",
 		"health": health.to_dict() if health != null else {},
 	}
@@ -1297,10 +1435,17 @@ func restore(d: Dictionary) -> void:
 	_died_emitted = bool(d.get("died", false))
 	_exertion = float(d.get("exertion", 0.0))
 	_grab_latch = bool(d.get("grab_latch", false))
+	_reach = float(d.get("reach", 0.0))
+	_reach_hold = float(d.get("reach_hold", 0.0))
+	_reach_point = d.get("reach_point", Vector3.ZERO)
 	_anchor = d.get("anchor", Vector3.ZERO)
 	_anchor_set = bool(d.get("anchor_set", false))
 	_goal_r = d.get("goal_r", Vector3.ZERO)
 	_goal_l = d.get("goal_l", Vector3.ZERO)
+	var wl: Dictionary = d.get("wlog", {})
+	for k: String in ["disarms", "arm_drops", "rearms", "rearms_after_disarm"]:
+		_wlog[k] = int(wl.get(k, 0))
+	_unreplaced_disarms = int(d.get("unreplaced_disarms", 0))
 	_input = FighterInput.from_array(d.get("input", []))
 	_debounce = (d.get("debounce", {}) as Dictionary).duplicate()
 	if health != null:
@@ -1493,7 +1638,7 @@ func debug_frame() -> Dictionary:
 		"weapon_id": weapon.weapon_id if weapon != null else "fists", "grip": grip(), "parts": pd,
 		"contacts": _contacts.duplicate() if _contacts_frame == _frame() else [], "state": _state,
 		"blood_frac": health.blood_frac() if health != null else 1.0, "armor": worn_armor(),
-		"offhand_id": offhand.weapon_id if offhand != null else "", "props": props(),
+		"offhand_id": offhand.weapon_id if offhand != null else "", "props": props(), "weapon_log": _wlog.duplicate(),
 	}
 
 

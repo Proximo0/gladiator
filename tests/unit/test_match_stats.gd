@@ -101,6 +101,39 @@ func test_explosions() -> void:
 func test_to_dict_has_contract_keys() -> void:
 	var d: Dictionary = MatchStats.new().to_dict()
 	for k: String in ["hits", "hits_by_side", "contact_kinds", "max_tip_speed", "mean_tip_speed", "severs", "finisher",
-			"disarms", "armor_dislodged", "self_hits", "knockdowns", "time_down_s", "stuck_s", "explosions",
+			"disarms", "arm_drops", "rearms", "rearms_after_disarm", "stamina0_max_s", "getup_fails", "armor_dislodged", "self_hits", "knockdowns", "time_down_s", "stuck_s", "explosions",
 			"wall_time_s", "blood_left"]:
 		assert_true(d.has(k), k)
+
+
+func test_weapon_log_arm_drops_and_rearms() -> void:
+	var s := MatchStats.new()
+	var a: Dictionary = _frame(0)
+	var b: Dictionary = _frame(1)
+	a["weapon_log"] = {"disarms": 1, "arm_drops": 1, "rearms": 0}
+	b["weapon_log"] = {"disarms": 0, "arm_drops": 0, "rearms": 1}
+	s.on_frames([a, b], 1.0 / 60.0)
+	a["weapon_log"] = {"disarms": 1, "arm_drops": 1, "rearms": 2, "rearms_after_disarm": 1}
+	s.on_frames([a, b], 1.0 / 60.0)
+	var d: Dictionary = s.to_dict()
+	assert_eq(d["arm_drops"], 1, "latest cumulative log, not a sum over ticks")
+	assert_eq(d["rearms"], 3)
+	assert_eq(d["rearms_after_disarm"], 1)
+	assert_eq(d["disarms"], 0, "disarms come from hit events only")
+
+
+func test_stamina_zero_run_and_getup_fails() -> void:
+	var s := MatchStats.new()
+	var dt: float = 0.5
+	var a: Dictionary = _frame(0, "getting_up")
+	a["stamina"] = 0.0
+	for i: int in range(4):
+		s.on_frames([a, _frame(1)], dt)
+	a["stamina"] = 0.3
+	s.on_frames([a, _frame(1)], dt)
+	a["stamina"] = 0.0
+	s.on_frames([a, _frame(1)], dt)
+	assert_near(float(s.to_dict()["stamina0_max_s"]), 2.0)
+	a["state"] = "down"
+	s.on_frames([a, _frame(1)], dt)
+	assert_eq(s.to_dict()["getup_fails"], 1)
