@@ -20,6 +20,15 @@ const LAYER_BODIES: int = 2
 ## Quaternion grid for normalised poses (snapshot/restore).
 const POSE_QUANTUM: float = 0.00001
 const MASK_ALL: int = 7
+## Head collider profile, part frame: rings of [y, half width, front z, back z] measured from the Houdini head art
+## (assets/body/head.glb and head_b.glb, the larger of the two; the neck stub below y -0.10 sits in the torso). The old
+## 0.11 m sphere was 2.3 cm wider per side than the drawn head, so blows that visibly missed still landed.
+const HEAD_PROFILE: Array = [
+	[-0.10, 0.060, -0.100, 0.062], [-0.07, 0.066, -0.099, 0.074], [-0.04, 0.086, -0.114, 0.093],
+	[-0.01, 0.087, -0.104, 0.102], [0.02, 0.084, -0.101, 0.106], [0.05, 0.082, -0.095, 0.100],
+	[0.08, 0.076, -0.091, 0.099], [0.10, 0.065, -0.075, 0.081], [0.118, 0.046, -0.043, 0.022],
+]
+const HEAD_RING_POINTS: int = 12
 
 ## Gameplay numbers read from Tuning each tick, with these fallbacks until the rows exist there.
 const FALLBACK: Dictionary = {
@@ -223,12 +232,24 @@ func _make_part(pd: Dictionary, col: Color) -> void:
 			m.size = size
 			_add_shape(b, s, m, Vector3.ZERO, mat)
 		"sphere":
-			var s2 := SphereShape3D.new()
-			s2.radius = size.x
 			var m2 := SphereMesh.new()
 			m2.radius = size.x
 			m2.height = size.x * 2.0
-			_add_shape(b, s2, m2, Vector3.ZERO, mat)
+			if n == "head":
+				# The collider follows the drawn head. Mass properties stay those of the old sphere (same inertia,
+				# centre of mass at the part centre), so the joints and drives behave exactly as before.
+				var hull := ConvexPolygonShape3D.new()
+				hull.points = head_hull_points()
+				m2.radius = 0.087
+				m2.height = 0.23
+				_add_shape(b, hull, m2, Vector3.ZERO, mat)
+				b.inertia = Vector3.ONE * 0.4 * b.mass * size.x * size.x
+				b.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+				b.center_of_mass = Vector3.ZERO
+			else:
+				var s2 := SphereShape3D.new()
+				s2.radius = size.x
+				_add_shape(b, s2, m2, Vector3.ZERO, mat)
 		_:
 			var s3 := CapsuleShape3D.new()
 			s3.radius = size.x
@@ -254,6 +275,19 @@ func _make_part(pd: Dictionary, col: Color) -> void:
 	b.global_transform = global_transform * (_rest[n] as Transform3D)
 	if not (loadout.get("look", {}) as Dictionary).has(n):
 		_art.dress(b, n)
+
+
+## Convex hull points of the head collider (part frame): an elliptical ring per HEAD_PROFILE row, the front (-Z) and
+## back halves with their own depth.
+static func head_hull_points() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for row: Array in HEAD_PROFILE:
+		for k: int in range(HEAD_RING_POINTS):
+			var a: float = TAU * float(k) / float(HEAD_RING_POINTS)
+			var cz: float = cos(a)
+			var depth: float = float(row[3]) if cz > 0.0 else -float(row[2])
+			out.append(Vector3(sin(a) * float(row[1]), float(row[0]), cz * depth))
+	return out
 
 
 func _add_shape(b: RigidBody3D, s: Shape3D, m: Mesh, pos: Vector3, mat: Material) -> void:
@@ -405,7 +439,10 @@ func _set_exceptions(w: Weapon) -> void:
 	for pn: String in FighterRig.names():
 		var own_hand: bool = pn == "forearm_" + w.hand
 		var two_hand: bool = pn.begins_with("forearm") and w == f.weapon
-		if w.is_fist or w.shape_kind == "shield" or own_hand or two_hand:
+		# A two-handed pole (spear, rake) lies along both arms and its butt runs back past the grip: in round 3/4
+		# bot matches the spear butt (0.3 m behind the hand) clipped the holder's own upper arms on most self hits.
+		var along_arms: bool = pn.begins_with("upper_arm") and w == f.weapon and bool(w.def.get("two_handed", false))
+		if w.is_fist or w.shape_kind == "shield" or own_hand or two_hand or along_arms:
 			f._exclude(w, f.parts[pn])
 	for other: Weapon in [f.fist_r, f.fist_l, f.weapon, f.offhand]:
 		if other != null and other != w:
@@ -1193,6 +1230,10 @@ func _process_contacts() -> void:
 			var min_speed: float = _t("damage_min_speed")
 			if target == self:
 				if _tick < int(round(_t("self_hit_grace_s") * 60.0)):
+					continue
+				# The handle or pommel behind the hand bumping its own holder is not a blow (round 4: most non-spear
+				# self hits were pommels at about 6 m/s into the own upper arm). Only the part ahead of the grip counts.
+				if (w.global_transform.affine_inverse() * p).y < 0.0:
 					continue
 				min_speed = maxf(min_speed, _t("self_hit_min_speed"))
 			if rel.length() < min_speed:

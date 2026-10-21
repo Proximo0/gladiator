@@ -33,9 +33,9 @@ const DEFAULTS: Dictionary = {
 	"dmg_grip_base": 18.0,
 	"dmg_grip_two_hands": 1.6,
 	"finisher_blood_frac": 0.6,
-	"dmg_finisher_min_scale": 0.25,
+	"dmg_finisher_min_scale": 0.15,
 	"dmg_skull_crush": 20.0,
-	"dmg_finisher_top_scale": 0.5,
+	"dmg_finisher_top_scale": 0.4,
 }
 
 

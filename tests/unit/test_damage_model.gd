@@ -304,13 +304,17 @@ func test_finisher_threshold_scales_with_blood() -> void:
 	assert_eq(_fin("torso", "spear", "point", 3.5, 2.0, 0.55), "")
 	assert_eq(_fin("torso", "spear", "point", 5.0, 2.0, 0.55), "run_through")
 	# The force needed shrinks from top_scale at the window edge to min_scale at blood_death.
-	assert_eq(_fin("torso", "spear", "point", 4.0, 2.0, 0.59), "")
+	# Round 4 scales (0.15 at blood_death, 0.4 at the window edge): 3.5 m/s is short at the edge, plenty near death.
+	assert_eq(_fin("torso", "spear", "point", 3.5, 2.0, 0.59), "")
+	assert_eq(_fin("torso", "spear", "point", 3.5, 2.0, 0.0), "run_through")
 	assert_eq(_fin("torso", "spear", "point", 4.0, 2.0, 0.0), "run_through")
 	assert_eq(_fin("torso", "spear", "point", 5.0, 2.0, 0.0), "run_through")
 	assert_eq(_fin("torso", "spear", "point", 2.0, 2.0, 0.0), "")
 
 
 func test_finisher_blocked_by_plate_and_wrong_contact() -> void:
-	assert_eq(_fin("torso", "spear", "point", 8.0, 2.0, 0.1, ["cuirass_iron"]), "")
+	# A thrust that runs an unarmored dying foe through stops on plate.
+	assert_eq(_fin("torso", "spear", "point", 6.0, 2.0, 0.1), "run_through")
+	assert_eq(_fin("torso", "spear", "point", 6.0, 2.0, 0.1, ["cuirass_iron"]), "")
 	assert_eq(_fin("torso", "spear", "flat", 8.0, 2.0, 0.1), "")
 	assert_eq(_fin("head", "longsword", "edge", 20.0, 1.0, 0.1, ["helm_iron"]), "")
