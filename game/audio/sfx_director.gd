@@ -6,6 +6,9 @@ extends Node
 ##
 ## Buses (assets/audio/default_bus_layout.tres): Master > SFX, Crowd, Voice, Music. Missing buses fall back to Master.
 
+## A crowd reaction just played ("gasp", "boo", "cheer", "roar", "finisher"): the stands can jump with it.
+signal crowd_reacted(kind: String)
+
 const POOL_SIZE: int = 28
 const POOL_2D_SIZE: int = 8
 const MAX_DISTANCE: float = 45.0
@@ -171,6 +174,7 @@ func _crowd_react(ev: Dictionary) -> void:
 func _crowd_play(kind: String) -> void:
 	if not crowd.try_reaction(kind):
 		return
+	crowd_reacted.emit(kind)
 	match kind:
 		"gasp":
 			_queue_2d("crowd/gasp", 0.0, 1.0, 0.1)

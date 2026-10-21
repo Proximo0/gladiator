@@ -58,6 +58,8 @@ func build(camera_mode: String) -> void:
 	sfx = SfxDirector.new()
 	sfx.name = "SfxDirector"
 	add_child(sfx)
+	if arena != null:
+		sfx.crowd_reacted.connect(arena.crowd_react)
 	hud = HUD.new()
 	hud.name = "HUD"
 	add_child(hud)
@@ -205,3 +207,9 @@ func _tip(fr: Dictionary, side: int) -> void:
 			_spray(Vector3(tip.x, 0.0, tip.z), (tip - prev) * 60.0, 0.4)
 	_tip_valid[side] = low
 	_last_tip[side] = tip
+
+
+func _process(_delta: float) -> void:
+	# The stands follow the crowd's noise level.
+	if arena != null and sfx != null:
+		arena.set_crowd_excitement(sfx.crowd_excitement())

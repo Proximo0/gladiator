@@ -15,6 +15,10 @@ const SPAWN_DISTANCE: float = 4.0
 const SUN_AZIMUTH: float = 3.75
 const SUN_ELEVATION: float = 0.62
 const CROWD_SEED: int = 20260721
+## Metres per spectator along each tier (wider at the back: fewer triangles where they are small).
+const CROWD_LITE_SPACING: float = 1.7
+const CROWD_LITE_TIER: int = 3
+const CROWD_SPACING: Array[float] = [0.62, 0.62, 0.66, 0.8, 0.9, 1.0]
 const ATTIC_HEIGHT: float = 2.0
 const BOX_ANGLE: float = 4.71238898
 const TRAVERTINE: Color = Color(0.84, 0.74, 0.56)
@@ -23,6 +27,9 @@ const PLAQUES: PackedStringArray = ["SPQR", "MVNVS", "ROMA", "LEGIO"]
 var radius: float = 11.0
 var sand: Node3D
 var sun: DirectionalLight3D
+var crowd: Crowd
+## Fewer spectators and no cheering twins in the back tiers (default on phones); set before add_child.
+var crowd_lite: bool = OS.has_feature("mobile")
 var _flames: Array[MeshInstance3D] = []
 var _flame_time: float = 0.0
 var _torch_positions: PackedVector3Array = PackedVector3Array()
@@ -357,73 +364,50 @@ func _build_crowd() -> void:
 	# Undyed wool, madder red, saffron, the odd purple. Rich low, plain high.
 	var low: Array[Color] = [Color(0.93, 0.9, 0.82), Color(0.9, 0.86, 0.76), Color(0.93, 0.9, 0.82), Color(0.62, 0.17, 0.14), Color(0.84, 0.64, 0.18), Color(0.3, 0.1, 0.27)]
 	var high: Array[Color] = [Color(0.72, 0.62, 0.46), Color(0.58, 0.46, 0.32), Color(0.62, 0.2, 0.16), Color(0.8, 0.6, 0.2), Color(0.8, 0.74, 0.62), Color(0.45, 0.4, 0.3), Color(0.5, 0.36, 0.22)]
-	var skins: Array[Color] = [
-		Color(0.8, 0.6, 0.45), Color(0.66, 0.46, 0.33), Color(0.52, 0.36, 0.26), Color(0.86, 0.68, 0.54),
-	]
-	var bodies: Array[Transform3D] = []
-	var body_cols: Array[Color] = []
-	var heads: Array[Transform3D] = []
-	var head_cols: Array[Color] = []
-	var arms: Array[Transform3D] = []
-	var arm_cols: Array[Color] = []
+	crowd = Crowd.new()
+	crowd.name = "Crowd"
+	add_child(crowd)
 	for t: int in TIER_COUNT:
-		var rr: float = _tier_inner(t) + TIER_DEPTH * 0.55
-		var count: int = int(TAU * rr / 0.62)
+		var rr: float = _tier_inner(t) + TIER_DEPTH * 0.5
+		var count: int = int(TAU * rr / (CROWD_SPACING[t] * (CROWD_LITE_SPACING if crowd_lite and t >= 2 else 1.0)))
 		var fill: float = 0.95 - 0.05 * float(t)
 		var palette: Array[Color] = low if t < 2 else high
+		var seated_share: float = 0.7 if t < 2 else 0.4
 		for k: int in count:
 			if rng.randf() > fill:
 				continue
 			var a: float = TAU * (float(k) + rng.randf_range(-0.2, 0.2)) / float(count)
 			if _in_box_sector(a, t):
 				continue
-			var h: float = rng.randf_range(0.9, 1.12)
+			var h: float = rng.randf_range(0.94, 1.08)
 			var pos := Vector3(rr * cos(a), _tier_top(t), rr * sin(a))
-			var facing: Basis = ring_basis(a).rotated(Vector3.UP, PI + rng.randf_range(-0.35, 0.35))
+			var facing: Basis = ring_basis(a).rotated(Vector3.UP, rng.randf_range(-0.3, 0.3))
 			var tc: Color = palette[rng.randi() % palette.size()] * rng.randf_range(0.88, 1.08)
 			tc.a = 1.0
-			var wide: float = 1.12 if t < 2 else 1.0
-			bodies.append(Transform3D(facing.scaled_local(Vector3(wide, h, wide)), pos + Vector3(0, 0.38 * h, 0)))
-			body_cols.append(tc)
-			heads.append(Transform3D(facing, pos + Vector3(0, 0.76 * h + 0.14, 0)))
-			head_cols.append(skins[rng.randi() % skins.size()] * rng.randf_range(0.9, 1.05))
-			if rng.randf() < 0.18:
-				var side: float = 1.0 if rng.randf() < 0.5 else -1.0
-				var lean: Basis = facing * Basis(Vector3(0, 0, 1), side * rng.randf_range(0.2, 0.7))
-				arms.append(Transform3D(lean, pos + facing * Vector3(side * 0.3, 0.68 * h + 0.2, 0.0)))
-				arm_cols.append(skins[rng.randi() % skins.size()])
-	# The emperor and his consort in the box, in imperial purple.
+			var seated: bool = rng.randf() < seated_share
+			var variants: PackedStringArray = CrowdMood.pick_variants(seated, rng.randf() < 0.35, rng.randf())
+			if crowd_lite and t >= CROWD_LITE_TIER and variants[1] != "":
+				variants[1] = ""
+			crowd.add_spectator(Transform3D(facing.scaled_local(Vector3(1.0, h, 1.0)), pos), variants, tc, rng.randi() % CrowdMood.SEED_COUNT)
+	# The emperor and his consort in the box, in imperial purple, on the gilded seats.
 	var bb: Basis = ring_basis(BOX_ANGLE)
 	var floor_y: float = _tier_top(1) + 0.02
 	for sx: float in [-0.5, 0.5]:
-		var p: Vector3 = Vector3((radius + 2.0) * cos(BOX_ANGLE), floor_y, (radius + 2.0) * sin(BOX_ANGLE)) + bb.x * sx
-		var fc: Basis = bb.rotated(Vector3.UP, PI)
-		bodies.append(Transform3D(fc, p + Vector3(0, 0.45, 0)))
-		body_cols.append(RomanDecor.PURPLE)
-		heads.append(Transform3D(fc, p + Vector3(0, 0.9, 0)))
-		head_cols.append(skins[3])
-	_add_multimesh("CrowdBodies", Vector3(0.5, 0.76, 0.34), bodies, body_cols)
-	_add_multimesh("CrowdHeads", Vector3(0.24, 0.26, 0.24), heads, head_cols)
-	_add_multimesh("CrowdArms", Vector3(0.11, 0.5, 0.11), arms, arm_cols)
+		var p: Vector3 = Vector3((radius + 1.7) * cos(BOX_ANGLE), floor_y, (radius + 1.7) * sin(BOX_ANGLE)) + bb.x * sx
+		crowd.add_spectator(Transform3D(bb, p), PackedStringArray([CrowdMood.NOBLE, ""]), RomanDecor.PURPLE, 7 if sx > 0.0 else 12)
+	crowd.build()
 
 
-func _add_multimesh(node_name: String, size: Vector3, xforms: Array[Transform3D], cols: Array[Color]) -> void:
-	var bm := BoxMesh.new()
-	bm.size = size
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = bm
-	mm.instance_count = xforms.size()
-	for i: int in xforms.size():
-		mm.set_instance_transform(i, xforms[i])
-		mm.set_instance_color(i, cols[i])
-	var mmi := MultiMeshInstance3D.new()
-	mmi.name = node_name
-	mmi.multimesh = mm
-	mmi.material_override = _vertex_material(false, 1.0, false)
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mmi)
+## The stands' excitement, 0..1 (feed SfxDirector.crowd_excitement() every frame).
+func set_crowd_excitement(x: float) -> void:
+	if crowd != null:
+		crowd.set_excitement(x)
+
+
+## A crowd reaction ("gasp", "cheer", "roar", "finisher", "boo") makes the stands jump for a moment.
+func crowd_react(kind: String) -> void:
+	if crowd != null:
+		crowd.react(kind)
 
 
 # ---------------------------------------------------------------- banners, torches, imperial box
