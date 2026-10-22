@@ -3,7 +3,7 @@
 
 Each textured glb embeds its own 512 px copies of the library textures (assets/textures/<family>_{albedo,normal,orm}.png,
 tools/houdini/build_textures.py): 203 images, 27 distinct. Imported as is, every model would load its own uncompressed
-copies. This tool writes one ORMMaterial3D per distinct glb material into assets/textured/materials/ that points at the
+copies. This tool writes one StandardMaterial3D per distinct glb material into assets/textured/materials/ that points at the
 library PNGs, sets each glb's import to use those materials and discard its embedded images, and sets the library PNGs
 to VRAM-compressed with mipmaps (normal maps as normal maps). Run it after re-exporting the textured models, then
 `godot --headless --import`. Standard library only. Usage: tools/textured_import.py
@@ -19,6 +19,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEXTURED = os.path.join(ROOT, "assets", "textured")
 LIBRARY = os.path.join(ROOT, "assets", "textures")
 MATERIALS = os.path.join(TEXTURED, "materials")
+ORM_G_MEAN = 0.9  # mean of every ORM map's roughness channel (tools/houdini/tex_gen.py)
+# Looks set in the arena light (tests/render/material_capture.tscn), applied over the glTF factors:
+# - A metal below about 0.45 effective roughness (factor x ORM_G_MEAN) mirrors the deep-blue sky top and the sun glow,
+#   and the map's roughness spread turns that into light and dark patches along a blade. Polished but not mirror.
+METAL_ROUGHNESS_MIN = 0.45
+# - Linear base colour scale per material: steel's colour was aluminium x 0.9 (F0 ~0.8), white in the sun under ACES;
+#   0.6 brings it to ~0.48, a grey that still flashes. Bronze armor (metallic capped at 0.6 by FighterArt, so part
+#   diffuse) washed out to pale yellow in full sun at 1.0; 0.8 keeps it a deep warm brown-gold.
+COLOR_SCALE = {"steel": 0.6, "bronze": 0.8}
 
 
 def glb_json(path):
@@ -38,21 +47,30 @@ def image_name(j, info):
 	return j["images"][j["textures"][info["index"]]["source"]]["name"]
 
 
-def material_spec(j, m):
+def material_spec(j, m, look=True):
+	"""The material's maps and factors; `look` applies the arena looks above (off: the glb's own, for naming)."""
 	pbr = m.get("pbrMetallicRoughness", {})
-	col = pbr.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0])
+	scale = COLOR_SCALE.get(m["name"], 1.0) if look else 1.0
+	col = [c * scale for c in pbr.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0])[:3]]
+	metallic = pbr.get("metallicFactor", 1.0)
+	rough = pbr.get("roughnessFactor", 1.0)
+	if look and metallic >= 0.9:
+		rough = max(rough, METAL_ROUGHNESS_MIN / ORM_G_MEAN)
 	return {
 		"albedo": image_name(j, pbr.get("baseColorTexture")),
 		"orm": image_name(j, pbr.get("metallicRoughnessTexture")),
 		"normal": image_name(j, m.get("normalTexture")),
 		"ao": m.get("occlusionTexture") is not None,
-		"color": [round(srgb(c), 4) for c in col[:3]],
-		"metallic": round(pbr.get("metallicFactor", 1.0), 4),
-		"roughness": round(pbr.get("roughnessFactor", 1.0), 4),
+		"color": [round(srgb(c), 4) for c in col],
+		"metallic": round(metallic, 4),
+		"roughness": round(rough, 4),
 	}
 
 
 def tres(name, spec):
+	"""A StandardMaterial3D, not an ORMMaterial3D: Godot's ORM shader takes roughness and metallic straight from the map
+	and ignores both factors, so every metal was rough (G mean 0.9) and fully metallic. Here one ORM texture feeds AO (R),
+	roughness (G) and metallic (B) through channel selects, and the glTF factors multiply them as glTF means."""
 	ext = []
 	for key in ("albedo", "orm", "normal"):
 		if spec[key]:
@@ -60,7 +78,7 @@ def tres(name, spec):
 			if not os.path.exists(png):
 				raise SystemExit("textured_import: missing library texture %s" % png)
 			ext.append((key, "res://assets/textures/%s.png" % spec[key]))
-	lines = ['[gd_resource type="ORMMaterial3D" load_steps=%d format=3]' % (len(ext) + 1), ""]
+	lines = ['[gd_resource type="StandardMaterial3D" load_steps=%d format=3]' % (len(ext) + 1), ""]
 	for i, (_k, p) in enumerate(ext):
 		lines.append('[ext_resource type="Texture2D" path="%s" id="%d"]' % (p, i + 1))
 	lines += ["", "[resource]", 'resource_name = "%s"' % name]
@@ -68,15 +86,20 @@ def tres(name, spec):
 	ids = {k: i + 1 for i, (k, _p) in enumerate(ext)}
 	if "albedo" in ids:
 		lines.append('albedo_texture = ExtResource("%d")' % ids["albedo"])
-	if "orm" in ids:
-		lines.append('orm_texture = ExtResource("%d")' % ids["orm"])
 	lines.append("metallic = %g" % spec["metallic"])
+	if "orm" in ids:
+		lines.append('metallic_texture = ExtResource("%d")' % ids["orm"])
+		lines.append("metallic_texture_channel = 2")
 	lines.append("roughness = %g" % spec["roughness"])
+	if "orm" in ids:
+		lines.append('roughness_texture = ExtResource("%d")' % ids["orm"])
+		lines.append("roughness_texture_channel = 1")
 	if "normal" in ids:
 		lines.append("normal_enabled = true")
 		lines.append('normal_texture = ExtResource("%d")' % ids["normal"])
 	if spec["ao"] and "orm" in ids:
 		lines.append("ao_enabled = true")
+		lines.append('ao_texture = ExtResource("%d")' % ids["orm"])
 	return "\n".join(lines) + "\n"
 
 
@@ -109,8 +132,25 @@ def scene_import(path, subres):
 			text = f.read()
 	else:
 		text = '[remap]\n\nimporter="scene"\nimporter_version=1\ntype="PackedScene"\n\n[params]\n\n'
+	want = {"materials": subres}
+	if "gltf/embedded_image_handling=0" in text and current_subresources(text) == want:
+		return text  # Godot rewrites the value over several lines (and adds fallback paths): keep its file
 	text = set_param(text, "gltf/embedded_image_handling", "0")
-	return set_param(text, "_subresources", json.dumps({"materials": subres}, sort_keys=True))
+	return set_param(text, "_subresources", json.dumps(want, sort_keys=True))
+
+
+def current_subresources(text):
+	"""The `_subresources` value of an .import file's text, without Godot's fallback paths; None when unreadable."""
+	m = re.search(r"^_subresources=(.*?)(?=^[a-z_0-9/]+=|^\[|\Z)", text, re.M | re.S)
+	if not m:
+		return None
+	try:
+		value = json.loads(m.group(1))
+	except ValueError:
+		return None
+	for mat in value.get("materials", {}).values():
+		mat.pop("use_external/fallback_path", None)
+	return value
 
 
 def texture_import(png):
@@ -125,6 +165,7 @@ def texture_import(png):
 def main():
 	writes = {}
 	specs = {}  # material file name -> spec
+	raws = {}  # material file name -> spec without the looks: a variant's name hashes this, so tuning a look keeps it
 	for group in sorted(os.listdir(TEXTURED)):
 		gdir = os.path.join(TEXTURED, group)
 		if group == "materials" or not os.path.isdir(gdir):
@@ -137,10 +178,12 @@ def main():
 			subres = {}
 			for m in j.get("materials", []):
 				spec = material_spec(j, m)
+				raw = material_spec(j, m, False)
 				name = m["name"]
-				if name in specs and specs[name] != spec:
-					name = "%s_%s" % (name, hashlib.md5(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:6])
+				if name in raws and raws[name] != raw:
+					name = "%s_%s" % (name, hashlib.md5(json.dumps(raw, sort_keys=True).encode()).hexdigest()[:6])
 				specs[name] = spec
+				raws[name] = raw
 				subres[m["name"]] = {"use_external/enabled": True,
 						"use_external/path": "res://assets/textured/materials/%s.tres" % name}
 			writes[path + ".import"] = scene_import(path, subres)

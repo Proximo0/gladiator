@@ -66,3 +66,22 @@ func test_gut_pieces_carry_uvs_and_tangents_for_the_organic_maps() -> void:
 	var mat: BaseMaterial3D = GutArt.material()
 	assert_true(mat.vertex_color_use_as_albedo, "the blood palette still tints the spill")
 	assert_true(mat.normal_enabled and mat.normal_texture != null)
+
+
+## Godot's ORMMaterial3D shader reads roughness and metallic straight from the map and ignores both factors (every
+## metal rendered at roughness ~0.9, fully metallic), so the library materials feed the ORM map through channel selects
+## on a StandardMaterial3D. Metals keep tools/textured_import.py's roughness floor (below it they mirror the blue sky).
+func test_library_materials_apply_their_roughness_and_metallic() -> void:
+	var metals: int = 0
+	for f: String in ResourceLoader.list_directory(TexturedArt.DIR + "materials"):
+		if not f.ends_with(".tres"):
+			continue
+		var mat: BaseMaterial3D = load(TexturedArt.DIR + "materials/" + f) as BaseMaterial3D
+		assert_false(mat is ORMMaterial3D, f + " is not an ORM material")
+		if mat.roughness_texture != null:
+			assert_eq(mat.roughness_texture_channel, BaseMaterial3D.TEXTURE_CHANNEL_GREEN, f + " roughness from G")
+			assert_eq(mat.metallic_texture_channel, BaseMaterial3D.TEXTURE_CHANNEL_BLUE, f + " metallic from B")
+		if mat.metallic >= 0.9:
+			metals += 1
+			assert_true(mat.roughness * 0.9 >= 0.45 - 0.001, "%s rough enough (%.3f)" % [f, mat.roughness])
+	assert_true(metals >= 5, "metals checked (%d)" % metals)
