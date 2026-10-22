@@ -29,7 +29,13 @@ SPECS = {
     "axe": (0.85, 0.1, 0.18, ["wood", "steel"]),
     "spear": (2.2, 0.3, 0.15, ["wood", "steel"]),
     "shield_round": (0.6, 0.0, None, ["wood", "iron"]),
+    # Premium (outfit-bundled) weapons: docs/weapons_premium.md. Run only these with --only=dai_katana,laser_sword
+    "dai_katana": (1.25, 0.1, 0.9, ["steel", "cord", "wrap", "brass", "iron"]),
+    "laser_sword": (1.25, 0.12, 1.05, ["hilt", "brass", "energy"]),
 }
+ONLY = [a.split("=", 1)[1] for a in sys.argv if a.startswith("--only=")]
+if ONLY:
+    SPECS = {k: v for k, v in SPECS.items() if k in ONLY[0].split(",")}
 
 # name: (base color, roughness, metallic)
 MATERIALS = {
@@ -38,6 +44,12 @@ MATERIALS = {
     "iron": ((0.28, 0.28, 0.30), 0.55, 1.0),
     "grip": ((0.16, 0.10, 0.07), 0.85, 0.0),
     "aluminium": ((0.78, 0.79, 0.82), 0.25, 1.0),
+    "cord": ((0.07, 0.09, 0.17), 0.9, 0.0),
+    "wrap": ((0.62, 0.52, 0.3), 0.85, 0.0),
+    "brass": ((0.55, 0.42, 0.16), 0.4, 1.0),
+    "hilt": ((0.2, 0.21, 0.24), 0.35, 1.0),
+    # name: (base colour, rough, metal, emission colour, emission intensity): the laser blade glows on its own
+    "energy": ((0.85, 1.0, 0.95), 0.2, 0.0, (0.2, 1.0, 0.8), 6.0),
 }
 
 # Geometry library, embedded in each Python SOP so the .hip is self-contained.
@@ -288,16 +300,60 @@ def build_shield_round(b):
     box(b, (-0.012, -0.06, -0.012), (0.012, 0.06, 0.012), "wood")
     box(b, (-0.012, -0.075, -0.012), (0.012, -0.06, 0.04), "iron")
     box(b, (-0.012, 0.06, -0.012), (0.012, 0.075, 0.04), "iron")
+
+def curved_blade(b, y0, y1, curve, wt, tt, mat, nseg=24):
+    # Single-edged curved blade: edge toward +X, thick spine toward -X, the tip bends toward the edge (x = curve * s^2).
+    rings = []
+    for i in range(nseg + 1):
+        s = i / nseg
+        y = y0 + (y1 - y0) * s
+        dx = curve * s * s
+        w = max(interp(s, wt), 0.0006)
+        t = max(interp(s, tt), 0.0004)
+        rings.append([(w + dx, y, 0), (0.35 * w + dx, y, t), (-0.85 * w + dx, y, 0.95 * t),
+                      (-w + dx, y, 0.55 * t), (-w + dx, y, -0.55 * t), (-0.85 * w + dx, y, -0.95 * t),
+                      (0.35 * w + dx, y, -t)])
+    b.loft(rings, mat)
+
+def build_dai_katana(b):
+    # +Y long axis, origin 0.1 m above the pommel: kashira -0.1, wrapped tsuka to 0.215, fuchi, tsuba 0.235, blade 0.275..1.15.
+    lathe(b, [(0.012, -0.1), (0.018, -0.094), (0.018, -0.078), (0.0155, -0.072)], 14, "brass", sz=0.75)
+    lathe(b, [(0.0155, -0.072), (0.0165, -0.03), (0.0172, 0.07), (0.0165, 0.17), (0.0155, 0.215)], 14, "cord", sz=0.75)
+    for k in range(9):
+        y = -0.062 + k * 0.0165
+        lathe(b, [(0.0168, y), (0.0178, y + 0.003), (0.0178, y + 0.009), (0.0168, y + 0.012)], 14, "wrap", sz=0.75)
+    lathe(b, [(0.0155, 0.215), (0.021, 0.218), (0.021, 0.232), (0.0155, 0.235)], 16, "brass", sz=0.8)
+    lathe(b, [(0.02, 0.235), (0.05, 0.235), (0.052, 0.239), (0.05, 0.243), (0.02, 0.243)], 28, "iron")
+    lathe(b, [(0.019, 0.243), (0.021, 0.26), (0.019, 0.275)], 14, "brass", sz=0.4)
+    curved_blade(b, 0.275, 1.15, 0.04,
+                 [(0, 0.0175), (0.7, 0.016), (0.88, 0.0135), (1.0, 0.0)],
+                 [(0, 0.0045), (0.85, 0.0035), (1.0, 0.0008)], "steel")
+
+def build_laser_sword(b):
+    # Hilt from the pommel (-0.12) to the emitter (0.06); the 1.07 m blade is a capsule core of the "energy" material.
+    # The game adds its own translucent halo, light, trail and hum around it (game/fighter/weapon.gd, game/fx/blade_glow.gd).
+    lathe(b, [(0.012, -0.12), (0.021, -0.113), (0.021, -0.098), (0.0155, -0.09)], 16, "brass")
+    lathe(b, [(0.0155, -0.09), (0.0165, -0.06), (0.0155, -0.03), (0.0165, 0.0), (0.0155, 0.03), (0.0165, 0.04)], 16, "hilt")
+    for k in range(5):
+        y = -0.08 + k * 0.025
+        lathe(b, [(0.0155, y), (0.0185, y + 0.002), (0.0185, y + 0.006), (0.0155, y + 0.008)], 16, "brass")
+    lathe(b, [(0.0165, 0.04), (0.03, 0.045), (0.034, 0.055), (0.03, 0.062), (0.014, 0.064)], 20, "hilt")
+    box(b, (-0.06, 0.036, -0.009), (0.06, 0.046, 0.009), "hilt")
+    lathe(b, [(0.0035, 0.064), (0.011, 0.07), (0.011, 1.10), (0.0085, 1.12), (0.004, 1.128), (0.0008, 1.132)], 14, "energy")
 '''
 
 
 def make_materials():
     mat = hou.node("/mat")
-    for name, (col, rough, metal) in MATERIALS.items():
+    for name, spec in MATERIALS.items():
+        col, rough, metal = spec[:3]
         m = mat.createNode("principledshader::2.0", name)
         m.parmTuple("basecolor").set(col)
         m.parm("rough").set(rough)
         m.parm("metallic").set(metal)
+        if len(spec) > 3:  # emissive: exports as glTF emissiveFactor (Godot: emission on)
+            m.parm("emitint").set(spec[4])
+            m.parmTuple("emitcolor").set(spec[3])
 
 
 def make_weapon(wid, x_offset):
