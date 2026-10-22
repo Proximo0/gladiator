@@ -17,7 +17,7 @@
 		},
 		{
 			"id": "helm_iron",
-			"name": "Iron helm",
+			"name": "Bronze galea",
 			"part": "head",
 			"covers": [
 				"head"
@@ -28,7 +28,10 @@
 			"pierce_resist": 0.85,
 			"blunt_resist": 0.4,
 			"durability": 200,
-			"strap": 70
+			"strap": 70,
+			"art": {
+				"head": "galea"
+			}
 		},
 		{
 			"id": "cuirass_leather",
@@ -112,7 +115,11 @@
 			"pierce_resist": 0.85,
 			"blunt_resist": 0.3,
 			"durability": 200,
-			"strap": 300
+			"strap": 300,
+			"art": {
+				"forearm_r": "manica_r",
+				"forearm_l": "manica_l"
+			}
 		},
 		{
 			"id": "greaves_leather",
@@ -134,7 +141,7 @@
 		},
 		{
 			"id": "greaves_iron",
-			"name": "Iron leg plate",
+			"name": "Bronze greaves",
 			"part": "thigh_l",
 			"covers": [
 				"thigh_l",
@@ -148,7 +155,11 @@
 			"pierce_resist": 0.85,
 			"blunt_resist": 0.3,
 			"durability": 200,
-			"strap": 300
+			"strap": 300,
+			"art": {
+				"shin_r": "greave_r",
+				"shin_l": "greave_l"
+			}
 		}
 	]
 }
