@@ -129,3 +129,120 @@ func test_real_delta_undoes_slow_motion() -> void:
 	assert_eq(FightCamera.real_delta(0.016, 1.0), 0.016)
 	assert_eq(FightCamera.real_delta(0.016, 0.0) > 0.0, true)
 	assert_eq(FightCamera.real_delta(NAN, 0.5), 0.0)
+
+
+func test_step_lead_tracks_steady_motion_and_ignores_cuts() -> void:
+	var v := Vector3.ZERO
+	var p := Vector3.ZERO
+	for i: int in 120:
+		var n: Vector3 = p + Vector3(4.0 / 60.0, 0, 0)
+		v = FightCamera.step_lead(v, p, n, 1.0 / 60.0, 8.0, 9.0, 0.3)
+		p = n
+	assert_near(v.x, 4.0, 0.05, "lead converges on the 4 m/s roll speed")
+	var after_cut: Vector3 = FightCamera.step_lead(Vector3.ZERO, p, p + Vector3(5, 0, 0), 1.0 / 60.0, 8.0, 9.0, 0.3)
+	assert_eq(after_cut, Vector3.ZERO, "a 5 m jump is a cut, not motion")
+	assert_eq(FightCamera.step_lead(v, p, p, 0.0, 8.0, 9.0, 0.3), v, "zero delta keeps the lead")
+
+
+func test_led_follow_has_no_steady_lag() -> void:
+	# The update rule used by the camera: x += v dt, then x -> want at follow_rate. With v = the want's speed the
+	# steady lag is ~0 (without the lead it is speed / rate = 0.8 m at 4 m/s).
+	var x := Vector3.ZERO
+	var w := Vector3.ZERO
+	var v := Vector3.ZERO
+	var k: float = FightCamera.smooth_factor(5.0, 1.0 / 60.0)
+	for i: int in 180:
+		var nw: Vector3 = w + Vector3(4.0 / 60.0, 0, 0)
+		v = FightCamera.step_lead(v, w, nw, 1.0 / 60.0, 8.0, 9.0, 0.3)
+		w = nw
+		x = (x + v / 60.0).lerp(w, k)
+	assert_true(x.distance_to(w) < 0.05, "lag %.3f" % x.distance_to(w))
+
+
+func test_lens_widens_only_on_portrait() -> void:
+	assert_eq(FightCamera.lens_for_aspect(55.0, 16.0 / 9.0, 50.0, 25.0), 55.0)
+	var p: float = FightCamera.lens_for_aspect(55.0, 9.0 / 16.0, 50.0, 25.0)
+	assert_true(p > 55.0 and p <= 80.0)
+	var h: float = rad_to_deg(2.0 * atan(tan(deg_to_rad(p) * 0.5) * 9.0 / 16.0))
+	assert_true(h >= 49.0 or p >= 79.99, "horizontal view %.1f" % h)
+
+
+func test_fit_dir_keeps_fitting_direction_and_turns_inward_continuously() -> void:
+	var mid := Vector3(8, 0, 0)
+	assert_eq(FightCamera.fit_dir(mid, Vector3(-1, 0, 0), 4.0, 10.3), Vector3(-1, 0, 0), "already inside")
+	var prev := Vector3.ZERO
+	for i: int in 30:
+		var m := Vector3(6.0 + i * 0.1, 0, 0.5)
+		var d: Vector3 = FightCamera.fit_dir(m, Vector3(0, 0, 1), 6.0, 10.3, m + prev * 6.0, i > 0)
+		assert_true(Vector2(m.x + d.x * 6.0, m.z + d.z * 6.0).length() <= 10.3 + 0.01, "inside the wall")
+		if i > 0:
+			assert_true(d.distance_to(prev) < 0.2, "no jump at step %d" % i)
+		prev = d
+
+
+func test_swing_inside_is_continuous_and_inside() -> void:
+	var look := Vector3(0, 1.8, 6.0)
+	var sign: float = 0.0
+	var prev := Vector3.INF
+	for i: int in 200:
+		# The camera's free pose drifts out through the wall behind a fighter backing up to it.
+		var pos := Vector3(0.3, 4.0, 9.5 + i * 0.02)
+		var sw: Dictionary = FightCamera.swing_inside(pos, look, 10.3, 0.8, 2.0, sign)
+		sign = sw["sign"]
+		var p: Vector3 = sw["pos"]
+		assert_true(Vector2(p.x, p.z).length() <= 10.3 + 0.01, "inside")
+		if prev != Vector3.INF:
+			assert_true(p.distance_to(prev) < 0.15, "step %d moved %.2f" % [i, p.distance_to(prev)])
+		prev = p
+	assert_true(not FightCamera.swing_inside(Vector3(0, 4, 9), look, 10.3, 0.8, 2.0)["cut"])
+
+
+func test_side_pose_never_crosses_the_fight_line_near_the_wall() -> void:
+	# Fighters walking along the wall: the side-on camera stays on one side of their line.
+	for i: int in 40:
+		var ang: float = i * 0.05
+		var a := Vector3(cos(ang) * 8.0, 0.9, sin(ang) * 8.0)
+		var b := Vector3(cos(ang + 0.4) * 8.0, 0.9, sin(ang + 0.4) * 8.0)
+		var pose: Dictionary = FightCamera.side_pose(a, b, 55.0, 4.4, 6.0, 10.3, 1.0)
+		var p: Vector3 = pose["pos"]
+		var s: Vector3 = FightCamera.flat_dir(a, b).cross(Vector3.UP)
+		assert_true((p - (a + b) * 0.5).dot(s) >= -0.01, "same side at %d" % i)
+		assert_true(Vector2(p.x, p.z).length() <= 10.31)
+
+
+func test_pull_back_is_refined_below_the_step() -> void:
+	var me := Vector3(0, 0.95, 2.0)
+	var opp := Vector3(0.3, 0.95, -2.0)
+	var pose: Dictionary = FightCamera.follow_pose(me, opp, 3.4, 2.3, 0.7)
+	var pts: Array = FightCamera.frame_points(me) + FightCamera.frame_points(opp)
+	var pull: float = FightCamera.pull_back_for(pose["pos"], pose["look"], 55.0, 9.0 / 16.0, pts, 0.82, 12.0)
+	var away: Vector3 = ((pose["pos"] as Vector3) - (pose["look"] as Vector3)).normalized()
+	assert_true(FightCamera.frame_ratio((pose["pos"] as Vector3) + away * pull, pose["look"], 55.0, 9.0 / 16.0, pts) <= 0.82 + 0.001)
+	if pull > 0.05:
+		assert_true(FightCamera.frame_ratio((pose["pos"] as Vector3) + away * (pull - 0.03), pose["look"], 55.0, 9.0 / 16.0, pts) > 0.82, "close to the least pull")
+
+
+func test_squeeze_blend_does_not_stick_at_the_deadband() -> void:
+	var t: float = 0.12
+	for i: int in 600:
+		t = FightCamera.step_squeeze(t, 0.0, 1.0 / 60.0, 6.0, 1.2, 0.12)
+	assert_true(t < 0.01, "left at %.3f" % t)
+
+
+func test_tuned_falls_back_for_missing_rows() -> void:
+	assert_eq(FightCamera.tuned(Tuning.shared(), "no_such_camera_row", 2.5), 2.5)
+	assert_near(FightCamera.tuned(Tuning.shared(), "feel_frame_margin", 0.0), Tuning.shared().feel_frame_margin)
+
+
+func test_real_frame_delta_uses_the_speed_the_frame_ran_at() -> void:
+	var cam := FightCamera.new()
+	var real: float = 1.0 / 60.0
+	# Full speed, then slow motion (0.2) starts: the first slow frame still ran at full speed (delta unscaled).
+	assert_near(cam.real_frame_delta(real, 1.0), real)
+	assert_near(cam.real_frame_delta(real, 0.2), real, 0.0001, "first slow-motion frame is not 5x long")
+	assert_near(cam.real_frame_delta(real * 0.2, 0.2), real, 0.0001, "slow frames undo the scale")
+	# Back to full speed: the first full-speed frame still ran slowed (delta scaled by 0.2).
+	assert_near(cam.real_frame_delta(real * 0.2, 1.0), real, 0.0001, "first full-speed frame is not 5x short")
+	assert_near(cam.real_frame_delta(real, 1.0), real)
+	assert_near(cam.real_frame_delta(real, NAN), real, 0.0001, "a NaN speed keeps the last good one")
+	cam.free()
