@@ -3,6 +3,10 @@ extends Control
 ## Online 1v1 lobby: your name, host (listen on a port, shows this machine's LAN addresses) or join by address
 ## (ip or ip:port), then your loadout picked as usual while the other player's shows beside it. The host starts the
 ## fight once someone has joined. Talks to the NetSession MenuFlow owns; emits start_pressed (host) and back.
+## Quick Match mode (open_quick): the same screen without the address controls. It asks the OnlineService for an
+## opponent (spinner, Cancel), shows who was found with their rating, connects the NetSession as the service says
+## (host listens, client joins after a beat) and starts the fight by itself. It also builds and signs this side's
+## result report for the service (report_finished / report_abandoned).
 
 signal back
 signal start_pressed
@@ -10,6 +14,12 @@ signal start_pressed
 var state: MenuState
 var session: NetSession = null
 var player_name: String = "Gladiator"
+var service: OnlineService = null
+
+enum Phase { IDLE, SEARCHING, FOUND, CONNECTING, STARTED }
+
+const FOUND_DELAY_S: float = 1.6  ## the opponent card stays up this long before the connection is made (host listens at once)
+const SPIN_RATE: float = 5.0
 
 var _title: Label
 var _body: BoxContainer
@@ -26,6 +36,17 @@ var _panel: LoadoutPanel
 var _start: Button
 var _back: Button
 var _status_text: String = ""
+var _quick: bool = false
+var _phase: Phase = Phase.IDLE
+var _info: Dictionary = {}
+var _found_s: float = 0.0
+var _spin: float = 0.0
+var _match_open: bool = false
+var _adv: Array[Control] = []
+var _quick_box: VBoxContainer
+var _headline: Label
+var _spinner: Control
+var _card: Label
 
 
 func _init(p_state: MenuState) -> void:
@@ -71,6 +92,9 @@ func _init(p_state: MenuState) -> void:
 	_name_edit.text_changed.connect(func(t: String) -> void:
 		player_name = NetLobby.clean_name(t)
 		_push_local())
+	_name_edit.text_submitted.connect(func(_t: String) -> void:
+		if _quick and service != null and _phase == Phase.SEARCHING:
+			_begin_search())
 	_left.add_child(_name_edit)
 	_left.add_child(MenuTheme.label("Host a fight on port", MenuTheme.FONT_SMALL, MenuTheme.OCHRE))
 	var hrow := HBoxContainer.new()
@@ -102,6 +126,10 @@ func _init(p_state: MenuState) -> void:
 	_opponent = MenuTheme.label("", MenuTheme.FONT_SMALL, MenuTheme.PARCHMENT)
 	_opponent.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_left.add_child(_opponent)
+	for c: Node in _left.get_children():
+		if c != _left.get_child(0) and c != _name_edit and c != _status and c != _opponent:
+			_adv.append(c as Control)
+	_build_quick_box()
 
 	_panel = LoadoutPanel.new()
 	_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -114,11 +142,11 @@ func _init(p_state: MenuState) -> void:
 	foot.add_theme_constant_override("separation", 40)
 	root.add_child(foot)
 	_back = MenuTheme.button("Back", 300.0)
-	_back.pressed.connect(func() -> void: back.emit())
+	_back.pressed.connect(_on_back)
 	foot.add_child(_back)
 	_start = MenuTheme.button("FIGHT!", 420.0)
 	_start.add_theme_stylebox_override("normal", MenuTheme.box(MenuTheme.RED, MenuTheme.OCHRE, 4))
-	_start.pressed.connect(func() -> void: start_pressed.emit())
+	_start.pressed.connect(_on_start_pressed)
 	foot.add_child(_start)
 	resized.connect(_relayout)
 
@@ -134,16 +162,248 @@ func _edit(text: String, hint: String) -> LineEdit:
 
 ## Shows the screen for `p_session` (a fresh one: connect controls; an open one: back in its lobby).
 func open(p_session: NetSession) -> void:
-	if session != p_session:
-		session = p_session
-		session.status_changed.connect(show_status)
-		session.lobby_changed.connect(refresh)
+	_set_mode(false)
+	_bind_session(p_session)
 	_panel.set_loadout(state.loadouts[0])
 	_name_edit.text = player_name
 	_push_local()
 	refresh()
 	_relayout()
 	(_host_btn if not session.is_open() else _panel.first_focus()).grab_focus()
+
+
+func _bind_session(p_session: NetSession) -> void:
+	if session != p_session:
+		session = p_session
+		session.status_changed.connect(show_status)
+		session.lobby_changed.connect(refresh)
+
+
+# --- Quick Match -------------------------------------------------------------------------------------------------
+
+func _build_quick_box() -> void:
+	_quick_box = VBoxContainer.new()
+	_quick_box.add_theme_constant_override("separation", 14)
+	_quick_box.visible = false
+	_left.add_child(_quick_box)
+	_headline = MenuTheme.label("", 44, MenuTheme.PARCHMENT)
+	_headline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_quick_box.add_child(_headline)
+	_spinner = Control.new()
+	_spinner.custom_minimum_size = Vector2(0.0, 150.0)
+	_spinner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_spinner.draw.connect(_draw_spinner)
+	_quick_box.add_child(_spinner)
+	_card = MenuTheme.label("", 40, MenuTheme.OCHRE)
+	_card.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_card.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_quick_box.add_child(_card)
+
+
+func _set_mode(quick: bool) -> void:
+	_quick = quick
+	for c: Control in _adv:
+		c.visible = not quick
+	_quick_box.visible = quick
+	_opponent.visible = not quick
+	_title.text = "ARENA REMOTA / Quick Match" if quick else "ARENA REMOTA / Online 1v1"
+	_back.text = "Cancel" if quick else "Back"
+	_start.text = "Search again" if quick else "FIGHT!"
+	set_process(quick)
+
+
+## Quick Match: look for an opponent through `p_service` and play whoever is found. `p_session` is a fresh NetSession.
+func open_quick(p_session: NetSession, p_service: OnlineService) -> void:
+	_set_mode(true)
+	_bind_session(p_session)
+	if service != p_service:
+		service = p_service
+		service.logged_in.connect(_on_logged_in)
+		service.login_failed.connect(_on_login_failed)
+		service.matched.connect(_on_matched)
+		service.match_failed.connect(_on_match_failed)
+		service.status_changed.connect(show_status)
+	_panel.set_loadout(state.loadouts[0])
+	_name_edit.text = player_name
+	_status_text = ""
+	_relayout()
+	_begin_search()
+	_panel.first_focus().grab_focus()
+
+
+func _begin_search() -> void:
+	service.cancel()
+	_phase = Phase.SEARCHING
+	_info = {}
+	_found_s = 0.0
+	_push_local()
+	service.build_id = session.content_hash()
+	service.login(player_name)  # signs in the first time, renames afterwards; logged_in starts the search
+	refresh()
+
+
+func _on_logged_in(_profile: Dictionary) -> void:
+	if _quick and _phase == Phase.SEARCHING and not service.is_searching():
+		service.quick_match(state.loadouts[0])
+
+
+func _on_login_failed(reason: String) -> void:
+	if _quick:
+		_phase = Phase.IDLE
+		show_status("Could not sign in: %s" % reason)
+
+
+func _on_match_failed(reason: String) -> void:
+	if _quick and _phase == Phase.SEARCHING:
+		_phase = Phase.IDLE
+		show_status(reason)
+
+
+func _on_matched(info: Dictionary) -> void:
+	if not _quick or _phase != Phase.SEARCHING:
+		return
+	_info = info
+	_phase = Phase.FOUND
+	_found_s = 0.0
+	if str(info.get("role", "")) == OnlineService.ROLE_HOST:
+		_connect_now()  # the host listens at once so the client's join cannot beat it
+	refresh()
+
+
+func _connect_now() -> void:
+	_phase = Phase.CONNECTING
+	var role: String = str(_info.get("role", ""))
+	var peer: Variant = _info.get("peer")
+	if peer != null:
+		if session.has_method("adopt_peer"):
+			session.call("adopt_peer", peer, role)
+		else:
+			show_status("This build cannot use relay connections yet")
+			_phase = Phase.IDLE
+	elif role == OnlineService.ROLE_HOST:
+		session.host(int(_info.get("port", NetConfig.DEFAULT_PORT)))
+	else:
+		session.join(str(_info.get("address", "")), int(_info.get("port", NetConfig.DEFAULT_PORT)))
+
+
+func _process(delta: float) -> void:
+	if not visible or not _quick:
+		return
+	_spin += delta * SPIN_RATE
+	_spinner.queue_redraw()
+	if _phase == Phase.FOUND:
+		_found_s += delta
+		if _found_s >= FOUND_DELAY_S:
+			_connect_now()
+			refresh()
+	elif _phase == Phase.CONNECTING:
+		_found_s += delta
+		_try_start()
+
+
+## The host starts the fight as soon as the client is in and the opponent card has been up for a moment.
+func _try_start() -> void:
+	if _phase == Phase.CONNECTING and str(_info.get("role", "")) == OnlineService.ROLE_HOST and session.remote_joined \
+			and _found_s >= FOUND_DELAY_S:
+		_phase = Phase.STARTED
+		start_pressed.emit()
+
+
+func _draw_spinner() -> void:
+	var c: Vector2 = _spinner.size * 0.5
+	var r: float = minf(_spinner.size.y * 0.4, 56.0)
+	if _phase == Phase.IDLE:
+		return
+	if _phase != Phase.SEARCHING:
+		_spinner.draw_arc(c, r, 0.0, TAU, 48, MenuTheme.OCHRE, 6.0, true)
+		return
+	_spinner.draw_arc(c, r, 0.0, TAU, 48, MenuTheme.BRONZE.darkened(0.55), 6.0, true)
+	for i: int in 5:  # a comet: a bright head with a fading tail
+		var a0: float = _spin - float(i) * 0.32
+		_spinner.draw_arc(c, r, a0 - 0.3, a0, 8, MenuTheme.OCHRE.lerp(MenuTheme.RED, float(i) / 5.0), 8.0 - float(i), true)
+
+
+func _refresh_quick() -> void:
+	var rated: Dictionary = service.my_rating() if service != null else {}
+	match _phase:
+		Phase.SEARCHING:
+			_headline.text = "Searching for an opponent"
+			_card.text = "You: %s %s" % [Rating.tier(int(rated.get("rating", 0))), Rating.rating_text(int(rated.get("rating", 0)), int(rated.get("games", 0)))]
+		Phase.IDLE:
+			_headline.text = "No match"
+			_card.text = ""
+		_:
+			var o: Dictionary = _info.get("opponent", {})
+			_headline.text = "Opponent found" if _phase == Phase.FOUND else "Entering the arena"
+			_card.text = "%s\n%s  %s" % [str(o.get("name", "?")), Rating.tier(int(o.get("rating", 0))),
+				Rating.rating_text(int(o.get("rating", 0)), int(o.get("games", 0)))]
+	_status.text = _status_text
+	_start.visible = _phase == Phase.IDLE
+	_start.disabled = false
+	_name_edit.editable = _phase == Phase.SEARCHING or _phase == Phase.IDLE
+	_spinner.queue_redraw()
+	_try_start()
+
+
+func _on_back() -> void:
+	if _quick and service != null:
+		service.cancel()
+	back.emit()
+
+
+func _on_start_pressed() -> void:
+	if _quick:
+		_begin_search()
+	else:
+		start_pressed.emit()
+
+
+# --- reporting the result ----------------------------------------------------------------------------------------
+
+func is_quick() -> bool:
+	return _quick and not _info.is_empty()
+
+
+## MenuFlow calls this when the match is built: from now on leaving counts as a loss.
+func match_started() -> void:
+	_match_open = true
+
+
+func has_open_match() -> bool:
+	return _quick and _match_open
+
+
+## The fight ended: `winner_side` 0 = host, 1 = client, -1 = draw.
+func report_finished(winner_side: int, ticks: int, reason: String) -> void:
+	var me_side: int = 0 if str(_info.get("role", "")) == OnlineService.ROLE_HOST else 1
+	var winner: String = ""
+	if winner_side >= 0:
+		winner = str(service.profile.get("id", "")) if winner_side == me_side else str((_info["opponent"] as Dictionary).get("id", ""))
+	_report(Rating.KIND_RESULT, winner, reason, ticks)
+
+
+## The match ended without a result: Rating.KIND_LEFT (this player left) or KIND_DROPPED (the connection died).
+func report_abandoned(kind: String, ticks: int = 0) -> void:
+	_report(kind, "", kind, ticks)
+
+
+func _report(kind: String, winner_id: String, reason: String, ticks: int) -> void:
+	if not has_open_match():
+		return
+	_match_open = false
+	var rep: Dictionary = Rating.make_report(str(_info.get("match_id", "")), str(service.profile.get("id", "")), kind, winner_id, reason, ticks)
+	service.report_result(str(_info.get("match_id", "")), rep, Rating.sign_report(str(_info.get("match_key", "")), rep))
+
+
+## One line for the result panel.
+static func summary_text(s: Dictionary) -> String:
+	match str(s.get("status", "")):
+		"agree", "single", "forfeit":
+			return "Rating %d -> %d  (%+d)" % [int(s.get("before", 0)), int(s.get("after", 0)), int(s.get("delta", 0))]
+		"pending":
+			return "Rating pending"
+		_:
+			return "Not rated: %s" % str(s.get("why", ""))
 
 
 func show_status(text: String) -> void:
@@ -153,6 +413,9 @@ func show_status(text: String) -> void:
 
 func refresh() -> void:
 	if session == null:
+		return
+	if _quick and service != null:
+		_refresh_quick()
 		return
 	var open_now: bool = session.is_open()
 	_host_btn.disabled = open_now
@@ -203,6 +466,8 @@ func _push_local() -> void:
 func _on_loadout(l: Dictionary) -> void:
 	state.set_loadout(0, l)
 	_push_local()
+	if _quick and _phase == Phase.SEARCHING and service != null:
+		service.quick_match(l)  # same search, new arms
 
 
 func _on_host() -> void:
@@ -224,7 +489,7 @@ func _on_join() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if visible and event.is_action_pressed("ui_cancel"):
-		back.emit()
+		_on_back()
 		get_viewport().set_input_as_handled()
 
 

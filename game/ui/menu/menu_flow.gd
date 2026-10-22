@@ -13,7 +13,7 @@ extends Node
 signal match_started(match_node: Match)
 signal match_closed
 
-enum Screen { TITLE, LOADOUT, OPTIONS, FIGHT, PAUSED, RESULT, ONLINE }
+enum Screen { TITLE, LOADOUT, OPTIONS, FIGHT, PAUSED, RESULT, ONLINE, LEADERBOARD }
 
 const LAYER: int = 60
 const RESULT_DELAY_S: float = 3.4
@@ -36,6 +36,10 @@ var _loadout: LoadoutScreen
 var _options: OptionsScreen
 var _online: OnlineScreen
 var _net: NetSession = null
+var _leaderboard: LeaderboardScreen
+var _service: OnlineService = null  ## the matchmaking / rating backend (ServiceLocal until another is wired in)
+var _quick: bool = false  ## the online screen / match in progress is a Quick Match (rated), not direct IP
+var _rating_line: String = ""
 var _pause: MenuPanel = null
 var _pause_dim: ColorRect
 var _hint: ControlsHint
@@ -96,6 +100,9 @@ func _build_ui() -> void:
 	_online.back.connect(_show_title)
 	_online.start_pressed.connect(_on_online_start)
 	_root.add_child(_online)
+	_leaderboard = LeaderboardScreen.new()
+	_leaderboard.back.connect(_show_title)
+	_root.add_child(_leaderboard)
 	_pause_dim = MenuTheme.dim_rect()
 	_pause_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_pause_dim.visible = false
@@ -139,6 +146,7 @@ func _hide_screens() -> void:
 	_loadout.visible = false
 	_options.visible = false
 	_online.visible = false
+	_leaderboard.visible = false
 	_pause_dim.visible = false
 	_hint.hide_now()
 	_pause_btn.visible = false
@@ -172,6 +180,10 @@ func _on_title(id: String) -> void:
 			_open_loadout("player_vs_cpu")
 		"local_2p":
 			_open_loadout("local_2p")
+		"quick":
+			_open_online(true)
+		"leaderboard":
+			_open_leaderboard()
 		"online":
 			_open_online()
 		"bots":
@@ -277,10 +289,13 @@ func _is_online() -> bool:
 	return state.last_mode == ONLINE_MODE and _net != null
 
 
-func _open_online() -> void:
+func _open_online(quick: bool = false) -> void:
 	_close_match()
 	_hide_screens()
 	_ensure_backdrop()
+	_quick = quick
+	if quick and _net != null:
+		_end_session()  # a Quick Match always starts from a fresh connection
 	if _net == null:
 		_net = NetSession.new()
 		_net.name = "NetSession"
@@ -289,10 +304,56 @@ func _open_online() -> void:
 		_net.closed.connect(_on_net_closed)
 	screen = Screen.ONLINE
 	_online.visible = true
-	_online.open(_net)
+	if quick:
+		_ensure_service()
+		_online.open_quick(_net, _service)
+	else:
+		_online.open(_net)
+
+
+func _ensure_service() -> void:
+	if _service != null:
+		return
+	if Flags.get_arg("online-service", "local") == "stub":
+		var st := ServiceStub.new()
+		st.auto_match = false
+		for i: int in 14:
+			st.add_fake_player("fake%02d" % i, ["Verus", "Cato", "Brutus", "Livia", "Marcus", "Titus", "Aurelia", "Gaius", "Nero", "Crispus", "Julia", "Felix", "Sabina", "Lucan"][i],
+				1620 - i * 38, 60 - i * 3, 40 - i * 2)
+		_service = st
+	else:
+		var loc := ServiceLocal.new()
+		loc.entropy = int(Time.get_ticks_usec() & 0x7fffffff) ^ (OS.get_process_id() << 8)
+		loc.device_id = Flags.get_arg("device-id", "")
+		_service = loc
+	_service.name = "OnlineService"
+	_service.result_recorded.connect(_on_recorded)
+	add_child(_service)
+
+
+func _open_leaderboard() -> void:
+	_close_match()
+	_hide_screens()
+	_ensure_backdrop()
+	_ensure_service()
+	if not _service.is_logged_in():
+		_service.login(_online.player_name)
+	screen = Screen.LEADERBOARD
+	_leaderboard.visible = true
+	_leaderboard.open(_service)
+
+
+func _on_recorded(summary: Dictionary) -> void:
+	_rating_line = OnlineScreen.summary_text(summary)
+	if screen == Screen.RESULT and _is_online() and _quick and current_match != null:
+		_show_online_result(int(current_match.result.get("winner", -1)), current_match.names)  # the verdict came after the panel
 
 
 func _end_session() -> void:
+	if _quick and _online.has_open_match():
+		_online.report_abandoned(Rating.KIND_LEFT)  # leaving a rated fight before the end is a loss
+	if _service != null:
+		_service.cancel()
 	if _net == null:
 		return
 	_net.closed.disconnect(_on_net_closed)
@@ -312,6 +373,9 @@ func _begin_online(start: Dictionary) -> void:
 	_hide_screens()
 	_free_backdrop()
 	state.last_mode = ONLINE_MODE
+	_rating_line = ""
+	if _quick:
+		_online.match_started()
 	settings.apply_quality()  # each peer builds with its own setting; presentation only, the sim is unaffected
 	var m := Match.new()
 	m.name = "Match"
@@ -330,8 +394,10 @@ func _on_net_closed(reason: String) -> void:
 	if _net != null:
 		_net.queue_free()
 		_net = null
+	if _quick and _online.has_open_match():
+		_online.report_abandoned(Rating.KIND_DROPPED)
 	if screen == Screen.ONLINE:
-		_open_online()
+		_open_online(_quick)
 		_online.show_status(reason)
 		return
 	if screen == Screen.FIGHT or screen == Screen.PAUSED or screen == Screen.RESULT:
@@ -346,6 +412,8 @@ func _on_net_closed(reason: String) -> void:
 
 
 func _on_match_over(result: Dictionary, token: int) -> void:
+	if _quick and _is_online() and _online.has_open_match():
+		_online.report_finished(int(result.get("winner", -1)), int(result.get("ticks", 0)), str(result.get("reason", "")))
 	if current_match == null or bool(current_match.config.get("loop", false)):
 		return
 	var t: SceneTreeTimer = get_tree().create_timer(RESULT_DELAY_S, true, false, true)
@@ -382,10 +450,13 @@ func _show_online_result(w: int, names: Array) -> void:
 		latin = "VICTORIA" if w == me else "MORS"
 		english = "You won" if w == me else "%s wins" % str(names[w])
 	_pause_dim.visible = true
-	var entries: Array = [["online", "Back to lobby"], ["title", "Leave"]]
-	if _net.role == NetSession.ROLE_HOST:
+	var entries: Array = [["online", "Find another opponent" if _quick else "Back to lobby"], ["title", "Leave"]]
+	var body: String = "" if _net.role == NetSession.ROLE_HOST else "The host picks a rematch"
+	if _quick:
+		body = _rating_line  # ranked fights have no rematch
+	elif _net.role == NetSession.ROLE_HOST:
 		entries.push_front(["net_rematch", "Rematch"])
-	_show_panel(latin, english, "" if _net.role == NetSession.ROLE_HOST else "The host picks a rematch", entries)
+	_show_panel(latin, english, body, entries)
 
 
 func _pause_game() -> void:
@@ -448,7 +519,7 @@ func _on_panel(id: String) -> void:
 		"resume":
 			_resume()
 		"online":
-			_open_online()
+			_open_online(_quick)
 		"net_rematch":
 			_on_online_start()
 		"rematch":
@@ -470,3 +541,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif screen == Screen.PAUSED:
 		_resume()
 		get_viewport().set_input_as_handled()
+
+
+func _notification(what: int) -> void:
+	# Closing the window in the middle of a rated fight counts as leaving it.
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and _quick and _online != null and _online.has_open_match():
+		_online.report_abandoned(Rating.KIND_LEFT)

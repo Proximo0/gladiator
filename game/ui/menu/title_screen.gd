@@ -1,8 +1,9 @@
 class_name TitleScreen
 extends Control
-## SANDBLOOD title and main menu over the arena backdrop. Fight (vs CPU) is first and focused.
+## SANDBLOOD title and main menu over the arena backdrop. Quick Match (online, the main mode) is first and focused;
+## "Online 1v1 (direct IP)" stays further down as the advanced entry.
 
-signal chosen(id: String)  ## "fight", "local_2p", "online", "bots", "options", "quit"
+signal chosen(id: String)  ## "quick", "fight", "local_2p", "leaderboard", "online", "bots", "options", "quit"
 
 var _title: Label
 var _sub: Label
@@ -17,7 +18,7 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_col = VBoxContainer.new()
 	_col.alignment = BoxContainer.ALIGNMENT_CENTER
-	_col.add_theme_constant_override("separation", 12)
+	_col.add_theme_constant_override("separation", 8)
 	add_child(_col)
 	_title = MenuTheme.label("SANDBLOOD", 190, MenuTheme.PARCHMENT)
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -38,12 +39,13 @@ func _init() -> void:
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0.0, 30.0)
 	_col.add_child(gap)
-	var entries: Array = [["fight", "Fight  (vs CPU)"], ["local_2p", "Local 2 players"], ["online", "Online 1v1"], ["bots", "Watch bots"],
-			["options", "Options"]]
+	var entries: Array = [["quick", "Quick Match"], ["fight", "Fight  (vs CPU)"], ["local_2p", "Local 2 players"],
+			["leaderboard", "Leaderboard"], ["online", "Online 1v1 (direct IP)"], ["bots", "Watch bots"], ["options", "Options"]]
 	if not OS.has_feature("mobile") and not OS.has_feature("web"):
 		entries.append(["quit", "Quit"])
 	for e: Array in entries:
-		var b: Button = MenuTheme.button(str(e[1]), 560.0)
+		var b: Button = MenuTheme.button(str(e[1]), 640.0)
+		b.custom_minimum_size.y = 58.0
 		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(func() -> void: chosen.emit(str(e[0])))
 		_col.add_child(b)
@@ -64,7 +66,7 @@ func focus_first() -> void:
 func _relayout() -> void:
 	_col.position = Vector2.ZERO
 	_col.size = size
-	_title.add_theme_font_size_override("font_size", int(clampf(size.x / 7.2, 70.0, 190.0)))
+	_title.add_theme_font_size_override("font_size", int(clampf(minf(size.x / 7.2, size.y / 6.5), 70.0, 190.0)))
 	_title.add_theme_constant_override("outline_size", int(clampf(size.x / 70.0, 8.0, 22.0)))
 
 
