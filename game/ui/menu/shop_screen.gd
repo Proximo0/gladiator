@@ -129,7 +129,7 @@ func card_state(id: String) -> Dictionary:
 		var worn: bool = state.outfit_for(0) == id
 		return {"button": "Equipped" if worn else "Equip", "price": "Owned" if OutfitRules.is_premium(id) else "Free", "disabled": worn}
 	if not state.store.is_available():
-		return {"button": "Not available", "price": price, "disabled": true}
+		return {"button": "Coming soon", "price": price, "disabled": true}
 	if _busy != "":
 		return {"button": "Buying..." if _busy == OutfitRules.product_id(id) else "Buy  " + price, "price": price, "disabled": true}
 	return {"button": "Buy  " + price, "price": price, "disabled": false}
