@@ -171,8 +171,8 @@ func _build_collision() -> void:
 		cs.transform = Transform3D(Arena.ring_basis(a),
 				Vector3((radius + WALL_DEPTH * 0.5) * cos(a), (WALL_HEIGHT - 2.5) * 0.5, (radius + WALL_DEPTH * 0.5) * sin(a)))
 		wall.add_child(cs)
+	ArenaDressing.add_colliders(wall, DecorLayout.colliders(radius))
 	add_child(wall)
-	ArenaDressing.add_colliders(self, DecorLayout.colliders(radius))
 
 
 func _start_match() -> void:

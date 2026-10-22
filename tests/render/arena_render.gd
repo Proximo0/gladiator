@@ -9,7 +9,7 @@ var _out: String = "/tmp/arena_render/"
 var _tag: String = "shot"
 ## Nodes that hold the Houdini dressing (their triangles are reported as dressing_tris).
 const DRESSING: PackedStringArray = ["Portcullis", "GateColumns", "Barriers", "ColumnStumps", "Braziers", "Standards",
-		"WallBanners", "WeaponRacks", "Statues", "LaurelTrophy", "DecorBody"]
+		"WallBanners", "WeaponRacks", "Statues", "LaurelTrophy"]
 
 
 func _ready() -> void:

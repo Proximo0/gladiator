@@ -84,13 +84,9 @@ static func add_instances(parent: Node, node_name: String, m: Mesh, xforms: Arra
 	return mmi
 
 
-## One layer-1 static body "DecorBody" with DecorLayout's colliders ({"xf", "box"} or {"xf", "cyl"}). The Arena and
+## Adds DecorLayout's colliders ({"xf", "box"} or {"xf", "cyl"}) as shapes of the wall's static `body`. The Arena and
 ## the headless match both call this, so a watched fight and a bot fight collide the same.
-static func add_colliders(parent: Node, colliders: Array[Dictionary]) -> StaticBody3D:
-	var body := StaticBody3D.new()
-	body.name = "DecorBody"
-	body.collision_layer = 1
-	body.collision_mask = 0
+static func add_colliders(body: StaticBody3D, colliders: Array[Dictionary]) -> void:
 	for c: Dictionary in colliders:
 		var cs := CollisionShape3D.new()
 		if c.has("box"):
@@ -105,8 +101,6 @@ static func add_colliders(parent: Node, colliders: Array[Dictionary]) -> StaticB
 			cs.shape = cyl
 		cs.transform = c["xf"]
 		body.add_child(cs)
-	parent.add_child(body)
-	return body
 
 
 ## The mesh named like the asset if there is one (weapon_rack.glb also carries other props' empties), else the first.

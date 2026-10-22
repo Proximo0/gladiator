@@ -47,9 +47,7 @@ func _front_radius(a: float) -> float:
 ## pelvis origin got past radius `front` (negative: it stopped short).
 func _run_into(a: float, front: float, colliders: bool) -> float:
 	await sandbox(true)
-	_walls()
-	if colliders:
-		ArenaDressing.add_colliders(world, DecorLayout.colliders(RADIUS))
+	_walls(colliders)
 	var out := Vector3(cos(a), 0.0, sin(a))
 	var f: Node3D = (load(FIGHTER) as GDScript).new()
 	world.add_child(f)
@@ -70,8 +68,8 @@ func _run_into(a: float, front: float, colliders: bool) -> float:
 	return past
 
 
-## Floor and the 48-sided wall, as Match._build_collision builds them.
-func _walls() -> void:
+## Floor and the 48-sided wall (with the dressing's shapes), as Match._build_collision builds them.
+func _walls(dressing: bool) -> void:
 	var fb := StaticBody3D.new()
 	var fcs := CollisionShape3D.new()
 	var fbox := BoxShape3D.new()
@@ -90,4 +88,6 @@ func _walls() -> void:
 		cs.shape = shape
 		cs.transform = Transform3D(Arena.ring_basis(wa), Vector3((RADIUS + WALL_DEPTH * 0.5) * cos(wa), (WALL_HEIGHT - 2.5) * 0.5, (RADIUS + WALL_DEPTH * 0.5) * sin(wa)))
 		wall.add_child(cs)
+	if dressing:
+		ArenaDressing.add_colliders(wall, DecorLayout.colliders(RADIUS))
 	world.add_child(wall)

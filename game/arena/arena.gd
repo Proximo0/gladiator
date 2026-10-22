@@ -186,8 +186,8 @@ func _build_wall_colliders() -> void:
 		cs.shape = shape
 		cs.transform = Transform3D(ring_basis(a), Vector3((radius + depth * 0.5) * cos(a), (WALL_HEIGHT - 2.5) * 0.5, (radius + depth * 0.5) * sin(a)))
 		body.add_child(cs)
+	ArenaDressing.add_colliders(body, DecorLayout.colliders(radius))
 	add_child(body)
-	ArenaDressing.add_colliders(self, DecorLayout.colliders(radius))
 
 
 func _build_wall_visual() -> void:
