@@ -4,7 +4,8 @@ extends RefCounted
 ## reduced by armor, then checked for sever, gut and behead. No RNG, no nodes.
 ## Optional hit keys: "blood_frac" (0..1, default 1; 0 = at blood_death, 1 = full, see FighterHealth.blood_frac()), "part_hp_frac" (0..1, default 1) lets a hurt limb sever more easily;
 ## "hit_on_weapon" (bool) means the contact was on the defender's held weapon or shield: no body damage, only
-## disarm_impulse. Armor def "strap" is the blunt-equivalent energy (J) that tears a fresh piece off.
+## disarm_impulse. "armor_gap" (0..1, default 0; ArmorGaps.bypass) is the share of plate cut and pierce resistance a
+## hit in a plate gap skips. Armor def "strap" is the blunt-equivalent energy (J) that tears a fresh piece off.
 
 const DEFAULTS: Dictionary = {
 	"damage_min_speed": 3.0,
@@ -112,6 +113,7 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 	var pass_pierce: float = 1.0
 	var pass_blunt: float = 1.0
 	var pieces: Array[String] = []
+	var gap: float = clampf(float(hit.get("armor_gap", 0.0)), 0.0, 1.0)
 	for aid: Variant in hit.get("armor_ids", []):
 		var adef: Dictionary = CombatData.armor(str(aid))
 		if adef.is_empty():
@@ -119,8 +121,10 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 		pieces.append(str(aid))
 		var w: float = clampf(float(wear_in.get(str(aid), 0.0)), 0.0, 1.0)
 		var k: float = 1.0 - wear_loss * w
-		pass_cut *= 1.0 - clampf(float(adef.get("cut_resist", 0.0)) * k, 0.0, 1.0)
-		pass_pierce *= 1.0 - clampf(float(adef.get("pierce_resist", 0.0)) * k, 0.0, 1.0)
+		# A blade that finds a plate gap (ArmorGaps: joints, armpits, face) skips most of the plate's cut and pierce.
+		var k_sharp: float = k * (1.0 - gap) if str(adef.get("kind", "")) == "plate" else k
+		pass_cut *= 1.0 - clampf(float(adef.get("cut_resist", 0.0)) * k_sharp, 0.0, 1.0)
+		pass_pierce *= 1.0 - clampf(float(adef.get("pierce_resist", 0.0)) * k_sharp, 0.0, 1.0)
 		pass_blunt *= 1.0 - clampf(float(adef.get("blunt_resist", 0.0)) * k, 0.0, 1.0)
 	var cut: float = cut_raw * pass_cut
 	var pierce: float = pierce_raw * pass_pierce

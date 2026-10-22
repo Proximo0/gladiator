@@ -356,3 +356,26 @@ func test_fists_pummel_finishes_downed_foe_head_only() -> void:
 	assert_eq(_r(w)["finisher"], "skull_crush")  # weapons keep skull_crush even on a downed foe
 	h["part"] = "torso"
 	assert_eq(_r(h)["finisher"], "")
+
+
+
+func test_plate_gap_lets_a_cut_through() -> void:
+	var face: Dictionary = _r(_hit("forearm_r", "longsword", "edge", 20.0, 1.0, ["bracers_iron"]))
+	var h: Dictionary = _hit("forearm_r", "longsword", "edge", 20.0, 1.0, ["bracers_iron"])
+	h["armor_gap"] = 0.8
+	var gap: Dictionary = _r(h)
+	assert_true(float(gap["cut"]) > float(face["cut"]) * 3.0, "a gap cut gets well past the plate face")
+	assert_false(bool(gap["glanced"]))
+	var bare: Dictionary = _r(_hit("forearm_r", "longsword", "edge", 20.0, 1.0))
+	assert_true(float(gap["cut"]) < float(bare["cut"]), "the gap still takes something off")
+
+
+func test_gap_ignores_mail_and_blunt() -> void:
+	var a: Dictionary = _hit("torso", "longsword", "edge", 20.0, 1.0, ["mail"])
+	var b: Dictionary = a.duplicate()
+	b["armor_gap"] = 1.0
+	assert_near(float(_r(a)["cut"]), float(_r(b)["cut"]), 0.0001, "mail has no gaps")
+	var c: Dictionary = _hit("head", "bat", "blunt", 20.0, 1.0, ["helm_iron"])
+	var d: Dictionary = c.duplicate()
+	d["armor_gap"] = 1.0
+	assert_near(float(_r(c)["blunt"]), float(_r(d)["blunt"]), 0.0001, "blunt is unchanged")
