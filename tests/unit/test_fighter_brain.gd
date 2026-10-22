@@ -525,3 +525,31 @@ func test_heavy_short_weapons_do_not_swing_low_on_the_weapon_side() -> void:
 			var inp: FighterInput = b.think(f[0], f[1], DT)
 			var lim: float = FighterBrain.heavy_low_limit(float(inp.aim_x) / 1000.0, true)
 			assert_true(float(inp.aim_y) / 1000.0 >= lim - 0.002 or inp.aim_y == -1000, "%s aim %d,%d" % [w, inp.aim_x, inp.aim_y])
+
+
+## A foe blade sweeping in fast at close range, over and over (tip closes on my torso every tick of a 20-tick cycle).
+func _threat_rolls(stamina: float) -> Array:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(1.6)
+	f[0]["stamina"] = stamina
+	var ticks: Array[int] = []
+	for i in 1200:
+		var k: int = i % 20
+		f[1]["tip_pos"] = Vector3(0.0, 1.3, -1.2 + 0.05 * k)
+		f[1]["tip_speed"] = 14.0
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		if inp.has(FighterInput.ROLL):
+			ticks.append(i)
+			assert_true(inp.move_y < 0, "rolls back, away from the foe")
+	return ticks
+
+
+func test_rolls_now_and_then_to_escape_a_fast_blow() -> void:
+	var ticks: Array = _threat_rolls(1.0)
+	assert_true(ticks.size() >= 1, "rolled at least once in 20 s of threats")
+	for j: int in range(1, ticks.size()):
+		assert_true(int(ticks[j]) - int(ticks[j - 1]) >= 240, "cooldown between rolls")
+
+
+func test_does_not_roll_when_tired() -> void:
+	assert_eq(_threat_rolls(0.3).size(), 0)

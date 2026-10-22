@@ -56,6 +56,7 @@ const SPRINT: int = 16
 const CROUCH: int = 32
 const GRAB: int = 64
 const TURN_LOCK: int = 128
+const ROLL: int = 256
 
 ## Weapon rest frames relative to the hand when the forearm hangs (columns X edge, Y blade, Z flat).
 ## A blade rests half way between square to the forearm and in line with it, so the wrist's range covers both an
@@ -88,7 +89,10 @@ var _input: FighterInput = null
 var _state: String = "standing"
 var _state_t: float = 0.0
 var _yaw: float = 0.0
-var _phase: float = 0.0
+var _gait: GaitLogic = GaitLogic.new()
+var _roll: RollLogic = RollLogic.new()
+var _leg_prev: Dictionary = {}  ## last leg joint targets (rate feed-forward)
+var _foot_prev: Array[Vector3] = [Vector3.INF, Vector3.INF]  ## last foot targets (their velocity)
 var _stagger: float = 0.0
 var _tick: int = 0
 var _severed: PackedStringArray = PackedStringArray()
@@ -578,6 +582,9 @@ func tilt() -> float:
 	var upv: Vector3 = p.global_transform.basis.y.normalized()
 	var want_t: Vector3 = Vector3.UP
 	var want_p: Vector3 = Vector3.UP
+	# The stance lean is intended: a forward pitch up to it does not count as tilt.
+	var lean: float = _t("stance_lean") + _t("lean_per_speed") * _t("sprint_speed")
+	want_t = _bow_up(ut, -Basis(Vector3.UP, _yaw).z, lean, 1.0)
 	if rk > 0.0:
 		# While reaching down the bow is intended: a forward pitch anywhere between upright and the reach pose
 		# does not count as tilt (sideways lean and bending past the pose still do).
@@ -624,7 +631,12 @@ func _update_state(delta: float) -> void:
 			var low: float = _t("stand_height") * 0.5
 			if _reach > 0.0:
 				low = minf(low, _t("reach_height") - 0.2)
-			if not _legs_ok() or tl > _t("fall_tilt") or h < low or _stagger >= _t("stagger_down"):
+			if _roll.active():
+				# Turning over in a roll is intended: only lost legs or a heavy stagger put a roller down.
+				if not _legs_ok() or _stagger >= _t("stagger_down"):
+					_roll.t = -1.0
+					_set_state("down")
+			elif not _legs_ok() or tl > _t("fall_tilt") or h < low or _stagger >= _t("stagger_down"):
 				_set_state("down")
 			elif tl > _t("stumble_tilt") or _stagger > 0.25:
 				if _state != "stumbling":
@@ -701,7 +713,27 @@ func _control(delta: float) -> void:
 	var crouch: bool = inp.has(CROUCH)
 	_update_reach(inp, crouch, delta)
 	var rk: float = smoothstep(0.0, 1.0, _reach)
+	var stamina: float = health.stamina if health != null else 1.0
+	if _roll.press(inp.has(ROLL), _state == "standing" and _reach <= 0.01, stamina, _t("roll_stamina")):
+		_roll.start(inp.move())
+		if health != null:
+			health.stamina = maxf(health.stamina - _t("roll_stamina"), 0.0)
+		_anchor_set = false
+	if _roll.tick(delta, _t("roll_time"), _t("roll_cooldown")):
+		_gait.replant([_foot_point("shin_l"), _foot_point("shin_r")])
+	if _roll.active() and not active:
+		_roll.t = -1.0
+	var rolling: bool = _roll.active()
+	var ru: float = _roll.progress(_t("roll_time"))
+	var tk: float = RollLogic.tuck(ru) if rolling else 0.0
+	var roll_dir: Vector3 = (right * _roll.dir.x + fwd * _roll.dir.y).normalized()
 	var h_target: float = _t("crouch_height") if crouch else _t("stand_height")
+	var sp0: float = Vector2(pelvis.linear_velocity.x, pelvis.linear_velocity.z).length()
+	if not crouch:
+		h_target += _t("walk_height_add") * clampf(sp0 / maxf(_t("sprint_speed"), 0.1), 0.0, 1.0)
+		h_target += _t("gait_bob") * _gait.bob()
+	if rolling:
+		h_target = lerpf(h_target, _t("roll_height"), tk)
 	if rk > 0.0:
 		h_target = lerpf(h_target, _t("reach_height"), rk)
 	if _state == "getting_up":
@@ -717,16 +749,21 @@ func _control(delta: float) -> void:
 	if crouch:
 		speed *= 0.6
 	speed *= lerpf(1.0, 0.5, rk)
-	var v_des: Vector3 = (right * move.x + fwd * move.y) * speed
+	var v_des: Vector3 = (right * (move.x * _t("strafe_speed_scale")) + fwd * move.y) * speed
 	if _state != "standing":
 		v_des *= 0.3 if _state == "stumbling" else 0.0
+	var v_move: Vector3 = v_des  # what the feet plan for (the sway below is the body's, not a step's)
+	# Hip sway: the pelvis shifts over the planted foot while the other swings.
+	v_des += right * (_t("gait_sway") * _gait.sway_rate())
+	if rolling:
+		v_des = roll_dir * (_t("roll_speed") * RollLogic.drive(ru))
 	if grounded and support > 0.0:
 		var w: float = _t("support_freq")
 		var fy: float = total_mass * (g + w * w * (h_target - pelvis.global_position.y) - 2.0 * w * pvel.y)
 		fy = clampf(fy, 0.0, _t("support_max") * total_mass * g) * support
 		var fh: Vector3 = (v_des - hvel) * (total_mass * _t("move_response"))
 		# Standing still holds its spot (a weak spring) so idle drift does not wander off.
-		if _state == "standing" and move.length() < 0.05:
+		if _state == "standing" and move.length() < 0.05 and not rolling:
 			if not _anchor_set:
 				_anchor = Vector3(pelvis.global_position.x, 0.0, pelvis.global_position.z)
 				_anchor_set = true
@@ -735,42 +772,66 @@ func _control(delta: float) -> void:
 			fh += off * (total_mass * hf * hf)
 		else:
 			_anchor_set = false
-		fh = fh.limit_length(_t("move_accel") * total_mass * support * (0.5 if _state == "stumbling" else 1.0))
+		var acc_max: float = _t("roll_accel") if rolling else _t("move_accel")
+		fh = fh.limit_length(acc_max * total_mass * support * (0.5 if _state == "stumbling" else 1.0))
 		pelvis.apply_central_force(Vector3(fh.x, fy, fh.z))
+		if not rolling:
+			_load_feet(fy, fh)
+
+	# Fighting-stance lean, more when moving forward (the torso assist holds it, the spine target shapes it).
+	var lean: float = _t("stance_lean") + _t("lean_per_speed") * maxf(hvel.dot(fwd), 0.0) + (0.25 if crouch else 0.0)
+	lean = lerpf(lean, _t("reach_bend"), rk)
 
 	# Balance: pelvis upright and facing; torso assisted upright.
 	var bal_scale: float = support * (1.0 - 0.7 * clampf(_stagger, 0.0, 1.0))
 	if bal_scale > 0.0:
 		var bf: float = _t("balance_freq")
 		var cap: float = _t("balance_torque") * bal_scale * s
-		var err: Vector3 = FighterMath.rotation_error(pelvis.global_transform.basis, yb * _reach_pitch(rk, false))
-		pelvis.apply_torque(FighterMath.pd_torque(err, pelvis.angular_velocity, _t("balance_inertia"), bf, 1.0, cap))
+		var p_want: Basis = yb * _reach_pitch(rk, false) * Basis(Vector3(0, 0, 1), _t("gait_hip_roll") * _gait.sway())
+		if rolling:
+			# One turn of the whole body about the axis across the roll, led by the pelvis.
+			p_want = Basis(RollLogic.axis(roll_dir), RollLogic.spin(ru)) * yb
+			cap = maxf(cap, _t("roll_torque") * s)
+		var err: Vector3 = FighterMath.rotation_error(pelvis.global_transform.basis, p_want)
+		# Rolling, the turn's own rate is fed forward, so the body is carried round instead of dragged after it.
+		var w_roll: Vector3 = RollLogic.axis(roll_dir) * RollLogic.spin_rate(ru, _t("roll_time")) if rolling else Vector3.ZERO
+		var bi: float = _t("balance_inertia") * (_t("roll_inertia_scale") if rolling else 1.0)
+		pelvis.apply_torque(FighterMath.pd_torque(err, pelvis.angular_velocity - w_roll, bi, bf, 1.0, cap))
 		var torso: RigidBody3D = parts["torso"]
-		var terr: Vector3 = FighterMath.rotation_error(torso.global_transform.basis, yb * _reach_pitch(rk, true))
+		var t_want: Basis = yb * _reach_pitch(rk, true) if rk > 0.0 else yb * Basis(Vector3.RIGHT, -lean)
+		if rolling:
+			t_want = p_want * Basis(Vector3.RIGHT, -_t("stance_lean") - 0.8 * tk)
+		var terr: Vector3 = FighterMath.rotation_error(torso.global_transform.basis, t_want)
 		var tf: float = _t("torso_assist")
-		torso.apply_torque(FighterMath.pd_torque(terr, torso.angular_velocity, _inertia["torso"], bf, 1.0, cap * tf))
+		var t_cap: float = cap if rolling else cap * tf
+		torso.apply_torque(FighterMath.pd_torque(terr, torso.angular_velocity - w_roll, _inertia["torso"] * (_t("roll_inertia_scale") if rolling else 1.0), bf, 1.0, t_cap))
 
-	# Gait phase from actual horizontal speed.
-	var sp: float = hvel.length()
-	var amp: float = FighterMath.stride_amp(sp, _t("stride_base"), _t("stride_per_speed"), _t("stride_max"))
-	if amp > 0.0 and active:
-		_phase = fposmod(_phase + delta * TAU * sp / (4.0 * amp), TAU)
-	var mdir: Vector2 = Vector2.ZERO
-	if sp > 0.05:
-		mdir = Vector2(hvel.dot(right), hvel.dot(fwd)) / sp
+	# Footwork: planted feet hold their spot on the sand, one foot at a time steps on a cadence set by speed.
+	if not active:
+		_gait.ready = false
+		_leg_prev.clear()
+		_foot_prev = [Vector3.INF, Vector3.INF]
+	elif not rolling:
+		# The plan follows the intended velocity (feet lead the body; a fighter held by planted feet still steps off).
+		# Drift (a shove, a stumble) is caught by corrective steps, not by the cadence.
+		var v_plan: Vector3 = v_move
+		if not _gait.ready:
+			_gait.replant([_foot_point("shin_l"), _foot_point("shin_r")])  # start from where the feet are
+		_gait.tick(delta, [_hip_point(0), _hip_point(1)], yb, v_plan, _gait_params(), _state != "getting_up",
+			[_foot_point("shin_l"), _foot_point("shin_r")])
 
 	# Pose targets (child relative to parent).
 	var targets: Dictionary = {}
 	var aim: Vector2 = inp.aim()
 	var twist: float = -aim.x * _t("torso_twist") if active else 0.0
-	var lean: float = lerpf(0.06 + (0.25 if crouch else 0.0), _t("reach_bend"), rk)
-	targets["torso"] = Basis(Vector3.UP, twist) * Basis(Vector3.RIGHT, -lean)
-	targets["head"] = Basis(Vector3.UP, -twist * 0.8) * Basis(Vector3.RIGHT, lean * 0.5)
+	targets["torso"] = Basis(Vector3.UP, twist) * Basis(Vector3.RIGHT, -lean - 0.8 * tk)
+	# The head stays level on the foe over the leaning chest (tucked in a roll).
+	targets["head"] = Basis(Vector3.UP, -twist * 0.8) * Basis(Vector3.RIGHT, lean * 0.8 - 0.5 * tk)
 	if active:
 		# Kneeling to reach down, the legs fold toward the lower target height themselves (the support force only
 		# pushes up) and the feet go a little forward under the bowed body.
 		var drop: float = maxf(pelvis.global_position.y - h_target, 0.0) * rk
-		_leg_targets(targets, yb, amp * (1.0 if _state == "standing" else 0.6), mdir, drop, _t("reach_foot_fwd") * rk)
+		_leg_targets(targets, yb, delta, h_target, drop, _t("reach_foot_fwd") * rk, tk)
 	else:
 		for n: String in ["thigh_l", "thigh_r"]:
 			targets[n] = Basis(Vector3.RIGHT, 0.25)
@@ -800,6 +861,14 @@ func _control(delta: float) -> void:
 		# makes the limbs spin up about their own axes).
 		var axis: Vector3 = ch.global_transform.basis.y.normalized()
 		var w_rel: Vector3 = ch.angular_velocity - par.angular_velocity
+		if n.begins_with("thigh") or n.begins_with("shin"):
+			# Legs track a moving plan (a planted foot under a moving hip, a swing): damp toward the target's own
+			# rate of change, not toward rest, or the leg lags a stride behind its plan.
+			var tb: Basis = targets[n]
+			if _leg_prev.has(n) and delta > 0.0:
+				var rv: Vector3 = FighterMath.rotation_error(_leg_prev[n] as Basis, tb) / delta
+				w_rel -= par.global_transform.basis * rv.limit_length(_t("leg_ff_max"))
+			_leg_prev[n] = tb
 		var e_tw: Vector3 = axis * e.dot(axis)
 		var w_tw: Vector3 = axis * w_rel.dot(axis)
 		var i_tw: float = FighterMath.stable_inertia(_inertia_twist[n], _inertia_twist[n], freq, damp, delta, margin)
@@ -856,22 +925,108 @@ func _lowest_foot() -> float:
 	return lo
 
 
-func _leg_targets(targets: Dictionary, yb: Basis, amp: float, mdir: Vector2, drop: float = 0.0, foot_fwd: float = 0.0) -> void:
+func _leg_targets(targets: Dictionary, yb: Basis, delta: float, h_target: float, drop: float = 0.0, foot_fwd: float = 0.0, tk: float = 0.0) -> void:
 	var pelvis: RigidBody3D = parts["pelvis"]
 	var pinv: Basis = pelvis.global_transform.basis.inverse()
 	for i: int in range(2):
 		var sfx: String = "_l" if i == 0 else "_r"
-		var hip_local: Vector3 = (FighterRig.part("thigh" + sfx)["pivot"] as Vector3) - (FighterRig.part("pelvis")["center"] as Vector3)
-		var hip: Vector3 = pelvis.global_transform * hip_local
-		var off: Vector3 = FighterMath.foot_offset(_phase + PI * i, mdir, amp, _t("foot_lift"))
-		var stance := Vector3(hip_local.x * 0.25, 0.0, 0.0)
-		var foot_w: Vector3 = hip + yb * Vector3(off.x + stance.x, 0.0, off.z - foot_fwd)
-		foot_w.y = FighterRig.ANKLE_HEIGHT + off.y + drop
+		# The legs reach for the pelvis height the support wants (the hip drive's partial reaction would otherwise
+		# let straight legs prop the body up out of its crouch).
+		var hip: Vector3 = _hip_point(i) + Vector3(0.0, (h_target - pelvis.global_position.y) * _t("leg_height_follow"), 0.0)
+		var foot_w: Vector3 = _gait.target(i) + yb * Vector3(0.0, 0.0, -foot_fwd)
+		foot_w.y += FighterRig.ANKLE_HEIGHT + drop
 		var rel: Vector3 = pinv * (foot_w - hip)
+		if tk < 0.5:
+			_foot_force(i, foot_w, hip, delta)
 		var ang: Vector3 = FighterMath.leg_ik(rel, FighterRig.THIGH_LEN, FighterRig.SHIN_LEN)
 		var bases: Array[Basis] = FighterMath.leg_bases(ang)
+		if tk > 0.0:
+			# Tucked in a roll: knees to the chest.
+			bases[0] = bases[0].slerp(Basis(Vector3.RIGHT, 1.9), tk)
+			bases[1] = bases[1].slerp(Basis(Vector3.RIGHT, -2.2), tk)
 		targets["thigh" + sfx] = bases[0]
 		targets["shin" + sfx] = bases[1]
+
+
+## The support and drive forces on the pelvis come from the ground through the planted feet: each planted foot is
+## pressed down by its share of the support (so its friction carries the body, and a foot that loses its grip
+## slides for real) and pushed back by its share of the drive, the reaction that moves the body on.
+func _load_feet(fy: float, fh: Vector3) -> void:
+	var down: Array[String] = []
+	for i: int in range(2):
+		var n: String = "shin_l" if i == 0 else "shin_r"
+		if _gait.planted(i) and not _is_cut_off(n) and _foot_point(n).y < FighterRig.ANKLE_HEIGHT + _t("foot_contact"):
+			down.append(n)
+	if down.is_empty():
+		return
+	var share: float = 1.0 / float(down.size())
+	var f := Vector3(-fh.x * _t("foot_drive"), -fy * _t("foot_load"), -fh.z * _t("foot_drive")) * share
+	for n: String in down:
+		var b: RigidBody3D = parts[n]
+		b.apply_force(f, _foot_point(n) - b.global_position)
+
+
+## Leg muscle force on foot `i` toward its planned point (a PD on the foot like the hand's, damped toward the plan's
+## own velocity), with the full reaction on the pelvis at the hip: the joint drives alone lag a swing by a stride.
+func _foot_force(i: int, target: Vector3, hip: Vector3, delta: float) -> void:
+	var n: String = "shin_l" if i == 0 else "shin_r"
+	var cap: float = _t("foot_force_max") * FighterMath.limb_factor(minf(_hp(n), _hp("thigh" + n.substr(4))), _t("limb_floor"))
+	if _is_cut_off(n) or cap <= 0.0 or delta <= 0.0:
+		_foot_prev[i] = target
+		return
+	var b: RigidBody3D = parts[n]
+	var fp: Vector3 = _foot_point(n)
+	var fv: Vector3 = b.linear_velocity + b.angular_velocity.cross(fp - b.global_position)
+	var tv: Vector3 = (target - (_foot_prev[i] as Vector3)) / delta if _foot_prev[i] != Vector3.INF else Vector3.ZERO
+	_foot_prev[i] = target
+	var err: Vector3 = target - fp
+	if _gait.planted(i):
+		# A planted foot only resists slipping: a spring toward its spot would push the body through the sand's grip.
+		err = Vector3.ZERO
+	var f: Vector3 = FighterMath.pd_force(err, fv - tv.limit_length(12.0), _t("foot_drive_mass"), _t("foot_freq"), 1.0, cap)
+	if _gait.planted(i):
+		f.y = 0.0  # its load comes from the support (_load_feet)
+	b.apply_force(f, fp - b.global_position)
+	var pelvis: RigidBody3D = parts["pelvis"]
+	pelvis.apply_force(-f, hip - pelvis.global_position)
+
+
+## World position of hip `i` (0 left, 1 right).
+func _hip_point(i: int) -> Vector3:
+	var sfx: String = "_l" if i == 0 else "_r"
+	var hip_local: Vector3 = (FighterRig.part("thigh" + sfx)["pivot"] as Vector3) - (FighterRig.part("pelvis")["center"] as Vector3)
+	return (parts["pelvis"] as RigidBody3D).global_transform * hip_local
+
+
+## World ankle point of shin `n`.
+func _foot_point(n: String) -> Vector3:
+	return (parts[n] as RigidBody3D).global_transform * FighterRig.ANKLE_LOCAL
+
+
+## GaitLogic parameters from Tuning.
+func _gait_params() -> Dictionary:
+	var w: float = _t("stance_width")
+	var f: float = _t("stance_fwd")
+	var g: float = _t("stance_stagger") * 0.5
+	return {
+		"cadence_base": _t("cadence_base"), "cadence_per_speed": _t("cadence_per_speed"),
+		"cadence_lateral": _t("cadence_lateral"), "span": _t("gait_span"), "span_lat": _t("gait_span_lat"), "stance_max": _t("stance_max"),
+		"swing_min": _t("swing_min"), "swing_max": _t("swing_max"), "lift": _t("foot_lift"),
+		"shuffle_lift": _t("shuffle_lift"), "reach": _t("gait_reach"), "lead_max": _t("gait_lead_max"),
+		"min_gap": _t("gait_min_gap"), "idle_err": _t("gait_idle_err"), "min_speed": _t("gait_min_speed"),
+		"stance_l": Vector3(-w, 0.0, -(f + g)), "stance_r": Vector3(w, 0.0, -(f - g)),
+	}
+
+
+## True while a dodge roll is under way.
+func rolling() -> bool:
+	return _roll.active()
+
+
+## Share of a blow's effective mass that lands on this fighter now (below 1 only while tucked in a roll).
+func roll_guard() -> float:
+	return RollLogic.guard_scale(_roll.active(), _roll.progress(_t("roll_time")), _t("roll_guard"),
+		_t("roll_guard_start"), _t("roll_guard_end"))
 
 
 func _hand_pos(h: String) -> Vector3:
@@ -1237,6 +1392,9 @@ func _process_contacts() -> void:
 			if target == self:
 				if _tick < int(round(_t("self_hit_grace_s") * 60.0)):
 					continue
+				# Tucked in a roll, the own blade is held in against the body: it turns over with it, not into it.
+				if _roll.active():
+					continue
 				# The handle or pommel behind the hand bumping its own holder is not a blow (round 4: most non-spear
 				# self hits were pommels at about 6 m/s into the own upper arm). Only the part ahead of the grip counts.
 				if (w.global_transform.affine_inverse() * p).y < 0.0:
@@ -1274,7 +1432,7 @@ func _resolve_hit(w: Weapon, target: Fighter, body: RigidBody3D, part: String, p
 	var hit_in: Dictionary = {
 		"part": part, "weapon_id": w.weapon_id, "contact": cls["contact"], "rel_vel": rel, "normal": nrm,
 		"edge_alignment": cls["edge_alignment"],
-		"effective_mass": FighterMath.effective_mass(wdef_mass, w.inertia_com, r, arm_mass),
+		"effective_mass": FighterMath.effective_mass(wdef_mass, w.inertia_com, r, arm_mass) * target.roll_guard(),
 		"armor_ids": target.armor_on(part), "armor_wear": target._armor_wear.duplicate(),
 		"part_hp_frac": target._hp(part), "blood_frac": target._finish_frac(),
 		"hit_on_weapon": on_weapon,
@@ -1472,7 +1630,7 @@ func snapshot() -> Dictionary:
 			hs = (w.holder as Fighter).side
 		ws.append([w.name, w.global_transform, w.linear_velocity, w.angular_velocity, hs, w.hand])
 	return {
-		"tick": _tick, "state": _state, "state_t": _state_t, "yaw": _yaw, "phase": _phase, "stagger": _stagger,
+		"tick": _tick, "state": _state, "state_t": _state_t, "yaw": _yaw, "gait": _gait.to_array(), "roll": _roll.to_array(), "leg_prev": _leg_prev.duplicate(), "foot_prev": _foot_prev.duplicate(), "stagger": _stagger,
 		"severed": Array(_severed), "armor": _armor.duplicate(), "armor_wear": _armor_wear.duplicate(),
 		"debounce": _debounce.duplicate(), "died": _died_emitted, "exertion": _exertion, "grab_latch": _grab_latch,
 		"reach": _reach, "reach_hold": _reach_hold, "reach_point": _reach_point,
@@ -1488,7 +1646,10 @@ func restore(d: Dictionary) -> void:
 	_state = str(d.get("state", "standing"))
 	_state_t = float(d.get("state_t", 0.0))
 	_yaw = float(d.get("yaw", 0.0))
-	_phase = float(d.get("phase", 0.0))
+	_gait.from_array(d.get("gait", []))
+	_roll.from_array(d.get("roll", []))
+	_leg_prev = (d.get("leg_prev", {}) as Dictionary).duplicate()
+	_foot_prev.assign(d.get("foot_prev", [Vector3.INF, Vector3.INF]))
 	_stagger = float(d.get("stagger", 0.0))
 	_died_emitted = bool(d.get("died", false))
 	_exertion = float(d.get("exertion", 0.0))
@@ -1696,7 +1857,7 @@ func debug_frame() -> Dictionary:
 		"consciousness": health.consciousness if health != null else 1.0,
 		"hand_target": _hand_target, "hand_pos": _hand_pos("r"), "tip_pos": tip, "tip_speed": tip_v,
 		"weapon_id": weapon.weapon_id if weapon != null else "fists", "grip": grip(), "parts": pd,
-		"contacts": _contacts.duplicate() if _contacts_frame == _frame() else [], "state": _state,
+		"contacts": _contacts.duplicate() if _contacts_frame == _frame() else [], "state": _state, "rolling": _roll.active(),
 		"blood_frac": health.blood_frac() if health != null else 1.0, "armor": worn_armor(),
 		"offhand_id": offhand.weapon_id if offhand != null else "", "props": props(), "weapon_log": _wlog.duplicate(),
 	}

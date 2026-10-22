@@ -105,11 +105,13 @@ Workers do not edit it. Report the rows you need, in the `FIELDS` format
 F1 overlay, F2 slow-mo, F3 freeze, `.` single-step, F4 hide UI, F5 reserved, F6-F9 render toggles, F10 frame stamp,
 F11 reserved, F12 save flight recording, backquote tuning panel, Escape pause.
 Player 1: WASD move, mouse aim, LMB SWING, RMB OFFHAND, Q HALF_SWORD, Space THRUST, Shift SPRINT, Ctrl CROUCH,
-E GRAB, Alt TURN_LOCK. Gamepads: left stick move, right stick aim, RT SWING, LT OFFHAND, RB THRUST, LB HALF_SWORD,
-left stick click SPRINT, B CROUCH, A GRAB, right stick click TURN_LOCK. Player 2 local: second gamepad.
+E GRAB, Alt TURN_LOCK, C ROLL. Gamepads: left stick move, right stick aim, RT SWING, LT OFFHAND, RB THRUST, LB HALF_SWORD,
+left stick click SPRINT, B CROUCH, A GRAB, X ROLL, right stick click TURN_LOCK. Player 2 local: second gamepad.
 Touch (phones and tablets): a floating virtual thumbstick on the left half of the screen moves; a drag on the right
 half sets aim directly (finger offset from where the drag started, mapped to -1000..1000, springs back to centre on
-release); while the right finger is down SWING is held. On-screen buttons: OFFHAND, THRUST, HALF_SWORD, SPRINT, GRAB.
+release); while the right finger is down SWING is held. On-screen buttons: OFFHAND, THRUST, HALF_SWORD, SPRINT, GRAB, ROLL.
+ROLL (FighterInput bit 256, so the online input wire carries buttons as u16, protocol 2) starts a dodge roll on the
+press toward the move direction (backward with none); see RollLogic and the Roll rows in Tuning.
 All three schemes (mouse, stick, touch) produce the same FighterInput, so nothing downstream knows the device.
 
 ## Files and owners (step 1)

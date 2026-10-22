@@ -14,6 +14,7 @@ const TABLE: Array = [
 	["Sprint", "Shift", "Left stick press", "SPRINT button"],
 	["Crouch / kneel", "Ctrl", "B", "-"],
 	["Grab / pick up", "E", "A", "GRAB button"],
+	["Dodge roll (move direction)", "C", "X", "ROLL button"],
 	["Lock turning", "Alt", "Right stick press", "-"],
 	["Pause", "Esc", "Start", "Menu key"],
 ]
@@ -25,16 +26,16 @@ static func hint_lines(mode: String, has_pad: bool, has_touch: bool) -> Array:
 	var out: Array = []
 	if mode == "local_2p":
 		out.append("PLAYER 1  -  keyboard and mouse: WASD move, mouse steers the weapon hand, left click swing, Space thrust")
-		out.append("right click off hand / shield, E grab, Ctrl crouch, Shift sprint")
+		out.append("right click off hand / shield, E grab, Ctrl crouch, Shift sprint, C roll")
 		out.append("PLAYER 2  -  gamepad: left stick move, right stick steers, right trigger swing, left trigger shield")
 		return out
 	if not has_touch or has_pad or not _touch_only(has_pad, has_touch):
 		out.append("WASD move  |  mouse steers your weapon hand  |  left click swing  |  Space thrust")
-		out.append("right click off hand / shield  |  E grab  |  Ctrl crouch / kneel  |  Shift sprint")
+		out.append("right click off hand / shield  |  E grab  |  Ctrl crouch / kneel  |  Shift sprint  |  C roll")
 	if has_pad:
-		out.append("Gamepad: left stick move, right stick steers, right trigger swing, right bumper thrust, left trigger shield")
+		out.append("Gamepad: left stick move, right stick steers, right trigger swing, right bumper thrust, left trigger shield, X roll")
 	if has_touch:
-		out.append("Touch: left thumb moves, drag on the right to aim and swing, buttons for thrust, off hand and grab")
+		out.append("Touch: left thumb moves, drag on the right to aim and swing, buttons for thrust, off hand, grab and roll")
 	return out
 
 

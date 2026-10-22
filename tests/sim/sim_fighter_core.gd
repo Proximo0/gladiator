@@ -14,6 +14,8 @@ func run() -> Array:
 	rows.append_array(await _heavy_hit())
 	rows.append_array(await _ground_pickup())
 	rows.append_array(await _sit_getup())
+	rows.append_array(await _strafe())
+	rows.append_array(await _roll())
 	return rows
 
 
@@ -263,3 +265,69 @@ func _sit_getup() -> Array:
 	var ok: bool = stood >= 0 and tries <= 3
 	await clear()
 	return [row("fighter_sit_getup", ok, "stood_tick=%d tries=%d lowest_pelvis=%.2f" % [stood, tries, low])]
+
+
+## Strafing right for 3 s while facing a foe: a shuffle, the feet never cross (left foot stays left of the right).
+func _strafe() -> Array:
+	await sandbox()
+	_floor()
+	var f: Node3D = _fighter("longsword", 0, Vector3.ZERO, 0.0)
+	var foe: Node3D = _fighter("fists", 1, Vector3(0, 0, -6), PI)
+	f.opponent = foe
+	foe.opponent = f
+	var inp := FighterInput.new()
+	inp.move_x = 1000
+	var idle := FighterInput.new()
+	var min_gap: float = 9.0
+	var x0: float = 0.0
+	var steps0: int = 0
+	for i: int in range(240):
+		await step(1)
+		f.apply_input(inp if i >= 60 else idle)
+		foe.apply_input(idle)
+		if i == 60:
+			x0 = (f.parts["pelvis"] as RigidBody3D).global_position.x
+			steps0 = f._gait.steps
+		if i > 60:
+			var r: Vector3 = Basis(Vector3.UP, f._yaw).x
+			min_gap = minf(min_gap, (f._foot_point("shin_r") - f._foot_point("shin_l")).dot(r))
+	var dx: float = (f.parts["pelvis"] as RigidBody3D).global_position.x - x0
+	var steps: int = f._gait.steps - steps0
+	var st: String = f.state()
+	var ok: bool = min_gap > 0.0 and steps >= 8 and dx > 2.0 and st == "standing"
+	await clear()
+	return [row("fighter_strafe_shuffle", ok, "moved=%.2f m in 3 s steps=%d min_foot_gap=%.2f m state=%s" % [dx, steps, min_gap, st])]
+
+
+## ROLL pressed with move right: the body turns fully over, travels, pays stamina and is back standing.
+func _roll() -> Array:
+	await sandbox()
+	_floor()
+	var f: Node3D = _fighter("longsword", 0, Vector3.ZERO, 0.0)
+	var foe: Node3D = _fighter("fists", 1, Vector3(0, 0, -6), PI)
+	f.opponent = foe
+	foe.opponent = f
+	var idle := FighterInput.new()
+	var inp := FighterInput.new()
+	inp.move_x = 1000
+	inp.buttons = FighterInput.ROLL
+	var p0 := Vector3.ZERO
+	var st0: float = 0.0
+	var min_up: float = 1.0
+	var st_min: float = 1.0
+	var states: Dictionary = {}
+	for i: int in range(240):
+		await step(1)
+		f.apply_input(inp if i >= 60 and i < 64 else idle)
+		foe.apply_input(idle)
+		if i == 59:
+			p0 = (f.parts["pelvis"] as RigidBody3D).global_position
+			st0 = f.health.stamina
+		if i >= 60:
+			min_up = minf(min_up, (f.parts["torso"] as RigidBody3D).global_transform.basis.y.y)
+			st_min = minf(st_min, f.health.stamina)
+			states[f.state()] = true
+	var d: float = ((f.parts["pelvis"] as RigidBody3D).global_position - p0).length()
+	var ok: bool = min_up < -0.5 and d > 1.0 and st0 - st_min > 0.15 and f.state() == "standing" and not states.has("down")
+	await clear()
+	return [row("fighter_roll", ok, "torso_up_min=%.2f travel=%.2f m stamina_cost=%.2f states=%s" % [min_up, d, st0 - st_min, states.keys()])]

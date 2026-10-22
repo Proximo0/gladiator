@@ -41,3 +41,12 @@ func test_unpack_rejects_garbage() -> void:
 func test_rate_is_small() -> void:
 	var payload: int = NetInputPacker.HEADER_BYTES + NetConfig.INPUT_REDUNDANCY * NetInputPacker.ENTRY_BYTES
 	assert_true(NetConfig.rate(payload, float(NetConfig.TICK_HZ)) < 6000.0)
+
+
+func test_roll_bit_survives_the_wire() -> void:
+	var p := NetInputPacker.new(1)
+	var inp := FighterInput.new()
+	inp.buttons = FighterInput.ROLL | FighterInput.SWING
+	p.record(5, inp)
+	var rows: Array = NetInputPacker.unpack(p.pack())
+	assert_eq((rows[0][1] as FighterInput).buttons, FighterInput.ROLL | FighterInput.SWING)

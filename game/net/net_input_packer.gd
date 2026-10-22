@@ -3,10 +3,10 @@ extends RefCounted
 ## Client side of the input stream: remembers the FighterInput of each local tick and packs the newest few into one
 ## MSG_INPUT packet (newest first), so any one packet that arrives carries the ticks lost before it. unpack() is the
 ## host side. Wire: type u8, newest tick u32, count u8, then count x (move_x, move_y, aim_x, aim_y as int16, buttons
-## u8) = 6 + 9 x count bytes.
+## u16) = 6 + 10 x count bytes.
 
 const HEADER_BYTES: int = 6
-const ENTRY_BYTES: int = 9
+const ENTRY_BYTES: int = 10
 const HISTORY: int = 128
 
 var redundancy: int = NetConfig.INPUT_REDUNDANCY
@@ -45,7 +45,7 @@ func pack() -> PackedByteArray:
 	for r: Array in rows:
 		for i: int in range(4):
 			buf.put_16(int(r[i]))
-		buf.put_u8(int(r[4]) & 0xff)
+		buf.put_u16(int(r[4]) & 0xffff)
 	return buf.data_array
 
 
@@ -62,6 +62,6 @@ static func unpack(bytes: PackedByteArray) -> Array:
 		return []
 	var out: Array = []
 	for k: int in range(n):
-		var a: Array = [buf.get_16(), buf.get_16(), buf.get_16(), buf.get_16(), buf.get_u8()]
+		var a: Array = [buf.get_16(), buf.get_16(), buf.get_16(), buf.get_16(), buf.get_u16()]
 		out.push_front([newest - k, FighterInput.from_array(a)])
 	return out

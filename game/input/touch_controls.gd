@@ -2,7 +2,8 @@ class_name TouchControls
 extends Control
 ## On-screen controls for touch, drawn over the game. A floating thumbstick anywhere on the left half moves. A drag
 ## on the right half aims: the offset from where the drag started, springing back to centre on release, and SWING is
-## held while that finger is down. Five buttons hold OFFHAND, THRUST, HALF_SWORD, SPRINT and GRAB. The mouse stands in
+## held while that finger is down. Six buttons hold OFFHAND, THRUST, HALF_SWORD, SPRINT,
+## GRAB and ROLL. The mouse stands in
 ## for a finger on a machine without a touchscreen (for --touch testing). Pure mapping is in static functions.
 
 const UNIT_FRACTION: float = 0.1  ## one layout unit u = min(width, height) * UNIT_FRACTION
@@ -41,6 +42,7 @@ static func button_layout(area: Vector2) -> Array:
 		[FighterInput.HALF_SWORD, -1.3, -3.0, 0.8, "HALF"],
 		[FighterInput.GRAB, -4.6, -2.2, 0.7, "GRAB"],
 		[FighterInput.SPRINT, -3.0, -3.4, 0.7, "SPRINT"],
+		[FighterInput.ROLL, -4.6, -0.7, 0.7, "ROLL"],
 	]
 	var out: Array = []
 	for d: Array in defs:

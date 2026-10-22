@@ -62,6 +62,11 @@ const REPOS_GOAL: int = 2
 const GOAL_RADIUS_MAX: float = 8.0  ## repositioning goals stay inside this radius
 const STALE_HP_DROP: float = 1.5  ## head/torso/pelvis hp loss that counts as decisive damage
 const STALE_CONSC_DROP: float = 0.03
+const ROLL_MIN_STAMINA: float = 0.45  ## the brain only rolls with stamina to spare (a roll costs Tuning roll_stamina)
+const ROLL_RANGE: float = 2.6  ## pelvis distance inside which a roll is an escape
+const ROLL_THREAT_CHANCE: float = 0.012  ## per tick while a fast blow is coming in
+const ROLL_ESCAPE_CHANCE: float = 0.003  ## per tick while breaking off
+const ROLL_COOLDOWN_TICKS: int = 240
 const BLUNT_HEAD_BIAS: float = 4.0  ## blunt weapons do not bleed: they win by knocking the head (consciousness)
 
 const ST_APPROACH: int = 0
@@ -104,6 +109,8 @@ const PRESETS: Dictionary = {
 
 var _rng := RandomNumberGenerator.new()
 var _drng := RandomNumberGenerator.new()  ## difficulty rolls only, so "normal" draws exactly what it always drew
+var _roll_rng := RandomNumberGenerator.new()  ## dodge-roll choices only (own stream: the rest of the brain draws as before)
+var _roll_cd: int = 0  ## ticks before the brain considers another dodge roll
 var _p: Dictionary = {}
 var _d: Dictionary = {}  ## AiDifficulty parameters
 var _finish_ok: bool = true  ## difficulty: the brain currently notices that the foe is beaten
@@ -172,6 +179,7 @@ static func preset(preset_name: String) -> Dictionary:
 ## retreat_stamina, retreat_blood, feint, cripple.
 func _init(seed: int, personality: Dictionary = {}) -> void:
 	_rng.seed = seed
+	_roll_rng.seed = seed * 7919 + 17
 	_p = preset(str(personality.get("preset", "duelist")))
 	for k: Variant in personality:
 		if str(k) != "preset":
@@ -274,7 +282,34 @@ func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 	_st_ticks += 1
 	if out.move_y < 300:
 		_wall_adjust(me, out)
+	_maybe_roll(me, obs, out)
 	return out
+
+
+## Now and then a dodge roll out of trouble: a fast blow coming in at close range, or a hurt or tired fighter
+## breaking off. Back and to one side, away from the foe; never while attacking, and not when too tired to pay for it.
+func _maybe_roll(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
+	if _roll_cd > 0:
+		_roll_cd -= 1
+		return
+	if bool(me.get("rolling", false)) or str(me.get("state", "standing")) != "standing":
+		return
+	if _state == ST_WINDUP or _state == ST_STRIKE or _state == ST_FINISH or _state == ST_WEAPON:
+		return
+	if float(me.get("stamina", 1.0)) < ROLL_MIN_STAMINA or _dist > ROLL_RANGE:
+		return
+	var chance: float = 0.0
+	if _threat(me, obs):
+		chance = ROLL_THREAT_CHANCE
+	elif _state == ST_RETREAT:
+		chance = ROLL_ESCAPE_CHANCE
+	if chance <= 0.0 or _roll_rng.randf() >= chance:
+		return
+	var side: float = 1.0 if _roll_rng.randf() < 0.5 else -1.0
+	out.move_x = int(side * 950.0)
+	out.move_y = -300
+	out.buttons |= FighterInput.ROLL
+	_roll_cd = ROLL_COOLDOWN_TICKS
 
 
 # ---------------------------------------------------------------- state selection

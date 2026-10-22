@@ -15,6 +15,7 @@ const KEYS: Dictionary = {
 	"crouch": [KEY_CTRL],
 	"grab": [KEY_E],
 	"turn_lock": [KEY_ALT],
+	"roll": [KEY_C],
 }
 
 ## action -> mouse buttons
@@ -31,6 +32,7 @@ const PAD_BUTTONS: Dictionary = {
 	"crouch": [JOY_BUTTON_B],
 	"grab": [JOY_BUTTON_A],
 	"turn_lock": [JOY_BUTTON_RIGHT_STICK],
+	"roll": [JOY_BUTTON_X],
 }
 
 ## action -> gamepad trigger axis (read as pressed past 0.5)
@@ -53,7 +55,7 @@ const PAD_STICKS: Dictionary = {
 
 ## Actions that set a FighterInput.buttons bit.
 const BUTTON_ACTIONS: PackedStringArray = [
-	"swing", "offhand", "half_sword", "thrust", "sprint", "crouch", "grab", "turn_lock",
+	"swing", "offhand", "half_sword", "thrust", "sprint", "crouch", "grab", "turn_lock", "roll",
 ]
 
 
@@ -75,6 +77,8 @@ static func bit_for_action(action: String) -> int:
 			return FighterInput.GRAB
 		"turn_lock":
 			return FighterInput.TURN_LOCK
+		"roll":
+			return FighterInput.ROLL
 	return 0
 
 
