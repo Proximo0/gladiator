@@ -267,6 +267,10 @@ static func _flesh_layers(atk: String, contact: String, inten: float) -> Array[D
 			out.append(_layer("impact/bat_tink", -6.0, p))
 		"fist":
 			out.append(_layer("impact/fist_punch", 0.0, p))
+		"kick":
+			# A foot driven into the body by the leg: a deep thud, not a punch's smack.
+			out.append(_layer("impact/body_thud", 0.0, p * 0.92))
+			out.append(_layer("impact/heavy_thump", -5.0, p))
 		"shield":
 			out.append(_layer("impact/thunk_wood", -2.0, p))
 			out.append(_layer("impact/body_thud", -2.0, p))
@@ -606,3 +610,50 @@ static func duck_db(age: float, depth: float, attack: float, hold: float, releas
 		return depth
 	var r: float = (age - attack - hold) / maxf(release, 0.001)
 	return depth * (1.0 - clampf(r, 0.0, 1.0))
+
+
+## Seconds between the effort grunts of a fighter fighting a hold.
+const STRUGGLE_GRUNT_GAP: float = 0.9
+
+
+## Sounds for a close-range move (Fighter.close's event): each layer also has "who": "attacker" (a voice at the
+## mover's head), "target" (a voice at the other fighter's head) or "point" (at the contact). A landed kick's impact
+## is not here: it is a blow and plays through impact_plan with the "kick" material. `blocked`: a kick met a shield or
+## weapon.
+static func close_plan(kind: String, landed: bool, blocked: bool = false) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	match kind:
+		"shove":
+			if landed:
+				out.append(_who(_layer("impact/body_thud", -4.0, 0.85), "point"))
+				out.append(_who(_layer("impact/leather_slap", -8.0, 0.9), "point"))
+				out.append(_who(_layer("voice/grunt", -2.0, 0.95), "attacker"))
+				out.append(_who(_layer("voice/grunt", -6.0, 1.1, 0.12), "target"))
+		"kick":
+			out.append(_who(_layer("voice/grunt", 0.0 if landed or blocked else -4.0, 0.9), "attacker"))
+			if blocked:
+				out.append(_who(_layer("impact/heavy_thump", -4.0, 1.05), "point"))
+				out.append(_who(_layer("impact/thunk_wood", -8.0, 0.9), "point"))
+			elif not landed:
+				out.append(_who(_layer("move/whoosh_slow", -4.0, 0.8), "point"))
+		"hold":
+			out.append(_who(_layer("impact/leather_slap", -4.0, 1.0), "point"))
+			out.append(_who(_layer("voice/grunt", -4.0, 1.0, 0.05), "attacker"))
+			out.append(_who(_layer("voice/grunt", -6.0, 1.15, 0.15), "target"))
+		"break":
+			# The held fighter tears free: their grunt, the grip slapping off.
+			out.append(_who(_layer("voice/grunt", 0.0, 1.05), "target"))
+			out.append(_who(_layer("impact/leather_slap", -8.0, 1.1), "point"))
+		"slip":
+			out.append(_who(_layer("impact/leather_slap", -10.0, 1.2), "point"))
+	return out
+
+
+static func _who(l: Dictionary, who: String) -> Dictionary:
+	l["who"] = who
+	return l
+
+
+## True when a fighter held `held_for` seconds since its last struggle grunt should grunt again.
+static func struggle_grunt_due(held: bool, since_last: float) -> bool:
+	return held and since_last >= STRUGGLE_GRUNT_GAP

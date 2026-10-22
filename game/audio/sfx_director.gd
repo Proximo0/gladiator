@@ -123,11 +123,13 @@ func track(f: Node3D) -> void:
 			return
 	_tracked.append({
 		"f": f, "whoosh": SfxWhooshGate.new(), "steps": SfxStepTracker.new(), "state": "standing",
-		"last_sand": -10.0, "spurts": [], "gushes": [], "rolling": false,
+		"last_sand": -10.0, "spurts": [], "gushes": [], "rolling": false, "close_at": -10.0, "held_grunt": 0.0,
 	})
 	f.hit.connect(on_hit.bind(f))
 	f.gore.connect(on_gore.bind(f))
 	f.died.connect(on_died.bind(f))
+	if f.has_signal("close"):
+		f.connect("close", on_close.bind(f))
 
 
 ## 0..1: how worked up the crowd is. Swells on action, decays when the fight goes quiet.
@@ -162,7 +164,7 @@ func _physics_process(delta: float) -> void:
 ## A resolved weapon contact on `victim` (a Fighter, or null in tests). `ev` is Fighter.hit's event.
 func on_hit(ev: Dictionary, victim: Object = null) -> void:
 	var atk_def: Dictionary = CombatData.weapon(str(ev.get("weapon_id", "")))
-	var atk_mat: String = SfxLogic.weapon_material(atk_def)
+	var atk_mat: String = "kick" if bool(ev.get("kick", false)) else SfxLogic.weapon_material(atk_def)
 	var other_mat: String = ""
 	var on_weapon: bool = bool(ev.get("hit_on_weapon", false))
 	if on_weapon and victim != null:
@@ -223,6 +225,38 @@ func on_died(f: Object = null) -> void:
 	_queue("voice/death_gurgle", pos, 0.0, 1.0 + 0.06 * _side_sign(f), 0.15, "Voice")
 	crowd.add(0.5)
 	_crowd_play("roar")
+
+
+## A shove, kick or grab by `f` (Fighter.close's event): thuds, slaps and grunts from SfxLogic.close_plan, and the
+## foe marked so that a fall in the next moments draws a gasp.
+func on_close(ev: Dictionary, f: Object = null) -> void:
+	var kind: String = str(ev.get("kind", ""))
+	var landed: bool = bool(ev.get("landed", false))
+	var pos: Vector3 = ev.get("point", Vector3.ZERO)
+	var foe: Object = _fighter_of_side(int(ev.get("target", -1)))
+	for l: Dictionary in SfxLogic.close_plan(kind, landed, bool(ev.get("blocked", false))):
+		match str(l["who"]):
+			"attacker":
+				_queue(str(l["key"]), _head_pos(f) if f != null else pos, float(l["gain_db"]),
+					float(l["pitch"]) * (1.0 + 0.08 * _side_sign(f)), float(l["delay"]), "Voice")
+			"target":
+				_queue(str(l["key"]), _head_pos(foe) if foe != null else pos, float(l["gain_db"]),
+					float(l["pitch"]) * (1.0 + 0.08 * _side_sign(foe)), float(l["delay"]), "Voice")
+			_:
+				_queue_layer(l, pos, "SFX")
+	if landed and (kind == "shove" or kind == "kick"):
+		var t: Dictionary = _track_of(foe)
+		if not t.is_empty():
+			t["close_at"] = _clock
+	crowd.add(CrowdModel.close_impulse(kind, landed))
+
+
+func _fighter_of_side(side: int) -> Object:
+	for t: Dictionary in _tracked:
+		var f: Object = t["f"]
+		if is_instance_valid(f) and f.get("side") != null and int(f.get("side")) == side:
+			return f
+	return null
 
 
 func _crowd_react(ev: Dictionary) -> void:
@@ -335,9 +369,19 @@ func _poll(t: Dictionary, delta: float) -> float:
 			if state == "ko":
 				crowd.add(0.35)
 				_crowd_play("gasp")
+			elif CrowdModel.floored_reaction(_clock - float(t["close_at"])) != "":
+				# Put on the sand by a shove or a kick.
+				crowd.add(0.25)
+				_crowd_play(CrowdModel.floored_reaction(_clock - float(t["close_at"])))
 		elif prev == "down" and state == "getting_up":
 			_queue("move/armor_rattle", Vector3(pelvis.x, 0.0, pelvis.z), -4.0, 0.9, 0.0, "SFX")
 			_queue("voice/grunt", _head_pos_of(parts, pelvis), -2.0, 0.9, 0.05, "Voice")
+	# Fighting a hold: effort grunts every so often.
+	var held: bool = str((fr.get("close", {}) as Dictionary).get("held", "")) != ""
+	t["held_grunt"] = float(t["held_grunt"]) + delta if held else SfxLogic.STRUGGLE_GRUNT_GAP * 0.5
+	if SfxLogic.struggle_grunt_due(held, float(t["held_grunt"])):
+		t["held_grunt"] = 0.0
+		_queue("voice/grunt", _head_pos_of(parts, pelvis), -3.0, 1.05 + 0.08 * (1.0 if side == 0 else -1.0), 0.0, "Voice")
 	_tick_spurts(t, f, delta)
 	_tick_gushes(t, f, delta)
 	return clampf(speed / 14.0, 0.0, 1.0)

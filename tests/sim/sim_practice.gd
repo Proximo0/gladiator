@@ -47,6 +47,23 @@ func _input_for(sess: PracticeSession, m: Match, t: int) -> FighterInput:
 			i.buttons = FighterInput.SWING | (FighterInput.THRUST if (t / 40) % 3 == 0 else 0)
 			i.aim_x = 700 if (t / 20) % 2 == 0 else -700
 			i.aim_y = [0, 250, 500, 250][(t / 40) % 4]  # sweep the heights so some blows reach the neck and head
+		"shove":
+			if _dist(m) > 1.0:
+				i.move_y = 1000
+			i.buttons = FighterInput.SHOVE if (t % 60) < 3 and _dist(m) < 1.3 else 0
+		"kick":
+			# A stride off: step in when far, back off when too close, kick inside the band.
+			var d: float = _dist(m)
+			if d > 1.25:
+				i.move_y = 1000
+			elif d < 1.0:
+				i.move_y = -1000
+			elif (t % 100) < 3:
+				i.buttons = FighterInput.KICK
+		"hold":
+			if _dist(m) > 1.05:
+				i.move_y = 1000
+			i.buttons = FighterInput.CLINCH if (t % 150) >= 5 else 0  # let go now and then to grab again
 		"roll":
 			i.move_y = 1000
 			i.buttons = FighterInput.ROLL if (t / 90) % 2 == 0 and (t % 90) < 3 else 0

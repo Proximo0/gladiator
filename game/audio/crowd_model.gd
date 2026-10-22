@@ -79,6 +79,30 @@ static func hit_impulse(ev: Dictionary) -> float:
 	return clampf(v, 0.0, 1.0)
 
 
+## Seconds after a landed shove or kick within which the foe hitting the sand counts as floored by it.
+const CLOSE_FLOOR_WINDOW: float = 1.5
+
+
+## How exciting a close-range move is, 0..1 (Fighter.close's kind and landed).
+static func close_impulse(kind: String, landed: bool) -> float:
+	match kind:
+		"shove":
+			return 0.08 if landed else 0.0
+		"kick":
+			return 0.12 if landed else 0.0
+		"hold":
+			return 0.08
+		"break":
+			return 0.1
+	return 0.0
+
+
+## The crowd's reaction to a fighter going down `since_close` seconds after a landed shove or kick on them: a gasp
+## inside the window, else "" (a fall of its own is left to the other rules).
+static func floored_reaction(since_close: float) -> String:
+	return "gasp" if since_close >= 0.0 and since_close <= CLOSE_FLOOR_WINDOW else ""
+
+
 ## Which crowd reaction a hit draws: "", "gasp", "cheer", "roar" or "finisher".
 static func reaction_for(ev: Dictionary) -> String:
 	if str(ev.get("finisher", "")) != "":
