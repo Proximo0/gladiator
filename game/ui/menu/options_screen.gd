@@ -1,6 +1,8 @@
 class_name OptionsScreen
 extends Control
 ## Volume sliders (master, sfx, crowd), graphics quality (low/medium/high; includes blood), fullscreen, and the controls reference page.
+## Headings are ScreenHeaders like every other screen (compact on a portrait phone); on a phone or a touch screen
+## every row is at least a finger tall (MenuMetrics.touch_units).
 
 signal back
 
@@ -14,6 +16,8 @@ var _fullscreen: MenuPicker
 var _first: Control
 var _on_controls: bool = false
 var _controls_back: Button
+var _heads: Array[ScreenHeader] = []
+var _rows: Array[Control] = []  ## pickers, sliders and buttons: their height follows the touch target
 
 
 func _init(p_settings: MenuSettings) -> void:
@@ -58,8 +62,8 @@ func _build_main() -> void:
 	_main = VBoxContainer.new()
 	_main.alignment = BoxContainer.ALIGNMENT_CENTER
 	_main.add_theme_constant_override("separation", 16)
-	var head := MenuTheme.label("OPTIONES / Options", 52)
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var head := ScreenHeader.new("OPTIONES / Options")
+	_heads.append(head)
 	_main.add_child(head)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 12)
@@ -78,6 +82,7 @@ func _build_main() -> void:
 		settings.gfx_quality = int(id)
 		settings.save_file())
 	v.add_child(_quality)
+	_rows.append(_quality)
 	if not OS.has_feature("mobile"):
 		_fullscreen = MenuPicker.new()
 		_fullscreen.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
@@ -87,39 +92,55 @@ func _build_main() -> void:
 			settings.apply()
 			settings.save_file())
 		v.add_child(_fullscreen)
+		_rows.append(_fullscreen)
 	v.add_child(MenuTheme.label("Feel", MenuTheme.FONT_SMALL, MenuTheme.OCHRE))
 	var motion := MenuPicker.new()
 	motion.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
-	motion.setup("Reduced motion (no camera shake)", [["0", "Off"], ["1", "On"]], "1" if settings.reduced_motion else "0")
+	motion.setup("Reduced motion", [["0", "Off"], ["1", "On"]], "1" if settings.reduced_motion else "0")
 	motion.changed.connect(func(id: String) -> void:
 		settings.reduced_motion = id == "1"
 		settings.apply()
 		settings.save_file())
-	v.add_child(motion)
+	_add_row(v, motion, "No camera shake or zoom punch")
 	var aim := MenuPicker.new()
 	aim.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
-	aim.setup("Weapon aim aid (tip marker, trail)", [["1", "On"], ["0", "Off"]], "1" if settings.aim_aid else "0")
+	aim.setup("Aim aid", [["1", "On"], ["0", "Off"]], "1" if settings.aim_aid else "0")
 	aim.changed.connect(func(id: String) -> void:
 		settings.aim_aid = id == "1"
 		settings.apply()
 		settings.save_file())
-	v.add_child(aim)
+	_add_row(v, aim, "Weapon tip marker and swing trail")
 	var rumble := MenuPicker.new()
 	rumble.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
-	rumble.setup("Controller rumble and vibration", [["1", "On"], ["0", "Off"]], "1" if settings.rumble else "0")
+	rumble.setup("Rumble", [["1", "On"], ["0", "Off"]], "1" if settings.rumble else "0")
 	rumble.changed.connect(func(id: String) -> void:
 		settings.rumble = id == "1"
 		settings.apply()
 		settings.save_file())
-	v.add_child(rumble)
+	_add_row(v, rumble, "Controller rumble and phone vibration")
 	var controls := MenuTheme.button("Controls")
 	controls.pressed.connect(_show_controls.bind(true))
 	v.add_child(controls)
+	_rows.append(controls)
 	var back_btn := MenuTheme.button("Back", 320.0)
 	back_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	back_btn.pressed.connect(func() -> void: back.emit())
 	_main.add_child(back_btn)
+	_rows.append(back_btn)
 	_first = _sliders["master"]
+
+
+## A picker with a short title and, under it, a dim line saying what it does (a long title would be cut on a phone).
+func _add_row(v: VBoxContainer, picker: MenuPicker, note: String) -> void:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.add_child(picker)
+	var l := MenuTheme.label(note, 22, MenuTheme.DIM_TEXT)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(l)
+	v.add_child(box)
+	_rows.append(picker)
 
 
 func _slider_row(key: String, title: String) -> Control:
@@ -136,6 +157,7 @@ func _slider_row(key: String, title: String) -> Control:
 	s.custom_minimum_size = Vector2(300.0, MenuTheme.ROW_H)
 	s.focus_mode = Control.FOCUS_ALL
 	row.add_child(s)
+	_rows.append(s)
 	var pct := MenuTheme.label("%d%%" % roundi(s.value * 100.0), MenuTheme.FONT_SMALL)
 	pct.custom_minimum_size = Vector2(100.0, 0.0)
 	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -154,8 +176,8 @@ func _build_controls() -> void:
 	_controls_page = VBoxContainer.new()
 	_controls_page.alignment = BoxContainer.ALIGNMENT_CENTER
 	_controls_page.add_theme_constant_override("separation", 14)
-	var head := MenuTheme.label("REGVLAE / Controls", 52)
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var head := ScreenHeader.new("REGVLAE / Controls")
+	_heads.append(head)
 	_controls_page.add_child(head)
 	var grid := GridContainer.new()
 	grid.columns = 3
@@ -182,6 +204,7 @@ func _build_controls() -> void:
 	_controls_back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_controls_back.pressed.connect(_show_controls.bind(false))
 	_controls_page.add_child(_controls_back)
+	_rows.append(_controls_back)
 
 
 func _show_controls(on: bool) -> void:
@@ -205,6 +228,16 @@ func _relayout() -> void:
 	var panel: Control = _main.get_child(1)
 	panel.custom_minimum_size = Vector2(minf(wide, 900.0), 0.0)
 	(_controls_page.get_node("TouchNote") as Label).custom_minimum_size = Vector2(minf(wide, 900.0), 0.0)
+	var portrait: bool = size.x < size.y * 1.05
+	for h: ScreenHeader in _heads:
+		h.set_compact(portrait)
+	var row_h: float = MenuTheme.ROW_H
+	var touch: bool = TouchControls.active() or DisplayServer.is_touchscreen_available() or Flags.args.has("touch")
+	if is_inside_tree() and (touch or portrait):
+		var ppu: float = get_viewport().get_final_transform().get_scale().x * get_global_transform_with_canvas().get_scale().x
+		row_h = maxf(row_h, MenuMetrics.touch_units(DisplayServer.screen_get_dpi() if touch else 0.0, ppu))
+	for r: Control in _rows:
+		r.custom_minimum_size.y = row_h
 
 
 func _unhandled_input(event: InputEvent) -> void:

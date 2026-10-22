@@ -34,6 +34,8 @@ var _hint_font: int = 0
 var _px: float = 1.0  ## on-screen pixels per layout unit
 var _touch: bool = false
 var _portrait: bool = false
+var _open_top: float = 0.0  ## portrait: layout y of the open band between the mark and the tiles
+var _open_bottom: float = 0.0
 var _grid: Dictionary = {}
 var _rule_cell: float = 14.0
 
@@ -98,6 +100,21 @@ static func hint_font_units(px_per_unit: float) -> int:
 ## Where the gladiators should sit across the screen (TitleBackdrop.frame_x) for this layout.
 func backdrop_frame_x() -> float:
 	return 0.0 if (_portrait or _grid.get("columns", 1) == 2) else 0.36
+
+
+## How far above the middle the gladiators should sit (TitleBackdrop.frame_y, in half-heights): the middle of the
+## open band between the portrait mark and the tiles.
+func backdrop_frame_y() -> float:
+	if not _portrait or size.y <= 0.0:
+		return 0.0
+	return 1.0 - (_open_top + _open_bottom) / size.y
+
+
+## The height of that open band as a fraction of the screen (TitleBackdrop.band); 1 on a landscape screen.
+func backdrop_band() -> float:
+	if not _portrait or size.y <= 0.0:
+		return 1.0
+	return clampf((_open_bottom - _open_top) / size.y, 0.05, 1.0)
 
 
 func items() -> Array[TitleMenuItem]:
@@ -248,12 +265,13 @@ func _layout_portrait(min_h: float, max_h: float) -> void:
 		# A column of every entry would bury the gladiators: two to a row leaves the middle of the screen open.
 		var rows: int = 1 + ceili(float(_items.size() - 1) / 2.0)
 		_grid = {"columns": 2, "rows": rows, "item_h": clampf((avail * 0.62 - gap * float(rows - 1)) / float(rows), min_h, max_h)}
-	_place_head(margin, head_y, w, logo_px, true)
+	_open_top = _place_head(margin, head_y, w, logo_px, true)
 	var used: float = float(_grid["rows"]) * float(_grid["item_h"]) + gap * float(int(_grid["rows"]) - 1)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.size = Vector2(w, hint_h)
 	_hint.position = Vector2(margin, size.y - EDGE - hint_h)
-	_place_items(margin, _hint.position.y - 14.0 - used, w, gap, true)
+	_open_bottom = _hint.position.y - 14.0 - used
+	_place_items(margin, _open_bottom, w, gap, true)
 
 
 ## Lays the entries out from (x, y) in `w` per _grid; tiles frame each entry.
