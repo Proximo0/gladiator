@@ -3,10 +3,10 @@ extends Node
 ## blobs off ("before") and on ("after") from the fight camera and from a low close camera at the feet.
 ## xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 --resolution 1280x720 \
 ##     --fixed-fps 60 res://tests/render/contact_shadow_capture.tscn -- --out=DIR --quality=0 [--seed=S]
-## Moments: "fight" when both stand within 2.2 m (fallback tick 900), "down" when a fighter is down, ko or dead
+## Moments: "fight" when both stand within 2.6 m (fallback tick 360), "down" when a fighter is down, ko or dead
 ## (fallback tick 2400). Never part of the check suite; writes only the PNGs it is told to.
 
-const FIGHT_FALLBACK: int = 900
+const FIGHT_FALLBACK: int = 360
 const DOWN_FALLBACK: int = 2400
 
 var _out: String = "/tmp/contact_capture/"
@@ -24,8 +24,6 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(_out)
 	if Flags.args.has("quality"):
 		GfxQuality.set_level(int(Flags.get_arg("quality", "2")))
-	var size: Vector2i = get_viewport().get_visible_rect().size
-	_tag = "%dx%d_q%d" % [size.x, size.y, GfxQuality.level]
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_match = Match.new()
 	add_child(_match)
@@ -48,9 +46,9 @@ func _ready_for(moment: String) -> bool:
 	if moment == "fight":
 		var pa: Vector3 = (a.parts["pelvis"] as RigidBody3D).global_position
 		var pb: Vector3 = (b.parts["pelvis"] as RigidBody3D).global_position
-		var near: bool = Vector2(pa.x - pb.x, pa.z - pb.z).length() < 2.2 and a.state_name() == "standing" \
+		var near: bool = Vector2(pa.x - pb.x, pa.z - pb.z).length() < 2.6 and a.state_name() == "standing" \
 				and b.state_name() == "standing"
-		return (near and _match.tick > 300) or _match.tick >= FIGHT_FALLBACK
+		return (near and _match.tick > 90) or _match.tick >= FIGHT_FALLBACK
 	for x: Fighter in [a, b]:
 		if x.state_name() in ["down", "ko", "dead"]:
 			return true
@@ -94,6 +92,8 @@ func _process(_d: float) -> void:
 		else:
 			_match.presenter.sand.call("set_contacts", PackedVector4Array())
 	elif phase == 2:
+		var size: Vector2i = DisplayServer.window_get_size()
+		_tag = "%dx%d_q%d" % [size.x, size.y, GfxQuality.level]
 		var name: String = "%s%s_%s_%s.png" % [_out, "after" if on else "before", _tag, moment + ("_close" if cam == "close" else "")]
 		get_viewport().get_texture().get_image().save_png(name)
 		print("CSCAP saved ", name)
