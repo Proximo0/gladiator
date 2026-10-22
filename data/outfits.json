@@ -15,9 +15,10 @@
 	},
 	"samurai": {
 		"name": "Samurai",
-		"blurb": "Lacquered plate and an indigo under-robe. Cosmetic only.",
+		"blurb": "Lacquered plate and an indigo under-robe.",
 		"premium": true,
 		"product_id": "sandblood.outfit.samurai",
+		"weapon": "dai_katana",
 		"fallback_price": "$4.99",
 		"art_armor": [
 			"head",
@@ -60,9 +61,10 @@
 	},
 	"alien": {
 		"name": "Alien",
-		"blurb": "Glossy green skin from another sand. Cosmetic only.",
+		"blurb": "Glossy green skin from another sand.",
 		"premium": true,
 		"product_id": "sandblood.outfit.alien",
+		"weapon": "laser_sword",
 		"fallback_price": "$4.99",
 		"palette": {
 			"cloth": "#2f7a5a",

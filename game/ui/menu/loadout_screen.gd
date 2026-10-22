@@ -137,6 +137,7 @@ func open(p_mode: String) -> void:
 	var two: bool = mode == "local_2p"
 	if not two and state.cpu_loadout_mode == MenuState.CPU_RANDOM and state.cpu_seed == 1:
 		state.cpu_seed = int(Time.get_ticks_usec() & 0x7fffffff)
+	refresh_weapon_choices()
 	_panel_a.set_header("YOU" if not two else "PLAYER 1  -  mouse and keys")
 	_panel_b.set_header("PLAYER 2  -  gamepad" if two else "OPPONENT")
 	_panel_a.set_loadout(state.loadouts[0])
@@ -153,6 +154,25 @@ func open(p_mode: String) -> void:
 	_sync_opponent()
 	_relayout()
 	_panel_a.first_focus().grab_focus()
+
+
+## Weapon picker items per side: a premium weapon (Dai-katana, Laser sword) is listed only when its outfit is owned.
+## The CPU side of a fight vs CPU has no store, so it gets them only in a dev run (`--dev`); bots use forced loadouts.
+func refresh_weapon_choices() -> void:
+	var owned: Array = state.store.owned()
+	var two: bool = mode == "local_2p"
+	for side: int in 2:
+		var panel: LoadoutPanel = _panel_a if side == 0 else _panel_b
+		var check: Variant = owned
+		if side == 1 and not two and Flags.dev_menu():
+			check = null
+		var keep: String = panel.weapon_picker.current_id()
+		var items: Array = []
+		for id: String in LoadoutRules.main_weapons(check):
+			items.append([id, LoadoutRules.display_name(id)])
+		panel.weapon_picker.items = items
+		panel.weapon_picker.index = clampi(panel.weapon_picker.index, 0, items.size() - 1)
+		panel.weapon_picker.select(keep, false)
 
 
 func focus_start() -> void:
@@ -241,6 +261,7 @@ func _outfit_items() -> Array:
 
 ## Re-reads what is owned (call when the screen opens or after a shop visit).
 func refresh_outfits() -> void:
+	refresh_weapon_choices()
 	for side: int in 2:
 		var pk: MenuPicker = _outfit_pickers[side]
 		pk.items = _outfit_items()

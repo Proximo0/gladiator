@@ -17,11 +17,34 @@ static func is_shield(id: String) -> bool:
 	return str(CombatData.weapon(id).get("shape", "")) == "shield"
 
 
-## Main-hand weapon ids in data order (fists first); shields are never a main weapon.
-static func main_weapons() -> Array:
+## Premium weapons come with an outfit (weapon def "requires_outfit"); this is what a locked one becomes.
+const PREMIUM_FALLBACK: String = "longsword"
+
+
+## The outfit id a weapon needs ("" for a free weapon).
+static func required_outfit(weapon_id: String) -> String:
+	return str(CombatData.weapon(weapon_id).get("requires_outfit", ""))
+
+
+static func is_premium_weapon(weapon_id: String) -> bool:
+	return required_outfit(weapon_id) != ""
+
+
+## True when `weapon_id` is free, or `owned` (the store's product ids) holds its outfit. `owned` null means "do not
+## check" (bots, dev runs, network loadouts the host cannot verify).
+static func weapon_unlocked(weapon_id: String, owned: Variant) -> bool:
+	var need: String = required_outfit(weapon_id)
+	if need == "" or not (owned is Array):
+		return true
+	return (owned as Array).has(OutfitRules.product_id(need))
+
+
+## Main-hand weapon ids in data order (fists first); shields are never a main weapon. With `owned` (an array of
+## product ids) a premium weapon is listed only when its outfit is owned; null lists all of them.
+static func main_weapons(owned: Variant = null) -> Array:
 	var out: Array = []
 	for id: String in CombatData.weapon_ids():
-		if not is_shield(id):
+		if not is_shield(id) and weapon_unlocked(id, owned):
 			out.append(id)
 	return out
 
@@ -70,11 +93,15 @@ static func default_loadout() -> Dictionary:
 
 
 ## A valid copy: unknown weapon becomes fists, a non-shield or blocked off hand is dropped, armor ids must exist and
-## fit their slot. Missing keys are filled.
-static func sanitize(loadout: Dictionary) -> Dictionary:
+## fit their slot. Missing keys are filled. `owned` (the local player's store product ids) turns on the premium weapon
+## check: a weapon whose outfit is not owned becomes PREMIUM_FALLBACK. The default null trusts the loadout, which is
+## what the online host does for a client (it cannot see the client's store; see docs/weapons_premium.md).
+static func sanitize(loadout: Dictionary, owned: Variant = null) -> Dictionary:
 	var weapon: String = str(loadout.get("weapon", "fists"))
 	if CombatData.weapon(weapon).is_empty() or is_shield(weapon):
 		weapon = "fists"
+	elif not weapon_unlocked(weapon, owned):
+		weapon = PREMIUM_FALLBACK
 	var off: String = str(loadout.get("offhand", ""))
 	if off != "" and (not is_shield(off) or offhand_blocked(weapon)):
 		off = ""

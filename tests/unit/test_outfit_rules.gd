@@ -52,7 +52,7 @@ func test_outfits_change_no_stats() -> void:
 	assert_eq(LoadoutRules.sanitize(OutfitRules.with_outfit(base, "junk")), base, "unknown outfits are dropped")
 	for id: String in OutfitRules.ids():
 		for k: Variant in OutfitRules.def(id):
-			assert_true(["name", "blurb", "premium", "product_id", "fallback_price", "palette", "blood", "art_armor"].has(str(k)), "no stat key %s" % str(k))
+			assert_true(["name", "blurb", "premium", "product_id", "fallback_price", "palette", "blood", "art_armor", "weapon"].has(str(k)), "no stat key %s" % str(k))  # "weapon" only names the bundled weapon (docs/weapons_premium.md)
 
 
 func test_palette_and_covers() -> void:

@@ -384,6 +384,8 @@ func _stream_for(key: String) -> AudioStream:
 		return null
 	var idx: int = SfxLogic.pick_variant(key, rng, int(_last_variant.get(key, -1)))
 	_last_variant[key] = idx
+	if LaserSynth.is_synth_key(key):
+		return LaserSynth.stream_for(key, idx)
 	var path: String = SfxLogic.path_for(key, idx)
 	if _streams.has(path):
 		return _streams[path]

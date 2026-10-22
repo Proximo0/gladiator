@@ -98,7 +98,9 @@ func test_rake_tines_weak_pierce() -> void:
 	var rake: Dictionary = _r(_hit("torso", "rake", "point", 8.0, 2.0))
 	var spear: Dictionary = _r(_hit("torso", "spear", "point", 8.0, 2.0))
 	assert_true(float(rake["pierce"]) > 0.0)
-	assert_true(float(rake["pierce"]) < float(spear["pierce"]) * 0.4)
+	assert_true(float(rake["pierce"]) < float(spear["pierce"]) * 0.1)
+	assert_true(float(rake["bleed"]) > 0.0)  # a tine hit still draws blood
+	assert_true(float(rake["total"]) < float(_r(_hit("torso", "club", "blunt", 8.0, 2.0))["total"]))  # weaker than a club
 	assert_false(bool(rake["gut"]))
 	assert_near(float(_r(_hit("forearm_r", "rake", "edge", 15.0, 1.3))["cut"]), 0.0)
 

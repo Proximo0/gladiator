@@ -66,7 +66,14 @@ func build(d: Dictionary, physical_mass: float = -1.0) -> void:
 	var wood := Color(0.42, 0.29, 0.16)
 	var steel := Color(0.72, 0.74, 0.77)
 	var tip: float = tip_local.y
-	match shape_kind:
+	# `look` picks the placeholder build when it differs from the physical shape (premium blades are "sword" shaped
+	# for contact, AI and sound but look different).
+	var look: String = str(d.get("look", shape_kind))
+	match look:
+		"katana":
+			_build_katana(tip, col)
+		"laser":
+			_build_laser(tip, parse_color(d.get("glow", "#33ffcc")), col)
 		"fist":
 			tip_local = Vector3(0, 0.03, 0)
 			com_local = Vector3(0, 0.02, 0)
@@ -85,9 +92,9 @@ func build(d: Dictionary, physical_mass: float = -1.0) -> void:
 			_add_box(Vector3(0.05, 0.22, 0.015), Vector3(0, tip - 0.11, 0), steel)
 		"rake":
 			_add_box(Vector3(0.03, length, 0.03), Vector3(0, tip - length * 0.5, 0), col)
-			_add_box(Vector3(0.36, 0.04, 0.04), Vector3(0, tip - 0.02, 0), steel * 0.7)
+			_add_box(Vector3(0.26, 0.04, 0.04), Vector3(0, tip - 0.02, 0), steel * 0.7)
 			for i: int in range(5):
-				_add_box(Vector3(0.012, 0.012, 0.09), Vector3(-0.15 + 0.075 * i, tip - 0.03, 0.06), steel * 0.7)
+				_add_box(Vector3(0.012, 0.012, 0.09), Vector3(-0.1 + 0.05 * i, tip - 0.03, 0.06), steel * 0.7)
 		"shield":
 			var r: float = length * 0.5
 			tip_local = Vector3(0, r, 0.05)
@@ -116,11 +123,93 @@ func _use_art_mesh() -> void:
 	if scene == null:
 		return
 	for c: Node in get_children():
-		if c is MeshInstance3D:
+		if c is MeshInstance3D and not c.has_meta("glow"):
 			(c as MeshInstance3D).visible = false
 	var art: Node3D = scene.instantiate() as Node3D
 	art.name = "Art"
 	add_child(art)
+
+
+## Dai-katana placeholder: a long wrapped tsuka, a round tsuba and a slightly curved blade of tilted segments
+## (the tip bends toward the cutting edge, +X). Visual detail is mesh only; colliders are the tsuka, tsuba and segments.
+const KATANA_SEGMENTS: int = 6
+const KATANA_CURVE: float = 0.04
+const KATANA_WRAPS: int = 7
+
+
+func _build_katana(tip: float, steel_col: Color) -> void:
+	var guard_y: float = maxf(tip - edge_len - 0.03, 0.06)
+	var cord := Color(0.1, 0.12, 0.2)
+	var gold := Color(0.62, 0.5, 0.2)
+	var handle_len: float = guard_y + grip_offset
+	_add_box(Vector3(0.032, handle_len, 0.026), Vector3(0, (guard_y - grip_offset) * 0.5, 0), cord)
+	for i: int in range(KATANA_WRAPS):
+		var wy: float = -grip_offset + handle_len * (float(i) + 0.5) / float(KATANA_WRAPS)
+		_add_visual(_box_mesh(Vector3(0.036, 0.011, 0.03)), Vector3(0, wy, 0), Basis(Vector3(0, 0, 1), 0.5), Color(0.78, 0.68, 0.42))
+	_add_box(Vector3(0.04, 0.025, 0.034), Vector3(0, -grip_offset - 0.008, 0), gold)
+	_add_cylinder(0.052, 0.008, Vector3(0, guard_y, 0), Basis(), Color(0.16, 0.14, 0.1))
+	_add_box(Vector3(0.034, 0.03, 0.02), Vector3(0, guard_y + 0.02, 0), gold)
+	var y0: float = guard_y + 0.035
+	var span: float = tip - y0
+	for i: int in range(KATANA_SEGMENTS):
+		var s0: float = float(i) / float(KATANA_SEGMENTS)
+		var s1: float = float(i + 1) / float(KATANA_SEGMENTS)
+		var p0 := Vector3(KATANA_CURVE * s0 * s0, y0 + span * s0, 0)
+		var p1 := Vector3(KATANA_CURVE * s1 * s1, y0 + span * s1, 0)
+		var dir: Vector3 = p1 - p0
+		var tilt: float = atan2(dir.x, dir.y)
+		var wide: float = lerpf(0.04, 0.024, s1)
+		_add_shape_box(Vector3(wide, dir.length() + 0.004, 0.012), (p0 + p1) * 0.5, Basis(Vector3(0, 0, 1), -tilt), steel_col)
+
+
+## Laser sword placeholder: a dark hilt with an emitter, an emissive white-hot core and a translucent halo of `glow`
+## colour (the halo carries meta "glow" so a Houdini glb never hides it), plus a BladeGlow node (light, trail, hum).
+func _build_laser(tip: float, glow: Color, hilt_col: Color) -> void:
+	var guard_y: float = maxf(tip - edge_len - 0.03, 0.06)
+	_add_box(Vector3(0.034, guard_y + grip_offset, 0.034), Vector3(0, (guard_y - grip_offset) * 0.5, 0), hilt_col)
+	_add_box(Vector3(0.046, 0.03, 0.046), Vector3(0, -grip_offset, 0), Color(0.6, 0.62, 0.66))
+	_add_box(Vector3(0.05, 0.035, 0.05), Vector3(0, guard_y - 0.01, 0), Color(0.7, 0.72, 0.76))
+	_add_box(Vector3(0.1, 0.012, 0.022), Vector3(0, guard_y - 0.03, 0), Color(0.6, 0.62, 0.66))
+	var blade_len: float = tip - guard_y
+	var mid := Vector3(0, guard_y + blade_len * 0.5, 0)
+	var blade_shape := BoxShape3D.new()
+	blade_shape.size = Vector3(0.04, blade_len, 0.025)
+	var blade_cs := CollisionShape3D.new()  # collider only: the visible blade is the core and halo below
+	blade_cs.shape = blade_shape
+	blade_cs.position = mid
+	add_child(blade_cs)
+	var core := CapsuleMesh.new()
+	core.radius = 0.011
+	core.height = blade_len
+	var core_mat := StandardMaterial3D.new()
+	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	core_mat.albedo_color = glow.lerp(Color.WHITE, 0.85)
+	core_mat.emission_enabled = true
+	core_mat.emission = glow.lerp(Color.WHITE, 0.6)
+	core_mat.emission_energy_multiplier = 3.0
+	var core_mi := _add_visual(core, mid, Basis(), glow)
+	core_mi.material_override = core_mat
+	var halo := CapsuleMesh.new()
+	halo.radius = 0.03
+	halo.height = blade_len + 0.03
+	var halo_mat := StandardMaterial3D.new()
+	halo_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	halo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	halo_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	halo_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	halo_mat.albedo_color = Color(glow.r, glow.g, glow.b, 0.32)
+	halo_mat.emission_enabled = true
+	halo_mat.emission = glow
+	var halo_mi := _add_visual(halo, mid, Basis(), glow)
+	halo_mi.material_override = halo_mat
+	halo_mi.set_meta("glow", true)
+	halo_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	core_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if DisplayServer.get_name() != "headless":
+		var fx := BladeGlow.new()
+		fx.name = "BladeGlow"
+		add_child(fx)
+		fx.setup(self, glow, guard_y, tip)
 
 
 static func parse_color(c: Variant) -> Color:
@@ -208,6 +297,31 @@ func _add_shape(shape: Shape3D, mesh: Mesh, pos: Vector3, basis_in: Basis, color
 	mat.roughness = 0.45 if mat.metallic > 0.0 else 0.85
 	mi.material_override = mat
 	add_child(mi)
+
+
+func _box_mesh(size: Vector3) -> BoxMesh:
+	var m := BoxMesh.new()
+	m.size = size
+	return m
+
+
+## A mesh with no collider (decoration).
+func _add_visual(mesh: Mesh, pos: Vector3, basis_in: Basis, color: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.transform = Transform3D(basis_in, pos)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.7
+	mi.material_override = mat
+	add_child(mi)
+	return mi
+
+
+func _add_shape_box(size: Vector3, pos: Vector3, basis_in: Basis, color: Color) -> void:
+	var s := BoxShape3D.new()
+	s.size = size
+	_add_shape(s, _box_mesh(size), pos, basis_in, color)
 
 
 func _add_box(size: Vector3, pos: Vector3, color: Color) -> void:

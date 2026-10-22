@@ -39,7 +39,7 @@ func _init(p_state: MenuState) -> void:
 	_title = MenuTheme.label("MERCATUS / Outfitters", 52, MenuTheme.PARCHMENT)
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(_title)
-	var sub := MenuTheme.label("Outfits change how you look, never how you fight.", MenuTheme.FONT_SMALL, MenuTheme.DIM_TEXT)
+	var sub := MenuTheme.label("Outfits change how you look. Samurai and Alien each include a weapon.", MenuTheme.FONT_SMALL, MenuTheme.DIM_TEXT)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(sub)
 	_scroll = ScrollContainer.new()
@@ -86,6 +86,11 @@ func _make_card(id: String) -> PanelContainer:
 	pv.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	pv.custom_minimum_size = Vector2(260.0, 380.0)
 	v.add_child(pv)
+	var inc: String = OutfitRules.includes_line(id)
+	if inc != "":
+		var incl := MenuTheme.label(inc, 26, MenuTheme.OCHRE)
+		incl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(incl)
 	var blurb := MenuTheme.label(OutfitRules.blurb(id), 22, MenuTheme.DIM_TEXT)
 	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

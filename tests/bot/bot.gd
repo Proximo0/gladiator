@@ -8,6 +8,9 @@ extends Node
 ##   --difficulty=<id>       AI difficulty (easy, normal, hard) of the side given by --side; the other side
 ##                           is normal. Without it nothing changes (the seeded personalities as before).
 ##   --side=0|1              which side gets --difficulty (default 0)
+##   --w0=<id> --w1=<id>     force a side's weapon (no offhand); --armor=none|leather forces both sides' armor
+##   --wide=0|1              that side swings broad horizontal sweeps (a human-style proxy)
+##   --hitlog                add per-hit sums (damage, bleed, contact kinds, by weapon) to the stats as "hitlog"
 ## Prints one `BOT match ...` line per match and `BOT score=<pass fraction> matches=N failed=F ...`.
 ## Writes out/bot/<seed>.json (result + MatchStats) and out/bot/<seed>.rec.json (flight recording) for every FAIL.
 ## A match that fails is also explained on a `BOT why seed=.. ...` line (it never contains the word FAIL in capitals
@@ -34,6 +37,7 @@ var _result: Dictionary = {}
 var _match_script: GDScript = null
 var _wait: int = 0
 var _world: SubViewport = null
+var _hitlog: Dictionary = {}
 
 
 func _ready() -> void:
@@ -76,13 +80,66 @@ func _start() -> void:
 		(pers[side] as Dictionary)["difficulty"] = diff
 		(pers[1 - side] as Dictionary)["difficulty"] = "normal"
 		cfg["personalities"] = pers
+	var forced: Array = _forced_loadouts(seed_v)
+	if not forced.is_empty():
+		cfg["loadouts"] = forced
+	var wide: String = Flags.get_arg("wide", "")
+	if wide != "":
+		var pw: Array = (MatchConfig.normalize({"seed": seed_v}, seed_v)["personalities"] as Array).duplicate(true)
+		if cfg.has("personalities"):
+			pw = cfg["personalities"]
+		var ws: int = clampi(int(wide), 0, 1)
+		(pw[ws] as Dictionary)["preset"] = "berserker"
+		(pw[ws] as Dictionary)["preferred_attacks"] = ["horizontal"]
+		cfg["personalities"] = pw
 	_match.call("setup", cfg)
+	_hitlog = {}
+	if Flags.args.has("hitlog"):
+		for f: Variant in _match.get("fighters"):
+			(f as Object).connect("hit", _on_hitlog)
 	_recorder = FlightRecorder.new()
 	add_child(_recorder)
 	_recorder.attach(_match)
 	_match.connect("match_over", func(r: Dictionary) -> void: _result = r)
 	_limit_ticks = int(_time_limit * 60.0) + 600
 	_t0 = Time.get_ticks_usec()
+
+
+func _forced_loadouts(seed_v: int) -> Array:
+	var w0: String = Flags.get_arg("w0", "")
+	var w1: String = Flags.get_arg("w1", "")
+	var arm: String = Flags.get_arg("armor", "")
+	if w0 == "" and w1 == "" and arm == "":
+		return []
+	var base: Array = MatchConfig.normalize({"seed": seed_v}, seed_v)["loadouts"]
+	var out: Array = []
+	for i: int in 2:
+		var l: Dictionary = (base[i] as Dictionary).duplicate(true)
+		var w: String = w0 if i == 0 else w1
+		if w != "":
+			l["weapon"] = w
+			l["offhand"] = ""
+		if arm == "none":
+			l["armor"] = {}
+		elif arm == "leather":
+			l["armor"] = {"head": "helm_leather", "torso": "cuirass_leather", "upper_arm_l": "bracers_leather", "thigh_l": "greaves_leather"}
+		out.append(l)
+	return out
+
+
+func _on_hitlog(ev: Dictionary) -> void:
+	if bool(ev.get("hit_on_weapon", false)):
+		return
+	var k: String = str(ev.get("weapon_id", "?"))
+	var d: Dictionary = _hitlog.get(k, {"n": 0, "total": 0.0, "pierce": 0.0, "cut": 0.0, "blunt": 0.0, "bleed": 0.0, "energy": 0.0, "speed": 0.0, "emass": 0.0, "point": 0, "blunt_n": 0})
+	d["n"] = int(d["n"]) + 1
+	for f: String in ["total", "pierce", "cut", "blunt", "bleed", "energy"]:
+		d[f] = float(d[f]) + float(ev.get(f, 0.0))
+	d["speed"] = float(d["speed"]) + (ev.get("rel_vel", Vector3.ZERO) as Vector3).length()
+	d["emass"] = float(d["emass"]) + float(ev.get("effective_mass", 0.0))
+	if str(ev.get("contact", "")) == "point":
+		d["point"] = int(d["point"]) + 1
+	_hitlog[k] = d
 
 
 func _physics_process(_delta: float) -> void:
@@ -134,6 +191,8 @@ func _judge(seed_v: int, res: Dictionary, ticks_now: int, wall_us: int, hung: bo
 	else:
 		_failed += 1
 		print("BOT why seed=%d %s" % [seed_v, ", ".join(why)])
+	if not _hitlog.is_empty():
+		stats["hitlog"] = _hitlog.duplicate(true)
 	var out: Dictionary = FlightRecorder.json_safe({"seed": seed_v, "result": res, "stats": stats, "ms_per_tick": mspt,
 		"ok": ok, "why": Array(why)}) as Dictionary
 	var f: FileAccess = FileAccess.open("%s/%d.json" % [_out_dir, seed_v], FileAccess.WRITE)

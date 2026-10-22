@@ -47,8 +47,8 @@ func test_realistic_masses_and_lengths() -> void:
 	assert_near(float(sp["length"]), 2.2, 0.2)
 	assert_near(float(CombatData.weapon("bat")["mass"]), 1.0, 0.2)
 	assert_near(float(CombatData.weapon("bat")["length"]), 0.85, 0.1)
-	assert_near(float(CombatData.weapon("rake")["mass"]), 1.3, 0.2)
-	assert_near(float(CombatData.weapon("rake")["length"]), 1.6, 0.1)
+	assert_near(float(CombatData.weapon("rake")["mass"]), 1.7, 0.2)
+	assert_near(float(CombatData.weapon("rake")["length"]), 1.45, 0.1)
 
 
 func test_fists_and_blunt_weapons_cannot_cut() -> void:
@@ -58,7 +58,7 @@ func test_fists_and_blunt_weapons_cannot_cut() -> void:
 		assert_near(float(d["edge_len"]), 0.0, 0.0001, w)
 	var rake: Dictionary = CombatData.weapon("rake")
 	assert_true(bool(rake["point"]))
-	assert_true(float(rake["pierce_factor"]) < float(CombatData.weapon("spear")["pierce_factor"]) * 0.5)
+	assert_true(float(rake["pierce_factor"]) < float(CombatData.weapon("spear")["pierce_factor"]) * 0.2)
 
 
 func test_unknown_ids_empty_and_copies() -> void:

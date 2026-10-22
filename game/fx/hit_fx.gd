@@ -21,6 +21,9 @@ var _sparks: Array[CPUParticles3D] = []
 var _next_spark: int = 0
 var _light: OmniLight3D = null
 var _light_t: float = 0.0
+var _energy_hit: bool = false  ## the hit being burst involves a laser blade: cyan sparks
+var _ramp_fire: Gradient = null
+var _ramp_energy: Gradient = null
 
 
 func _ready() -> void:
@@ -39,6 +42,10 @@ func _ready() -> void:
 	var grad := Gradient.new()
 	grad.set_color(0, Color(1.0, 0.95, 0.7, 1.0))
 	grad.set_color(1, Color(1.0, 0.35, 0.05, 0.0))
+	_ramp_fire = grad
+	_ramp_energy = Gradient.new()
+	_ramp_energy.set_color(0, Color(0.85, 1.0, 0.96, 1.0))
+	_ramp_energy.set_color(1, Color(0.1, 0.9, 0.75, 0.0))
 	for i: int in SPARK_POOL:
 		var p := CPUParticles3D.new()
 		p.mesh = mesh
@@ -77,6 +84,7 @@ func on_hit(ev: Dictionary, victim: Object, imp: float) -> void:
 	if power > 0.0 and victim != null:
 		_flash(_flash_nodes(ev, victim), power, tun.feel_flash_s)
 	var mats: Array = materials(ev, victim)
+	_energy_hit = str(mats[0]) == "energy" or str(mats[1]) == "energy"
 	var n: int = FeelLogic.spark_count(ev, str(mats[0]), str(mats[1]), str(mats[2]), imp, tun)
 	if n > 0:
 		var scaled: int = roundi(n * GfxQuality.pick_f(GfxQuality.SPARK_MULT))
@@ -157,6 +165,7 @@ func _burst(ev: Dictionary, count: int) -> void:
 	p.global_position = at
 	p.direction = out.normalized() if out.length() > 0.01 else Vector3.UP
 	p.amount = clampi(count, 1, SPARK_AMOUNT)
+	p.color_ramp = _ramp_energy if _energy_hit else _ramp_fire
 	p.restart()
 	p.emitting = true
 	if _light != null:

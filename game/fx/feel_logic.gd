@@ -57,6 +57,13 @@ static func flash_strength(imp: float, tun: Tuning) -> float:
 
 ## Do these two materials strike sparks? Steel (or iron) against steel, aluminium or worn plate / mail.
 static func strikes_sparks(ev: Dictionary, atk_mat: String, other_mat: String, armor_kind: String) -> bool:
+	if atk_mat == "energy":
+		# A laser blade arcs off metal and hard armor, never off cloth or wood.
+		if bool(ev.get("hit_on_weapon", false)):
+			return other_mat == "steel" or other_mat == "aluminium" or other_mat == "energy"
+		return SPARK_ARMOR_KINDS.has(armor_kind)
+	if other_mat == "energy" and bool(ev.get("hit_on_weapon", false)):
+		return atk_mat == "steel" or atk_mat == "aluminium"
 	if atk_mat != "steel":
 		# An aluminium bat on a steel blade sparks as well; a bat on plate does not (dull thud).
 		return bool(ev.get("hit_on_weapon", false)) and atk_mat == "aluminium" and other_mat == "steel"

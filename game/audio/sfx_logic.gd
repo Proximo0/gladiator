@@ -57,7 +57,7 @@ const ARMOR_RANK: Dictionary = {"": 0, "cloth": 1, "leather": 2, "mail": 3, "pla
 
 
 static func variant_count(key: String) -> int:
-	return int(VARIANTS.get(key, 0))
+	return int(VARIANTS.get(key, LaserSynth.variant_count(key)))
 
 
 static func path_for(key: String, index: int) -> String:
@@ -106,6 +106,8 @@ static func weapon_material(def: Dictionary) -> String:
 	var m: String = str(def.get("material", ""))
 	if m == "aluminum" or m == "aluminium" or m == "metal_bat":
 		return "aluminium"
+	if m == "energy":
+		return "energy"
 	if m == "steel" or m == "iron":
 		return "steel"
 	if m == "wood":
@@ -148,6 +150,16 @@ static func _is_metal(m: String) -> bool:
 static func _weapon_pair_layers(atk: String, other: String, inten: float) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var p: float = impact_pitch(inten)
+	if atk == "energy" or other == "energy":
+		# A laser blade meeting anything crackles; the other side still sounds a little through it.
+		out.append(_layer("synth/laser_clash", 0.0, p))
+		if atk == "steel" or other == "steel":
+			out.append(_layer("impact/clang_steel", -9.0, p))
+		elif atk == "aluminium" or other == "aluminium":
+			out.append(_layer("impact/bat_tink", -9.0, p))
+		else:
+			out.append(_layer("impact/thunk_wood", -10.0, p))
+		return out
 	if atk == "steel" and other == "steel":
 		out.append(_layer("impact/clang_steel", 0.0, p))
 		if inten >= RING_INTENSITY:
@@ -174,6 +186,16 @@ static func _flesh_layers(atk: String, contact: String, inten: float) -> Array[D
 	var out: Array[Dictionary] = []
 	var p: float = impact_pitch(inten)
 	match atk:
+		"energy":
+			# Cauterising: a dry sizzle more than a wet slice.
+			if contact == "edge":
+				out.append(_layer("impact/flesh_cut", -6.0, p))
+				out.append(_layer("synth/laser_cut", -1.0, p))
+			elif contact == "point":
+				out.append(_layer("impact/flesh_pierce", -6.0, p))
+				out.append(_layer("synth/laser_cut", -1.0, p))
+			else:
+				out.append(_layer("impact/body_thud", -2.0, p))
 		"steel":
 			if contact == "edge":
 				out.append(_layer("impact/flesh_cut", 0.0, p))

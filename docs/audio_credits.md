@@ -22,3 +22,5 @@ ever added, list it here with its source URL and licence (CC0 or public domain o
 | `assets/audio/crowd/` | amb_low and amb_high (seamless loops), gasp, cheer, roar, boo, chant, finisher_roar |
 
 Files are `<name>_<n>.wav`, 16-bit 44.1 kHz mono. `assets/audio/manifest.json` lists the variant counts.
+
+Runtime-synthesised (not in assets/audio/): the laser sword hum, clash and sizzle are generated in `game/audio/laser_synth.gd` at load time. No samples, no outside licence.

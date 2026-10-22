@@ -45,6 +45,11 @@ const SAND_POOL_STEP_S: Array[float] = [1.0 / 12.0, 1.0 / 20.0, 1.0 / 30.0]
 const SPARK_MULT: Array[float] = [0.5, 0.8, 1.0]
 const SPARK_LIGHT: Array[bool] = [false, true, true]
 
+## Energy blades (laser sword): trail ribbon samples kept (0 = no trail), glow light energy (0 = no light), and the
+## halo pulse on or off.
+const BLADE_TRAIL_SAMPLES: Array[int] = [0, 10, 18]
+const BLADE_LIGHT_ENERGY: Array[float] = [0.0, 0.6, 1.0]
+
 static var level: int = default_level()
 
 

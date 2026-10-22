@@ -126,6 +126,19 @@ static func art_shows_armor(id: String, part: String) -> bool:
 	return (def(id).get("art_armor", []) as Array).has(part)
 
 
+## The weapon id an outfit includes ("" for none), e.g. samurai -> dai_katana.
+static func weapon_of(id: String) -> String:
+	return str(def(id).get("weapon", ""))
+
+
+## "Includes: Dai-katana" for the shop cards ("" when the outfit has no weapon).
+static func includes_line(id: String) -> String:
+	var w: String = weapon_of(id)
+	if w == "":
+		return ""
+	return "Includes: " + str(CombatData.weapon(w).get("name", w))
+
+
 ## The id the local player may actually wear: `wanted` when free or in `owned`, else the default.
 static func usable_id(wanted: Variant, owned: Array) -> String:
 	var id: String = clean_id(wanted)
