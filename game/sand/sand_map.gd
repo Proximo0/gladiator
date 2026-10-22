@@ -8,6 +8,11 @@ const H_MIN: float = -0.30  ## deepest a hollow can go (a fall crater), metres
 const H_MAX: float = 0.25  ## highest a berm can pile
 const RIM_START: float = 0.85  ## q (normalised distance) where the rim ring begins
 const RIM_WIDTH: float = 0.8  ## ring width in q units
+const BERM_MIN_SOFT: float = 0.04  ## berm height limit of a press is the larger of this and BERM_PER_DEPTH of its depth
+const BERM_PER_DEPTH: float = 1.2
+const BERM_EASE_FROM: float = 0.85  ## berms grow slower from this share of the limit and stop at it (repeated contacts do not pile ridges up)
+const SMOOTH_MIN_R: float = 5.0  ## stamps wider than this many texels (bodies, not feet) are relaxed after pressing
+const SMOOTH_MIX: float = 0.75  ## share of the relaxed height blended in
 const MAP_MARGIN: float = 0.6  ## map extends this far beyond the arena radius
 
 
@@ -84,6 +89,40 @@ static func push_factor(dir_dot: float, push_len: float) -> float:
 	return maxf(0.15, 1.0 + 1.3 * dir_dot * minf(push_len, 1.0))
 
 
+const SMOOTH_ON: bool = true
+
+
+## `cur` plus a berm increment `add`, with growth easing off toward `limit` (never lowers).
+static func berm_add(cur: float, add: float, limit: float) -> float:
+	if cur >= limit:
+		return minf(cur, H_MAX)
+	var ease_k: float = 1.0 - smoothstep(limit * BERM_EASE_FROM, limit, cur)
+	return minf(cur + add * ease_k, limit)
+
+
+## Relaxes the heights in `rect` toward their 3x3 binomial blur by `mix`: smooths the stepped ridges and bowls many
+## overlapping body presses leave. Reads a copy, so the order of texels does not matter.
+static func relax(h: PackedFloat32Array, n: int, rect: Rect2i, mix: float) -> void:
+	var x0: int = maxi(rect.position.x, 1)
+	var y0: int = maxi(rect.position.y, 1)
+	var x1: int = mini(rect.end.x - 1, n - 2)
+	var y1: int = mini(rect.end.y - 1, n - 2)
+	if x1 < x0 or y1 < y0:
+		return
+	var w: int = x1 - x0 + 3
+	var src: PackedFloat32Array = PackedFloat32Array()
+	src.resize(w * (y1 - y0 + 3))
+	for y in range(y0 - 1, y1 + 2):
+		for x in range(x0 - 1, x1 + 2):
+			src[(y - y0 + 1) * w + (x - x0 + 1)] = h[y * n + x]
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var k: int = (y - y0 + 1) * w + (x - x0 + 1)
+			var b: float = (4.0 * src[k] + 2.0 * (src[k - 1] + src[k + 1] + src[k - w] + src[k + w])
+					+ src[k - w - 1] + src[k - w + 1] + src[k + w - 1] + src[k + w + 1]) / 16.0
+			h[y * n + x] = lerpf(src[k], b, mix)
+
+
 ## Presses an elliptical stamp into `h`. Centre c in texel coords, radii rx (local X) and rz (local Z) in texels,
 ## yaw rotates the ellipse about Y like a Godot node. The bowl is blended toward -depth (never digs deeper than
 ## depth), and the displaced volume is spread over a rim ring (scaled by rim_gain; 1.0 conserves volume), biased
@@ -106,7 +145,9 @@ static func apply_stamp(h: PackedFloat32Array, n: int, c: Vector2, rx: float, rz
 	var push_dir: Vector2 = push / push_len if push_len > 0.001 else Vector2.ZERO
 	var rim_w: PackedFloat32Array = PackedFloat32Array()
 	rim_w.resize(w * (y1 - y0 + 1))
+	var limit: float = maxf(BERM_MIN_SOFT, BERM_PER_DEPTH * depth)
 	var removed: float = 0.0
+	var fresh: float = 0.0  ## the part of `removed` that was dug below the flat (cut berms are not given the gain again)
 	var wsum: float = 0.0
 	for y in range(y0, y1 + 1):
 		var dz: float = float(y) + 0.5 - c.y
@@ -123,6 +164,7 @@ static func apply_stamp(h: PackedFloat32Array, n: int, c: Vector2, rx: float, rz
 				var nh: float = minf(cur, lerpf(cur, -depth, prof))
 				nh = maxf(nh, H_MIN)
 				removed += cur - nh
+				fresh += minf(cur, 0.0) - nh if nh < 0.0 else 0.0
 				h[i] = nh
 			var rw: float = rim_profile(q)
 			if rw > 0.0:
@@ -132,14 +174,18 @@ static func apply_stamp(h: PackedFloat32Array, n: int, c: Vector2, rx: float, rz
 				rim_w[k] = rw
 				wsum += rw
 	if wsum > 0.0 and removed > 0.0:
-		var scale: float = removed * rim_gain / wsum
+		var scale: float = (fresh * rim_gain + (removed - fresh)) / wsum
 		for y in range(y0, y1 + 1):
 			for x in range(x0, x1 + 1):
 				var rw2: float = rim_w[(y - y0) * w + (x - x0)]
 				if rw2 > 0.0:
 					var i2: int = y * n + x
-					h[i2] = minf(h[i2] + rw2 * scale, H_MAX)
-	return Rect2i(x0, y0, w, y1 - y0 + 1)
+					h[i2] = berm_add(h[i2], rw2 * scale, limit)
+	var rect: Rect2i = Rect2i(x0, y0, w, y1 - y0 + 1)
+	if SMOOTH_ON and maxf(rx, rz) > SMOOTH_MIN_R:
+		relax(h, n, rect, SMOOTH_MIX)
+		relax(h, n, rect, SMOOTH_MIX)
+	return rect
 
 
 ## Distance from point p to segment a-b.
@@ -171,7 +217,9 @@ static func apply_capsule(h: PackedFloat32Array, n: int, a: Vector2, b: Vector2,
 	var push_dir: Vector2 = push / push_len if push_len > 0.001 else Vector2.ZERO
 	var rim_w: PackedFloat32Array = PackedFloat32Array()
 	rim_w.resize(w * (y1 - y0 + 1))
+	var limit: float = maxf(BERM_MIN_SOFT, BERM_PER_DEPTH * depth)
 	var removed: float = 0.0
+	var fresh: float = 0.0  ## the part of `removed` that was dug below the flat (cut berms are not given the gain again)
 	var wsum: float = 0.0
 	for y in range(y0, y1 + 1):
 		for x in range(x0, x1 + 1):
@@ -184,6 +232,8 @@ static func apply_capsule(h: PackedFloat32Array, n: int, a: Vector2, b: Vector2,
 				var cur: float = h[i]
 				var nh: float = maxf(minf(cur, lerpf(cur, -depth, prof)), H_MIN)
 				removed += cur - nh
+				fresh += minf(cur, 0.0) - nh if nh < 0.0 else 0.0
+				fresh += minf(cur, 0.0) - nh if nh < 0.0 else 0.0
 				h[i] = nh
 			var rw: float = rim_profile(q)
 			if rw > 0.0:
@@ -193,14 +243,18 @@ static func apply_capsule(h: PackedFloat32Array, n: int, a: Vector2, b: Vector2,
 				rim_w[k] = rw
 				wsum += rw
 	if wsum > 0.0 and removed > 0.0:
-		var scale: float = removed * rim_gain / wsum
+		var scale: float = (fresh * rim_gain + (removed - fresh)) / wsum
 		for y in range(y0, y1 + 1):
 			for x in range(x0, x1 + 1):
 				var rw2: float = rim_w[(y - y0) * w + (x - x0)]
 				if rw2 > 0.0:
 					var i2: int = y * n + x
-					h[i2] = minf(h[i2] + rw2 * scale, H_MAX)
-	return Rect2i(x0, y0, w, y1 - y0 + 1)
+					h[i2] = berm_add(h[i2], rw2 * scale, limit)
+	var rect: Rect2i = Rect2i(x0, y0, w, y1 - y0 + 1)
+	if SMOOTH_ON and r > SMOOTH_MIN_R:
+		relax(h, n, rect, SMOOTH_MIX)
+		relax(h, n, rect, SMOOTH_MIX)
+	return rect
 
 
 ## Points along a->b (inclusive) no further apart than spacing, at most max_n of them.

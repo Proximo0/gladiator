@@ -814,6 +814,15 @@ func _emit_fountain(s: _BfSpurt, origin: Vector3, axis: Vector3, dt: float) -> v
 	for k: int in s.streams:
 		var jet_dir: Vector3 = BloodMath.fountain_dir(axis, s.up_bias, tn.fountain_fan, tn.fountain_wobble, tn.fountain_swirl,
 				k, s.streams, s.age)
+		var drift: float = tn.fountain_drift
+		if drift > 0.0:
+			var kf: float = float(k)
+			jet_dir = (jet_dir + Vector3(sin(s.age * 5.3 + kf * 1.9) + 0.6 * sin(s.age * 11.7 + kf * 4.1),
+					0.5 * sin(s.age * 4.1 + kf * 2.7), sin(s.age * 6.7 + kf * 3.3) + 0.6 * sin(s.age * 13.1 + kf)) * 0.11 * drift).normalized()
+		var mist_n: float = flow * tn.fountain_fine_mist * BloodMath.rate_mult(quality) * room * dt
+		for m: int in int(mist_n + rng.randf()):
+			mist.emit(origin + jet_dir * rng.randf_range(0.05, 0.6), jet_dir * rng.randf_range(2.0, 5.5) + _jit(0.9 * drift + 0.2),
+					0.02, rng.randf_range(0.12, 0.26), rng.randf_range(0.4, 0.9), 0.22, rng.randf() * TAU, s.slot)
 		if fresh and room > 0.0:
 			for m: int in int(tn.fountain_mist):
 				mist.emit(origin + jet_dir * 0.1, jet_dir * rng.randf_range(1.0, 2.4) + _jit(0.5), 0.06,
@@ -824,10 +833,11 @@ func _emit_fountain(s: _BfSpurt, origin: Vector3, axis: Vector3, dt: float) -> v
 		for j: int in n:
 			var frac: float = (float(j) + rng.randf()) / float(maxi(n, 1))
 			var ta: float = dt * (1.0 - frac)
-			var d: Vector3 = BloodMath.cone_dir(jet_dir, 0.05 + 0.05 * (1.0 - minf(flow, 1.0)), rng.randf(), rng.randf())
-			var v: Vector3 = d * speed * rng.randf_range(0.85, 1.12) + s.anchor_vel * 0.8
+			var vm: Vector3 = BloodMath.fountain_drop_mult(rng.randf(), rng.randf(), rng.randf(), tn.fountain_size_var, tn.fountain_gout)
+			var d: Vector3 = BloodMath.cone_dir(jet_dir, (0.05 + 0.05 * (1.0 - minf(flow, 1.0))) * (1.0 + 1.2 * drift), rng.randf(), rng.randf())
+			var v: Vector3 = d * speed * vm.y * rng.randf_range(0.9, 1.1) + s.anchor_vel * 0.8 + _jit(0.35 * drift)
 			var p: Vector3 = s.last_origin.lerp(origin, frac) + v * ta + Vector3(0, -0.5 * gravity * ta * ta, 0)
-			var r: float = BloodMath.drop_radius(rng.randf(), s.r_min, s.r_max) * dscale * (0.7 + 0.5 * minf(flow, 1.0))
+			var r: float = BloodMath.drop_radius(rng.randf(), s.r_min, s.r_max) * dscale * (0.7 + 0.5 * minf(flow, 1.0)) * vm.x
 			sim.emit(p, v, r, s.stretch, 6.0, rng.randf(), s.slot)
 	# Pools on the sand under the body, poured while the fountain runs (a head's trail makes none).
 	var pool_rate: float = tn.fountain_pool if s.pool_rate < 0.0 else s.pool_rate

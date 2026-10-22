@@ -273,38 +273,36 @@ func _add_cap(b: Node3D, key: String, asset: String, at: Vector3, normal: Vector
 		half_w = maxf(half_w, maxf(bb.size.x, bb.size.z) * 0.5)
 		(mi as MeshInstance3D).visible = false
 	half_w = half_w if half_w > 0.0 else 0.058
-	_cap_face(cap, half_w * CAP_WIDEN)
+	_cap_face(cap, half_w * CAP_WIDEN, key)
 	cap.transform = Transform3D(basis, at - normal.normalized() * CAP_SINK)
 	look.add_child(cap)
 	apply_shadow(cap, str(b.name))
 	_caps[key] = cap
 
 
-## The stacked gore discs of one cut face, coloured from the fighter's blood palette (ichor for the alien).
-func _cap_face(cap: Node3D, radius: float) -> void:
-	for i: int in CAP_DISCS.size():
-		var d: Array = CAP_DISCS[i]
-		var cm: CylinderMesh = CylinderMesh.new()
-		cm.top_radius = radius * float(d[1])
-		cm.bottom_radius = cm.top_radius
-		cm.height = DISC_H
-		cm.radial_segments = 24
-		cm.rings = 1
-		var mat: StandardMaterial3D = StandardMaterial3D.new()
+## The gore face of one cut (`CapMesh`: torn edge, dome, fibres, flared collar, tendrils), built once per sever and
+## coloured from the fighter's blood palette (ichor for the alien).
+func _cap_face(cap: Node3D, radius: float, key: String) -> void:
+	var pal: Dictionary = {}
+	for d: Array in CAP_DISCS:
 		var base: Color = _blood.inner(str(d[2]))
 		var k: float = float(d[3])
-		mat.albedo_color = Color(base.r * k, base.g * k, base.b * k, 1.0)
-		mat.roughness = 0.3 if str(d[2]) == "flesh" else 0.6
-		if _blood.emission > 0.0 and str(d[2]) != "bone":
-			mat.emission_enabled = true
-			mat.emission = mat.albedo_color * _blood.emission * 0.4
-		var mi: MeshInstance3D = MeshInstance3D.new()
-		mi.name = "Disc_" + str(d[0])
-		mi.mesh = cm
-		mi.material_override = mat
-		mi.position = Vector3(0.0, float(i) * DISC_STEP - DISC_H * 0.5, 0.0)
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		cap.add_child(mi)
+		pal[str(d[0])] = Color(base.r * k, base.g * k, base.b * k, 1.0)
+	pal["skin"] = _skin.albedo_color if _skin != null else Color(0.8, 0.6, 0.5)
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.roughness = 0.75
+	mat.metallic_specular = 0.15
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	if _blood.emission > 0.0:
+		mat.emission_enabled = true
+		mat.emission = (pal["flesh"] as Color) * _blood.emission * 0.4
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	mi.name = "Face"
+	mi.mesh = CapMesh.build(radius, radius / CAP_WIDEN, pal, key.hash())
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	cap.add_child(mi)
 
 
 ## Part `n` was cut from its parent: a cap on the stump (parent side, facing the piece) and one on the piece.

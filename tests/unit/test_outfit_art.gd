@@ -111,19 +111,20 @@ func _mesh_with(names: Array) -> MeshInstance3D:
 	return mi
 
 
-func test_cap_face_discs_use_palette() -> void:
-	var red := FighterArt.new(0, 5)
+func _face_flesh_color(fa: FighterArt) -> Color:
 	var holder := Node3D.new()
-	red._cap_face(holder, 0.06)
-	assert_eq(holder.get_child_count(), FighterArt.CAP_DISCS.size())
-	var flesh: MeshInstance3D = holder.get_node("Disc_flesh") as MeshInstance3D
-	var m: StandardMaterial3D = flesh.material_override as StandardMaterial3D
-	assert_true(m.albedo_color.r > m.albedo_color.g * 3.0, "red flesh")
-	assert_false(m.emission_enabled)
+	fa._cap_face(holder, 0.06, "k_stump")
+	assert_eq(holder.get_child_count(), 1)
+	var mi: MeshInstance3D = holder.get_node("Face") as MeshInstance3D
+	var cols: PackedColorArray = (mi.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+	var c: Color = cols[1 + 4 * CapMesh.SEGS]  # a mid-ring face vertex: flesh
+	assert_eq((mi.material_override as StandardMaterial3D).emission_enabled, fa._blood.emission > 0.0)
 	holder.free()
-	var alien := FighterArt.new(1, 9, "alien")
-	var h2 := Node3D.new()
-	alien._cap_face(h2, 0.06)
-	var am: StandardMaterial3D = (h2.get_node("Disc_flesh") as MeshInstance3D).material_override as StandardMaterial3D
-	assert_true(am.albedo_color != m.albedo_color, "ichor tint differs from red")
-	h2.free()
+	return c
+
+
+func test_cap_face_uses_palette() -> void:
+	var red: Color = _face_flesh_color(FighterArt.new(0, 5))
+	assert_true(red.r > red.g * 2.0, "red flesh")
+	var alien: Color = _face_flesh_color(FighterArt.new(1, 9, "alien"))
+	assert_true(alien != red, "ichor tint differs from red")

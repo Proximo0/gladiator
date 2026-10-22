@@ -221,6 +221,10 @@ const FIELDS: Array = [
 	["fountain_mist", 2.0, 0.0, 6.0, 1.0, "Blood", "Beheading fountain: mist puffs per jet per heartbeat."],
 	["fountain_pool", 0.9, 0.0, 4.0, 0.05, "Blood", "Beheading fountain: presentation litres per second poured onto the sand under the body."],
 	["fountain_head_share", 0.35, 0.0, 1.0, 0.05, "Blood", "Beheading fountain: strength of the trail from the severed head, as a share of one neck jet."],
+	["fountain_size_var", 1.0, 0.0, 2.0, 0.05, "Blood", "Beheading fountain: per-drop size and speed variance (0 = every drop alike)."],
+	["fountain_gout", 0.05, 0.0, 0.3, 0.01, "Blood", "Beheading fountain: chance that a drop is a big fast gout."],
+	["fountain_drift", 1.0, 0.0, 3.0, 0.1, "Blood", "Beheading fountain: spray drift and wobble of the jets and the scatter of single drops."],
+	["fountain_fine_mist", 14.0, 0.0, 60.0, 1.0, "Blood", "Beheading fountain: fine mist puffs per second per jet at full flow."],
 	["fountain_headroom", 0.35, 0.05, 1.0, 0.05, "Blood", "Beheading fountain: the jets taper off as free droplet slots drop below this share of the pool."],
 	["gut_ropes", 4.0, 0.0, 8.0, 1.0, "Blood", "Gut spill: intestine strings that slide out of a gutting or run-through at normal quality."],
 	["gut_segs", 9.0, 4.0, 14.0, 1.0, "Blood", "Gut spill: points per intestine string at normal quality (low uses a third fewer)."],
@@ -504,6 +508,10 @@ var fountain_mist: float
 var fountain_pool: float
 var fountain_head_share: float
 var fountain_headroom: float
+var fountain_size_var: float
+var fountain_gout: float
+var fountain_drift: float
+var fountain_fine_mist: float
 var gut_ropes: float
 var gut_segs: float
 var gut_seg_len: float

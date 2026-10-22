@@ -153,3 +153,13 @@ func test_fountain_dir_leans_up_stays_unit_and_streams_differ() -> void:
 	var still: Vector3 = BloodMath.fountain_dir(axis, 1.0, 0.0, 0.0, 0.0, 0, 1, 3.0)
 	assert_near(still.y, 1.0, 0.001)
 	assert_true(BloodMath.fountain_dir(axis, 0.0, 0.0, 0.0, 0.0, 0, 1, 1.0).is_equal_approx(axis))
+
+
+func test_fountain_drop_mult() -> void:
+	assert_eq(BloodMath.fountain_drop_mult(0.5, 0.5, 0.9, 0.0, 0.05), Vector3(1.0, 1.0, 0.0))
+	var small: Vector3 = BloodMath.fountain_drop_mult(0.0, 0.0, 0.9, 1.0, 0.05)
+	var big: Vector3 = BloodMath.fountain_drop_mult(1.0, 1.0, 0.9, 1.0, 0.05)
+	assert_true(small.x < 0.5 and big.x > 1.5 and small.y < big.y, "size and speed span")
+	var gout: Vector3 = BloodMath.fountain_drop_mult(0.5, 0.5, 0.0, 1.0, 0.05)
+	assert_eq(gout.z, 1.0)
+	assert_true(gout.x > 2.0, "a gout is a blob")

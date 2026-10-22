@@ -217,3 +217,36 @@ func test_capsule_is_body_shaped_and_conserves_mass() -> void:
 	for y in range(40, 80):
 		berm = maxf(berm, h[y * n + 60])
 	assert_true(berm > 0.02, "berm %f" % berm)
+
+
+## A fallen body is ~11 part contacts on one spot, then flicker re-contacts. Returns [max height, max texel step].
+func _corpse_pile(gain: float, repeats: int) -> Array[float]:
+	var n: int = 160
+	var h: PackedFloat32Array = PackedFloat32Array()
+	h.resize(n * n)
+	h.fill(0.0)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	for rep: int in repeats:
+		for k: int in 11:
+			var c: Vector2 = Vector2(80.0 + rng.randf_range(-14.0, 14.0), 80.0 + rng.randf_range(-14.0, 14.0))
+			if k % 3 == 0:
+				var d: Vector2 = Vector2(rng.randf_range(-12.0, 12.0), rng.randf_range(-12.0, 12.0))
+				SandMap.apply_capsule(h, n, c - d, c + d, 10.0, 0.05, Vector2(0.3, 0.1), gain)
+			else:
+				SandMap.apply_stamp(h, n, c, 9.0, 9.0, 0.0, 0.04, Vector2(0.2, 0.0), gain)
+	var hi: float = -1.0
+	var step: float = 0.0
+	for y in range(1, n - 1):
+		for x in range(1, n - 1):
+			hi = maxf(hi, h[y * n + x])
+			step = maxf(step, maxf(absf(h[y * n + x] - h[y * n + x + 1]), absf(h[y * n + x] - h[(y + 1) * n + x])))
+	return [hi, step]
+
+
+func test_repeated_body_contacts_stay_smooth() -> void:
+	# Before the fix: berm 0.24 m, texel step 0.076 m after three passes.
+	var one: Array[float] = _corpse_pile(1.3, 1)
+	var many: Array[float] = _corpse_pile(1.3, 3)
+	assert_true(many[0] < 0.065, "berm height %f" % many[0])
+	assert_true(many[1] < 0.03 and many[1] < one[1] * 1.15, "texel step %f" % many[1])

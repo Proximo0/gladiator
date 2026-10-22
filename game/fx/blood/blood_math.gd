@@ -228,6 +228,17 @@ static func fountain_dir(axis: Vector3, up_bias: float, fan: float, wobble: floa
 	return (a * cos(lean) + (u * cos(az) + w * sin(az)) * sin(lean)).normalized()
 
 
+## Per-drop variance of the beheading fountain from three 0..1 samples: x = size multiplier, y = exit speed
+## multiplier, z = 1 for a big gout (a fat, fast blob) else 0. `amount` 0 gives (1, 1, 0); `gout` is the chance of a gout.
+static func fountain_drop_mult(u: float, v: float, w: float, amount: float, gout: float) -> Vector3:
+	var a: float = clampf(amount, 0.0, 2.0)
+	var size: float = lerpf(1.0 - 0.55 * minf(a, 1.0), 1.0 + 0.8 * a, pow(clampf(u, 0.0, 1.0), 1.6))
+	var speed: float = lerpf(1.0 - 0.4 * minf(a, 1.0), 1.0 + 0.2 * a, clampf(v, 0.0, 1.0))
+	if a > 0.0 and w < gout:
+		return Vector3(size * (1.0 + 1.6 * minf(a, 1.0)), speed * 1.1, 1.0)
+	return Vector3(size, speed, 0.0)
+
+
 # --- Gut spill ----------------------------------------------------------------------------------------------
 
 const GUT_MULT: Array[float] = [0.67, 1.0, 1.34]  ## share of the strings and chunks per spill by quality
