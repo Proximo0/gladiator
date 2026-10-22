@@ -536,6 +536,7 @@
       "center": [0.25, 0.0],
       "art": "res://assets/weapons/aspis.glb",
       "art_roll": 180,
+      "art_offset": [0.0, 0.0, 0.045],
       "unlock": {"stat": "wins", "count": 6},
       "edge_len": 0.0,
       "point": false,

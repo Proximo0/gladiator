@@ -154,6 +154,11 @@ func _use_art_mesh() -> void:
 	# "art_roll" (degrees about the face normal) turns a mesh built the other way round: the aspis's arm band
 	# was modelled toward -X, but a left hand holds the shield with +X toward the holder's left (Fighter._wrist).
 	art.rotation.z = deg_to_rad(float(def.get("art_roll", 0.0)))
+	# "art_offset" [x, y, z] (m) shifts the mesh off the grip: the aspis bowl sits 3-6 cm off its grip, so the fist
+	# would poke through the face without a push forward.
+	var off: Variant = def.get("art_offset", [])
+	if off is Array and (off as Array).size() == 3:
+		art.position = Vector3(float(off[0]), float(off[1]), float(off[2]))
 	if weapon_id == "rake":
 		# The art was built at 1.6 m with a 0.36 m head; the collider is 1.45 m with a 0.26 m crossbar (balance_rake.md).
 		# The grip end stays at -0.2 m: y' = RAKE_ART_SCALE.y * y + offset.
