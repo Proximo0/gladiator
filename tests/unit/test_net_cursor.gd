@@ -38,3 +38,14 @@ func test_follow_snaps_then_eases() -> void:
 	assert_eq(c.follow(Vector3(1, 0, 0), 1.0 / 60.0), Vector3(1, 0, 0))
 	var p: Vector3 = c.follow(Vector3(2, 0, 0), 1.0 / 60.0)
 	assert_true(p.x > 1.0 and p.x < 2.0)
+
+
+func test_hit_pulse_fades_over_flash_time() -> void:
+	var c := NetCursor.new()
+	c.hit(0.6)
+	c.hit(0.3)
+	assert_near(c.flash, 0.6, 0.0001, "a weaker pulse does not cut a stronger one")
+	var n: int = 0
+	while c.flash_step(1.0 / 60.0) > 0.0 and n < 100:
+		n += 1
+	assert_true(n <= int(ceil(NetConfig.HIT_CONFIRM_FLASH_S * 60.0)) + 1, "faded in %d ticks" % n)

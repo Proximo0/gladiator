@@ -12,6 +12,7 @@ const HALF_SWORD_AIM: float = 0.6
 const SMOOTH_RATE: float = 30.0  ## 1/s, how fast the drawn cursor follows a jump in the predicted point
 
 var point: Vector3 = Vector3.ZERO
+var flash: float = 0.0  ## hit-confirm pulse, 1 at a full-strength hit, fading to 0 over NetConfig.HIT_CONFIRM_FLASH_S
 var _have: bool = false
 
 
@@ -45,3 +46,14 @@ func follow(want: Vector3, delta: float) -> Vector3:
 	else:
 		point = point.lerp(want, clampf(SMOOTH_RATE * delta, 0.0, 1.0))
 	return point
+
+
+## A hit this side dealt was confirmed by the host: pulse at `strength` (0..1; a stronger pulse is never cut short).
+func hit(strength: float) -> void:
+	flash = maxf(flash, clampf(strength, 0.0, 1.0))
+
+
+## Fades the pulse by one tick and returns it.
+func flash_step(delta: float) -> float:
+	flash = maxf(flash - delta / maxf(NetConfig.HIT_CONFIRM_FLASH_S, 0.001), 0.0)
+	return flash

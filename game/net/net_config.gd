@@ -21,6 +21,18 @@ const PACKET_OVERHEAD: int = 42  ## IPv4 20 + UDP 8 + ENet protocol header and c
 const CONNECT_TIMEOUT_TICKS: int = 600  ## 10 s to reach the host
 const DISCONNECT_TICKS: int = 300  ## 5 s without a packet from the other side ends the session
 const THROTTLE_INTERVAL_MS: int = 5000  ## ENet packet throttle: measured over this long (ENet default)
+## Client-side cosmetic lead (visual only, the host stays authoritative; see docs/net_feel.md).
+const HAND_LEAD_OMEGA: float = 40.0  ## own weapon hand: the modelled arm is a critically damped spring on the hand goal at this rate, 1/s (fits the host arm: half a swing step in 3 ticks)
+const HAND_LEAD_ACK_LAG: int = 1  ## ... a snapshot's bodies show its acked input this many ticks late (the physics step after capture, the arm's first tick)
+const HAND_LEAD_SMOOTH_S: float = 0.03  ## ... the drawn lead follows the modelled one this fast (hides the ack's tick steps)
+const HAND_LEAD_RELEASE_S: float = 0.2  ## ... it shrinks no faster than the shown hand advances, plus a release with this time constant
+const HAND_LEAD_MAX: float = 0.8  ## ... and never leads the shown hand by more than this, m
+const ROLL_LEAD_TAU_S: float = 0.06  ## own roll start: the drawn dip and lean follow the predicted ones this fast
+const ROLL_LEAD_CANCEL_TAU_S: float = 0.1  ## ... and fade this fast when the host did not roll
+const ROLL_LEAD_CONFIRM_TICKS: int = 3  ## input ticks past the press the shown ack may reach before a roll that has not shown is called off
+const ROLL_LEAD_MAX_DROP: float = 0.2  ## most the predicted dip lowers the body ahead of the host, m
+const ROLL_LEAD_MAX_LEAN: float = 0.45  ## most it leans the body ahead of the host, rad
+const HIT_CONFIRM_FLASH_S: float = 0.15  ## the cursor's hit-confirm pulse fades over this long
 const THROTTLE_ACCELERATION: int = 2  ## ... and how fast it recovers (ENet default); deceleration is set to 0
 
 const MSG_HELLO: int = 1  ## client -> host, reliable: version, name, loadout

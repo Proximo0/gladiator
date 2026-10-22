@@ -5,7 +5,11 @@ extends Node
 ## kinematic), fighters posed from interpolated snapshots, hit and gore events re-emitted on the fighters at their
 ## tick (so blood, sound and sand react as in an offline match), HUD and camera on side 1. Every physics tick it
 ## reads the local device, records it and sends the last few inputs to the host. The weapon-hand cursor is drawn
-## from the local aim at once (NetCursor); everything else waits for the host.
+## from the local aim at once (NetCursor). The own fighter gets cosmetic leads drawn over the snapshot pose: the weapon
+## hand moves with the local aim the same tick (NetHandLead) and a roll's opening dip starts on the press
+## (NetRollLead); both hand over to the host's pose without a jump. A hit event that involves this side pulses the
+## cursor and emits `hit_confirmed` the tick it arrives; its blood, sound and camera still play at its tick, in step
+## with the picture. Everything else waits for the host.
 ## Runs before the Match and the fighters (priority -10), after NetSession has delivered this tick's packets.
 
 const PRIORITY: int = -10
@@ -13,12 +17,21 @@ const SIDE: int = 1
 const CURSOR_RADIUS: float = 0.035
 const CURSOR_COLOR: Color = Color(1.0, 0.85, 0.4, 0.85)
 const OVER_WAIT_TICKS: int = 60
+const CURSOR_FLASH_COLOR: Color = Color(1.0, 0.25, 0.15, 1.0)
+const CURSOR_FLASH_SCALE: float = 1.8  ## extra cursor size at a full-strength hit confirm
+
+## A hit that involves this side arrived from the host (before its tick plays): an instant confirm for HUD or sound.
+signal hit_confirmed(ev: Dictionary, tick: int)
 
 var session: NetSession = null
 var match_node: Match = null
 var interp: NetInterpBuffer = NetInterpBuffer.new()
 var packer: NetInputPacker = NetInputPacker.new()
 var cursor: NetCursor = NetCursor.new()
+var hand_lead: NetHandLead = NetHandLead.new()
+var roll_lead: NetRollLead = NetRollLead.new()
+var leads_enabled: bool = true  ## cosmetic hand and roll leads on the own fighter (sims switch them off to compare)
+var hit_confirms: int = 0
 var input_source: Callable = Callable()  ## optional () -> FighterInput, replaces the device (sims, bots)
 var shown: NetSnapshot = null  ## the state on screen this tick
 var snapshots_received: int = 0
@@ -34,6 +47,9 @@ var _cursor_mesh: MeshInstance3D = null
 var _input_tick: int = 0
 var _time_scale: float = 1.0
 var _over_wait: int = 0
+var _cursor_mat: StandardMaterial3D = null
+var _shown_hand: Vector3 = Vector3.ZERO  ## the own hand where the last snapshot pose put it (before the lead)
+var _have_shown_hand: bool = false
 
 
 func _init() -> void:
@@ -58,6 +74,8 @@ func attach(m: Match) -> void:
 		p.camera.snap()
 		_cursor_mesh = _make_cursor()
 		add_child(_cursor_mesh)
+		if p.has_method("hit_confirm") and not hit_confirmed.is_connected(Callable(p, "hit_confirm")):
+			hit_confirmed.connect(Callable(p, "hit_confirm"))  # an instant HUD or sound confirm, when the presenter has one
 
 
 func _make_cursor() -> MeshInstance3D:
@@ -72,6 +90,7 @@ func _make_cursor() -> MeshInstance3D:
 	mat.no_depth_test = true
 	mat.albedo_color = CURSOR_COLOR
 	mi.material_override = mat
+	_cursor_mat = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.top_level = true
 	mi.visible = false
@@ -101,6 +120,26 @@ func on_events(bytes: PackedByteArray) -> void:
 		return  # after the result: late events are dropped
 	for r: Array in NetEvents.decode(bytes):
 		interp.push_event(int(r[0]), int(r[1]), str(r[2]), r[3] as Dictionary)
+		_confirm(r)
+
+
+## A hit this side dealt or took: confirm it now, ahead of its tick (the pose and the gore still wait for the tick).
+func _confirm(r: Array) -> void:
+	if str(r[2]) != "hit":
+		return
+	var ev: Dictionary = r[3]
+	var mine: bool = int(ev.get("attacker", -1)) == SIDE
+	if not mine and int(ev.get("target", -1)) != SIDE:
+		return
+	hit_confirms += 1
+	if mine and not bool(ev.get("hit_on_weapon", false)):
+		cursor.hit(clampf(float(ev.get("total", 0.0)) / 40.0, 0.3, 1.0))
+	hit_confirmed.emit(ev, int(r[0]))
+
+
+## True while a cosmetic lead moves the own fighter away from the snapshot pose.
+func lead_active() -> bool:
+	return hand_lead.offset.length() > 0.005 or roll_lead.active()
 
 
 func on_over(d: Dictionary) -> void:
@@ -155,6 +194,8 @@ func _show(s: NetSnapshot, delta: float) -> void:
 		var a: Array[String] = []
 		a.assign(_armor[side])
 		NetWorld.apply(match_node.fighters[side] as Fighter, s.fighters[side], a)
+	if s.fighters.size() > SIDE:
+		_lead(match_node.fighters[SIDE] as Fighter, s.fighters[SIDE], s.ack_input_tick, delta)
 	match_node.tick = s.tick
 	if not is_equal_approx(s.time_scale, _time_scale) and s.time_scale > 0.05:
 		_time_scale = s.time_scale
@@ -173,6 +214,36 @@ func _show(s: NetSnapshot, delta: float) -> void:
 		if alive:
 			var want: Vector3 = NetCursor.predict(local_input, torso.global_transform, s.fighters[SIDE].yaw, half_ok, Tuning.shared())
 			_cursor_mesh.global_position = cursor.follow(want, delta)
+		var fl: float = cursor.flash_step(delta)
+		_cursor_mesh.scale = Vector3.ONE * (1.0 + CURSOR_FLASH_SCALE * fl)
+		if _cursor_mat != null:
+			_cursor_mat.albedo_color = CURSOR_COLOR.lerp(CURSOR_FLASH_COLOR, fl)
+
+
+## The own fighter's cosmetic leads, drawn over the pose apply() just set (the next apply() starts from the snapshot).
+func _lead(me: Fighter, ms: NetFighterSnap, ack: int, delta: float) -> void:
+	var tun: Tuning = Tuning.shared()
+	var st: String = me.state()
+	var standing: bool = st == "standing"
+	var on: bool = leads_enabled and (session == null or not session.input_blocked)
+	var input_tick: int = _input_tick - 1
+	roll_lead.press(on and local_input.has(FighterInput.ROLL), local_input.move(), input_tick, standing, ms.stamina, tun)
+	var rl: Vector2 = roll_lead.step(ms.rolling, ack, standing, delta, tun)
+	var torso: RigidBody3D = me.parts["torso"]
+	var w: Weapon = me.weapon
+	var half_ok: bool = w != null and bool(w.def.get("half_sword", false))
+	var raw: Vector3 = NetCursor.predict(local_input, torso.global_transform, ms.yaw, half_ok, tun)
+	var pelvis: Vector3 = (me.parts["pelvis"] as Node3D).global_position
+	var arms: bool = on and (standing or st == "stumbling" or st == "getting_up")
+	var fast: bool = local_input.has(FighterInput.SWING) or local_input.has(FighterInput.THRUST)
+	var hand: Vector3 = NetWorld.hand_point(me, "r")
+	var moved: Vector3 = hand - _shown_hand if _have_shown_hand else Vector3.ZERO
+	_shown_hand = hand
+	_have_shown_hand = true
+	var lead: Vector3 = hand_lead.step(raw, pelvis, ms.hand_target, input_tick, ack, fast, arms, delta, tun, moved)
+	var two_hand: bool = w != null and (bool(w.def.get("two_handed", false)) or (half_ok and local_input.has(FighterInput.HALF_SWORD)))
+	NetWorld.lead_hand(me, lead, two_hand)
+	NetWorld.lead_roll(me, rl.x, rl.y, ms.yaw, roll_lead.dir, tun)
 
 
 func _play_event(e: Array) -> void:
