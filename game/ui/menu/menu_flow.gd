@@ -23,6 +23,7 @@ const ORBIT_RADIUS: float = 9.0
 const ORBIT_HEIGHT: float = 3.4
 const ONLINE_MODE: String = "online"
 
+const HINT_PX: float = 15.0  ## On-screen text height of the controls hint.
 var state: MenuState = MenuState.new()
 var settings: MenuSettings = MenuSettings.new()
 var screen: Screen = Screen.TITLE
@@ -145,7 +146,7 @@ func _layout() -> void:
 	_root.position = Vector2.ZERO
 	_root.size = vp / s
 	if _hint.visible:
-		_hint.position = Vector2((_root.size.x - _hint.size.x) * 0.5, 18.0)
+		_hint.position = Vector2((_root.size.x - _hint.size.x) * 0.5, 8.0)
 	_pause_btn.position = Vector2(_root.size.x - 96.0 - 18.0, 18.0)
 
 
@@ -316,7 +317,9 @@ func _enter_fight() -> void:
 	if mode != "bot_vs_bot":
 		var touch: bool = DisplayServer.is_touchscreen_available() or Flags.args.has("touch")
 		var pad: bool = not Input.get_connected_joypads().is_empty()
-		_hint.show_lines(ControlsText.hint_lines(mode, pad, touch), minf(_root.size.x - 120.0, 1500.0))
+		var px_per_unit: float = maxf(get_viewport().get_final_transform().get_scale().x * _layer.scale.x, 0.01)
+		var room: float = _root.size.x - (2.0 * (96.0 + 36.0) if touch else 80.0)  # clear of the pause button
+		_hint.show_lines(ControlsText.compact_lines(mode, pad, touch), minf(room, 1500.0), roundi(HINT_PX / px_per_unit))
 		_pause_btn.visible = touch
 	else:
 		_pause_btn.visible = DisplayServer.is_touchscreen_available()

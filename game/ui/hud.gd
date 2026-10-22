@@ -9,8 +9,11 @@ extends CanvasLayer
 const HUD_LAYER: int = 10  ## Below the tuning panel (100).
 const MARGIN: float = 24.0
 const BANNER_Y_FRAC: float = 0.24  ## Banner top, as a fraction of the design height.
-const METER_TARGET_PX: float = 150.0  ## Smallest on-screen width of a meter; phones scale meters up to fit.
-const METER_MAX_SCALE: float = 3.0
+const METER_WIDTH_FRAC: float = 0.14  ## Meter width as a share of the screen width, within the pixel limits below.
+const METER_MIN_PX: float = 170.0
+const METER_MAX_PX: float = 210.0
+const METER_MIN_UNIT: float = 0.8
+const METER_MAX_UNIT: float = 4.0
 const BANNER_TARGET_PX: float = 360.0  ## On-screen width the banner aims for.
 const BANNER_MAX_SCALE: float = 3.0
 const BANNER_FIT_FRAC: float = 0.9  ## Widest banner line, as a share of the viewport width.
@@ -85,6 +88,17 @@ func _make_line(top: float, font_px: int, colour: Color) -> Label:
 	return label
 
 
+## Layout unit for the meters on a screen `screen_w` px wide: the meter is about 16% of the screen width, held between
+## METER_MIN_PX and METER_MAX_PX on screen (so a phone gets a real, readable meter), as a multiple of the design size.
+static func meter_px(screen_w: float) -> float:
+	return clampf(screen_w * METER_WIDTH_FRAC, METER_MIN_PX, METER_MAX_PX)
+
+
+func meter_unit(screen_w: float) -> float:
+	var k: float = get_viewport().get_final_transform().get_scale().x
+	return clampf(meter_px(screen_w) / (BloodMeter.METER_SIZE.x * k), METER_MIN_UNIT, METER_MAX_UNIT)
+
+
 ## Scale at which a line `text_w` wide fits `frac` of `vp_w` (no limit for an empty line).
 static func fit_scale(text_w: float, vp_w: float, frac: float) -> float:
 	if text_w <= 1.0:
@@ -107,18 +121,20 @@ func _process(_delta: float) -> void:
 
 ## Places and scales the widgets from the real pixel scale: the project stretches the 1920-unit design with
 ## "expand", so on a phone the design is squeezed and the meters would be unreadable. Meters grow until they are
-## METER_TARGET_PX wide on screen; the banner grows to BANNER_TARGET_PX.
+## about METER_WIDTH_FRAC of the screen wide; the banner grows to BANNER_TARGET_PX.
 func _layout() -> void:
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	var k: float = get_viewport().get_final_transform().get_scale().x
 	if k <= 0.0:
 		return
-	var ms: float = clampf(METER_TARGET_PX / (BloodMeter.METER_SIZE.x * k), 1.0, METER_MAX_SCALE)
-	var meter_y: float = vp.y - MARGIN - BloodMeter.METER_SIZE.y * ms
-	player_meter.scale = Vector2(ms, ms)
+	var u: float = meter_unit(vp.x * k)
+	var w: float = BloodMeter.METER_SIZE.x * u
+	var meter_y: float = vp.y - MARGIN - BloodMeter.METER_SIZE.y * u
+	for m: BloodMeter in [player_meter, opponent_meter]:
+		m.scale = Vector2.ONE
+		m.configure(u, k)
 	player_meter.position = Vector2(MARGIN, meter_y)
-	opponent_meter.scale = Vector2(ms, ms)
-	opponent_meter.position = Vector2(vp.x - MARGIN - BloodMeter.METER_SIZE.x * ms, meter_y)
+	opponent_meter.position = Vector2(vp.x - MARGIN - w, meter_y)
 	var bs: float = clampf(BANNER_TARGET_PX / (BANNER_W * k), 1.0, BANNER_MAX_SCALE)
 	bs = minf(bs, fit_scale(_text_w, vp.x, BANNER_FIT_FRAC))
 	_banner.scale = Vector2(bs, bs)

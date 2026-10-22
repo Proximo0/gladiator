@@ -6,7 +6,7 @@ extends Control
 ## Tuning.blood_death, and a thin stamina arc sits beside the vial. Presentation only: every number the maths uses is
 ## a static function so the unit tests can check it.
 
-const METER_SIZE: Vector2 = Vector2(240.0, 360.0)
+const METER_SIZE: Vector2 = Vector2(240.0, 372.0)  ## Design size (unit scale 1); the HUD lays it out at unit * this.
 const FULL_BLOOD: float = 5.0  ## Litres at full. Matches FighterHealth.START_BLOOD.
 const DRAIN_SPEED: float = 6.0  ## How fast the shown level follows the real blood (1/s).
 const DRIP_MIN_RATE: float = 0.002  ## bleed_rate (L/s) below which nothing drips.
@@ -47,6 +47,11 @@ const ARC_RADIUS: float = 30.0
 const ARC_STEPS: int = 12
 const DROP_RADIUS: float = 4.0
 const DROP_OFFSET: float = 0.5  ## Second drop's phase offset within the drip cycle.
+const MIN_PX_NAME: float = 16.0  ## Smallest on-screen text height (px) for each readout, so a small meter stays legible.
+const MIN_PX_READOUT: float = 20.0
+const MIN_PX_LATIN: float = 12.0
+const MIN_PX_PERCENT: float = 13.0
+const MIN_PX_SMALL: float = 11.0
 
 var health: FighterHealth = null
 var display_name: String = ""
@@ -54,6 +59,8 @@ var shown_blood: float = FULL_BLOOD
 var drip_phase: float = 0.0
 var heart_phase: float = 0.0
 var flow_phase: float = 0.0
+var unit: float = 1.0  ## Layout scale: the control is METER_SIZE * unit and geometry is drawn scaled; text is sized separately.
+var px_scale: float = 1.0  ## On-screen pixels per control unit (for the text size floors).
 var _started: bool = false
 var _frame: StyleBoxFlat = null
 var _meander: PackedVector2Array = PackedVector2Array()  ## Segment pairs of the rule above the readout (built once).
@@ -69,6 +76,25 @@ func _init() -> void:
 	_frame.set_border_width_all(3)
 	_frame.set_corner_radius_all(10)
 	_meander = meander_segments(size.x - 16.0, MEANDER_CELL, Vector2(8.0, MEANDER_Y))
+
+
+## Per-size layout: geometry scales by `u`, text gets its own sizes (never below its on-screen pixel floor, given
+## `px` on-screen pixels per control unit) so it is drawn crisp instead of being a scaled-up small font.
+func configure(u: float, px: float) -> void:
+	u = maxf(u, 0.1)
+	px = maxf(px, 0.01)
+	if is_equal_approx(u, unit) and is_equal_approx(px, px_scale):
+		return
+	unit = u
+	px_scale = px
+	size = METER_SIZE * u
+	custom_minimum_size = size
+	queue_redraw()
+
+
+## Font size in control units: `base` scaled with the meter, but no smaller than `min_px` on screen.
+func text_size(base: float, min_px: float) -> int:
+	return maxi(roundi(base * unit), ceili(min_px / px_scale))
 
 
 ## Binds a fighter and its name. The first frame after binding snaps the level instead of draining to it.
@@ -97,7 +123,8 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var font: Font = ThemeDB.fallback_font
-	draw_style_box(_frame, Rect2(Vector2.ZERO, size))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(unit, unit))
+	draw_style_box(_frame, Rect2(Vector2.ZERO, METER_SIZE))
 	_draw_header(font)
 	draw_multiline(_meander, OCHRE, MEANDER_STROKE, true)  # one call for the whole rule
 
@@ -167,28 +194,35 @@ func _draw() -> void:
 	draw_arc(Vector2(cx, cy), r * 0.72, PI * 1.12, PI * 1.42, 8, Color(1, 1, 1, 0.25), 3.0, true)
 
 	var readout_col: Color = PARCHMENT if danger_frac(level, death, FULL_BLOOD) >= 0.3 else WARN_TEXT
-	draw_string(font, Vector2(0.0, 332.0), "%.1f L" % level, HORIZONTAL_ALIGNMENT_CENTER, size.x, 32, readout_col)
-	draw_string(font, Vector2(0.0, 352.0), "SANGUIS", HORIZONTAL_ALIGNMENT_CENTER, size.x, 16, OCHRE)
 
 	# Stamina arc beside the vial.
 	var stamina: float = health.stamina if health != null else 1.0
 	draw_arc(ARC_CENTER, ARC_RADIUS, 0.0, TAU, 48, STAMINA_TRACK, 4.0, true)
 	if stamina > 0.001:
 		draw_arc(ARC_CENTER, ARC_RADIUS, -PI * 0.5, -PI * 0.5 + stamina_span(stamina), 48, STAMINA_COLOR, 5.0, true)
-	draw_string(font, Vector2(ARC_CENTER.x - 30.0, ARC_CENTER.y + 6.0), "%d%%" % roundi(stamina * 100.0),
-		HORIZONTAL_ALIGNMENT_CENTER, 60.0, 17, PARCHMENT)
-	draw_string(font, Vector2(ARC_CENTER.x - 46.0, ARC_CENTER.y + 50.0), "VIRES",
-		HORIZONTAL_ALIGNMENT_CENTER, 92.0, 18, PARCHMENT)
-	draw_string(font, Vector2(ARC_CENTER.x - 46.0, ARC_CENTER.y + 70.0), "Stamina",
-		HORIZONTAL_ALIGNMENT_CENTER, 92.0, 15, PARCHMENT)
+
+	# Text last, at identity scale and its own sizes (crisp at every layout size).
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_text(font, Vector2(0.0, 332.0), "%.1f L" % level, METER_SIZE.x, 32.0, MIN_PX_READOUT, readout_col)
+	_text(font, Vector2(0.0, 358.0), "SANGUIS", METER_SIZE.x, 16.0, MIN_PX_LATIN, OCHRE)
+	_text(font, Vector2(ARC_CENTER.x - 30.0, ARC_CENTER.y + 6.0), "%d%%" % roundi(stamina * 100.0), 60.0, 17.0, MIN_PX_PERCENT, PARCHMENT)
+	_text(font, Vector2(ARC_CENTER.x - 46.0, ARC_CENTER.y + 50.0), "VIRES", 92.0, 18.0, MIN_PX_PERCENT, PARCHMENT)
+	_text(font, Vector2(ARC_CENTER.x - 46.0, ARC_CENTER.y + 70.0), "Stamina", 92.0, 15.0, MIN_PX_SMALL, PARCHMENT)
+
+
+## One centred string at a control-local position and width (design units), sized per layout.
+func _text(font: Font, at: Vector2, text: String, width: float, base: float, min_px: float, col: Color) -> void:
+	draw_string(font, at * unit, text, HORIZONTAL_ALIGNMENT_CENTER, width * unit, text_size(base, min_px), col)
 
 
 func _draw_header(font: Font) -> void:
-	var band: Rect2 = Rect2(Vector2(4.0, 4.0), Vector2(size.x - 8.0, HEADER_H - 6.0))
+	var band: Rect2 = Rect2(Vector2(4.0, 4.0), Vector2(METER_SIZE.x - 8.0, HEADER_H - 6.0))
 	draw_rect(band, BLACK_BORDER)
 	draw_rect(band.grow(-2.0), PARCHMENT)
 	draw_rect(band, BRONZE, false, 2.0)
-	draw_string(font, Vector2(0.0, 30.0), display_name.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, size.x, 28, INK)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_text(font, Vector2(0.0, 30.0), display_name.to_upper(), METER_SIZE.x, 28.0, MIN_PX_NAME, INK)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(unit, unit))
 
 
 static func vial_rect() -> Rect2:

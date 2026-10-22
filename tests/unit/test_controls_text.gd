@@ -22,3 +22,18 @@ func test_local_2p_mentions_both_players() -> void:
 func test_table_rows_are_complete() -> void:
 	for r: Array in ControlsText.TABLE:
 		assert_eq(r.size(), 4)
+
+
+func test_compact_lines_follow_the_device() -> void:
+	var kb: Array = ControlsText.compact_lines("player_vs_cpu", false, false)
+	assert_eq(kb.size(), 1)
+	assert_true("WASD" in str(kb[0]))
+	var touch: Array = ControlsText.compact_lines("player_vs_cpu", false, true)
+	assert_true(touch.size() <= 2)
+	assert_false("WASD" in " ".join(PackedStringArray(touch)))
+	var pad: Array = ControlsText.compact_lines("player_vs_cpu", true, false)
+	assert_eq(pad.size(), 2)
+	assert_true("stick" in str(pad[0]))
+	assert_eq(ControlsText.compact_lines("local_2p", false, false).size(), 2)
+	for l: Variant in kb + touch + pad:
+		assert_true(str(l).length() <= 90, "short enough: %s" % str(l))

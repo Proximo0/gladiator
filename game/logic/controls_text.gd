@@ -41,3 +41,18 @@ static func hint_lines(mode: String, has_pad: bool, has_touch: bool) -> Array:
 
 static func _touch_only(has_pad: bool, has_touch: bool) -> bool:
 	return has_touch and not has_pad
+
+
+## Short hint for the first seconds of a fight: one or two brief lines for the device in use (touch, gamepad, or
+## keyboard and mouse), so it can sit small at the top edge without covering the fight.
+static func compact_lines(mode: String, has_pad: bool, has_touch: bool) -> Array:
+	if mode == "local_2p":
+		return ["P1: WASD, mouse steers, click swing, Space thrust", "P2 pad: left stick move, right stick steers, RT swing, LT shield"]
+	if has_touch and not has_pad:
+		return ["Left thumb: move   Right drag: aim", "Buttons: thrust, off hand, grab, roll"]
+	var out: Array = []
+	if has_pad:
+		out.append("Left stick move   Right stick aim   RT swing   RB thrust   LT shield   X roll")
+	if not has_pad or not has_touch:
+		out.append("WASD move   Mouse aims   Click swing   Space thrust   Right click shield   E grab   C roll")
+	return out

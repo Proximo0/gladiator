@@ -184,3 +184,15 @@ func test_banner_fit_scale_never_overflows() -> void:
 	assert_true(1500.0 * k <= 1920.0 * 0.9 + 0.01)
 	assert_true(HUD.fit_scale(300.0, 1920.0, 0.9) > 1.0)
 	assert_eq(HUD.fit_scale(0.0, 1920.0, 0.9), HUD.BANNER_MAX_SCALE)
+
+
+func test_meter_layout_keeps_text_readable() -> void:
+	var m := BloodMeter.new()
+	m.configure(1.0, 0.28)  # a phone: 0.28 screen px per unit
+	assert_true(m.text_size(16.0, BloodMeter.MIN_PX_LATIN) >= int(BloodMeter.MIN_PX_LATIN / 0.28))
+	m.configure(3.0, 0.28)
+	assert_near(m.size.x, BloodMeter.METER_SIZE.x * 3.0)
+	assert_eq(m.text_size(32.0, 1.0), 96)  # grows with the meter when above the floor
+	m.free()
+	assert_near(HUD.meter_px(540.0), HUD.METER_MIN_PX)
+	assert_near(HUD.meter_px(5000.0), HUD.METER_MAX_PX)

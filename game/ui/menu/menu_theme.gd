@@ -107,12 +107,12 @@ static func button(text: String, min_w: float = 0.0) -> Button:
 
 
 ## Greek-key rule across `rect` (call from a draw handler).
-static func draw_meander(ci: CanvasItem, x: float, y: float, width: float, cell: float = 14.0) -> void:
+static func draw_meander(ci: CanvasItem, x: float, y: float, width: float, cell: float = 14.0, stroke: float = 3.0) -> void:
 	var w: float = floorf(width / cell) * cell
 	var x0: float = x + (width - w) * 0.5
 	for seg: PackedVector2Array in BloodMeter.meander_cells(w, cell, Vector2(x0, y)):
-		ci.draw_polyline(seg, OCHRE, 3.0, true)
-	ci.draw_line(Vector2(x0, y + cell + 6.0), Vector2(x0 + w, y + cell + 6.0), BRONZE, 2.0)
+		ci.draw_polyline(seg, OCHRE, stroke, true)
+	ci.draw_line(Vector2(x0, y + cell + 6.0), Vector2(x0 + w, y + cell + 6.0), BRONZE, maxf(2.0, stroke * 0.66))
 
 
 static func dim_rect() -> ColorRect:

@@ -5,11 +5,18 @@ extends Control
 
 signal chosen(id: String)  ## "quick", "fight", "local_2p", "leaderboard", "online", "bots", "options", "quit"
 
+const TITLE_MIN: float = 56.0
+const EDGE: float = 14.0  ## Clear space kept at the top and bottom.
+const RULE_MIN_PX: float = 12.0  ## Smallest meander cell on screen.
+
 var _title: Label
 var _sub: Label
 var _rule: Control
 var _col: VBoxContainer
 var _first: Button
+var _buttons: Array[Button] = []
+var _gap: Control
+var _rule_cell: float = 14.0
 
 
 func _init() -> void:
@@ -28,7 +35,7 @@ func _init() -> void:
 	_rule = Control.new()
 	_rule.custom_minimum_size = Vector2(0.0, 40.0)
 	_rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_rule.draw.connect(func() -> void: MenuTheme.draw_meander(_rule, _rule.size.x * 0.1, 6.0, _rule.size.x * 0.8))
+	_rule.draw.connect(func() -> void: MenuTheme.draw_meander(_rule, _rule.size.x * 0.1, 6.0, _rule.size.x * 0.8, _rule_cell, maxf(3.0, _rule_cell * 0.22)))
 	_col.add_child(_rule)
 	_sub = MenuTheme.label("MORS AVT VICTORIA", 56, MenuTheme.OCHRE)
 	_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -36,9 +43,9 @@ func _init() -> void:
 	var eng := MenuTheme.label("Death or victory", MenuTheme.FONT_SMALL, MenuTheme.PARCHMENT.darkened(0.2))
 	eng.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_col.add_child(eng)
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0.0, 30.0)
-	_col.add_child(gap)
+	_gap = Control.new()
+	_gap.custom_minimum_size = Vector2(0.0, 30.0)
+	_col.add_child(_gap)
 	var entries: Array = [["quick", "Quick Match"], ["fight", "Fight  (vs CPU)"], ["local_2p", "Local 2 players"],
 			["leaderboard", "Leaderboard"], ["shop", "Shop"], ["online", "Online 1v1 (direct IP)"], ["bots", "Watch bots"], ["options", "Options"]]
 	if not OS.has_feature("mobile") and not OS.has_feature("web"):
@@ -49,6 +56,7 @@ func _init() -> void:
 		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(func() -> void: chosen.emit(str(e[0])))
 		_col.add_child(b)
+		_buttons.append(b)
 		if _first == null:
 			_first = b
 	var hint := MenuTheme.label("Arrows / stick: move    Enter / A: select    Esc / B: back", 24, MenuTheme.DIM_TEXT)
@@ -63,11 +71,46 @@ func focus_first() -> void:
 	_first.grab_focus()
 
 
+## Fits the whole column to the viewport: the wordmark and the buttons shrink together until it all fits (short
+## landscape windows), and the meander rule's cell grows so it keeps at least RULE_MIN_PX on screen (phones).
 func _relayout() -> void:
 	_col.position = Vector2.ZERO
 	_col.size = size
-	_title.add_theme_font_size_override("font_size", int(clampf(minf(size.x / 7.2, size.y / 6.5), 70.0, 190.0)))
-	_title.add_theme_constant_override("outline_size", int(clampf(size.x / 70.0, 8.0, 22.0)))
+	var title_px: float = clampf(minf(size.x / 7.2, size.y / 6.5), TITLE_MIN, 190.0)
+	var btn_h: float = 58.0
+	var gap_h: float = 30.0
+	var avail: float = size.y - 2.0 * EDGE
+	for _pass: int in 12:
+		_title.add_theme_font_size_override("font_size", int(title_px))
+		for b: Button in _buttons:
+			b.custom_minimum_size.y = btn_h
+		_gap.custom_minimum_size.y = gap_h
+		_col.reset_size()
+		if _col.get_combined_minimum_size().y <= avail:
+			break
+		title_px = maxf(title_px * 0.92, TITLE_MIN)
+		btn_h = maxf(btn_h - 3.0, 38.0)
+		gap_h = maxf(gap_h - 4.0, 4.0)
+	_col.position = Vector2.ZERO
+	_col.size = size
+	_title.add_theme_constant_override("outline_size", int(clampf(title_px / 8.5, 6.0, 22.0)))
+	_fit_rule()
+
+
+func _process(_delta: float) -> void:
+	if visible:
+		_fit_rule()  # the layer's scale is set after this screen's first layout
+
+
+func _fit_rule() -> void:
+	if not is_inside_tree():
+		return
+	var px: float = maxf(get_global_transform_with_canvas().get_scale().x * get_viewport().get_final_transform().get_scale().x, 0.01)
+	var cell: float = maxf(14.0, RULE_MIN_PX / px)
+	if not is_equal_approx(cell, _rule_cell):
+		_rule_cell = cell
+		_rule.custom_minimum_size.y = cell + 26.0
+		_rule.queue_redraw()
 
 
 func _draw() -> void:

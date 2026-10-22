@@ -342,11 +342,17 @@ func _relayout() -> void:
 	_title.add_theme_font_size_override("font_size", 40 if portrait else 52)
 	if portrait:
 		_body.move_child(_mid, 0)
-		_preview.custom_minimum_size = Vector2(300.0, 460.0)
+		_preview.custom_minimum_size = Vector2(300.0, 340.0)
 		_panel_a.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		_panel_b.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	else:
 		_body.move_child(_mid, 1)
 		_preview.custom_minimum_size = Vector2(300.0, 420.0)
+	_panel_a.set_compact(portrait)
+	_panel_b.set_compact(portrait, false)  # the opponent's stat card is dropped on a phone
+	for pk: MenuPicker in [_cpu_mode, _cpu_diff, _cpu_level]:
+		pk.custom_minimum_size.y = LoadoutPanel.ROW_COMPACT_H if portrait else LoadoutPanel.ROW_H
+	_diff_note.custom_minimum_size.y = 56.0 if portrait else 84.0
 
 
 ## A small padlock for locked outfits (drawn, so it needs no font glyph).

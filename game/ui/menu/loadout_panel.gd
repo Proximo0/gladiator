@@ -9,6 +9,7 @@ extends PanelContainer
 signal loadout_changed(loadout: Dictionary)
 
 const ROW_H: float = 58.0
+const ROW_COMPACT_H: float = 48.0
 
 var weapon_picker: MenuPicker
 var offhand_picker: MenuPicker
@@ -24,6 +25,8 @@ var _access: Variant = null  ## the `owned` list weapons are checked against (nu
 var _progress: Dictionary = {}  ## PlayerProgress counters, for the "(1/4)" in the lock note
 var _usable_weapon: String = ""  ## the weapon the loadout really carries (the browsed one unless it is locked)
 var _lock_note: Label
+var _card: Control
+var _compact: bool = false
 
 
 func _init() -> void:
@@ -59,6 +62,7 @@ func _init() -> void:
 	var card := VBoxContainer.new()
 	card.add_theme_constant_override("separation", 4)
 	v.add_child(card)
+	_card = card
 	_card_name = MenuTheme.label("", 34, MenuTheme.PARCHMENT)
 	_card_name.clip_text = true
 	card.add_child(_card_name)
@@ -69,6 +73,17 @@ func _init() -> void:
 		var bar := MenuStatBar.new(str(k[1]))
 		card.add_child(bar)
 		_bars[str(k[0])] = bar
+
+
+## Portrait phones: shorter rows and a smaller header, and optionally no stat card, so both panels fit the screen.
+func set_compact(compact: bool, show_card: bool = true) -> void:
+	_compact = compact
+	_card.visible = show_card or not compact
+	_header.add_theme_font_size_override("font_size", 30 if compact else 38)
+	for c: Node in _rows.get_children():
+		if c is MenuPicker:
+			(c as MenuPicker).custom_minimum_size.y = ROW_COMPACT_H if compact else ROW_H
+	_rows.add_theme_constant_override("separation", 5 if compact else 8)
 
 
 func _add_picker(title: String, items: Array) -> MenuPicker:
