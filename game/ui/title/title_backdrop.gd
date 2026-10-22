@@ -110,7 +110,7 @@ func _add_motes() -> void:
 	p.lifetime = 9.0
 	p.preprocess = 9.0
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	p.emission_box_extents = Vector3(6.0, 1.8, 6.0)
+	p.emission_box_extents = Vector3(3.6, 1.8, 3.6)  # well inside the camera path: no blurry blob filling the lens
 	p.position = Vector3(0.0, 1.9, 0.0)
 	p.direction = Vector3(1.0, 0.25, 0.3)
 	p.spread = 60.0

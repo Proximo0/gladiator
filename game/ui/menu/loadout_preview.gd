@@ -103,39 +103,40 @@ func _light(from: Vector3, col: Color, energy: float) -> void:
 func _build_plinth() -> void:
 	var base := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
-	cm.top_radius = 1.25
-	cm.bottom_radius = 1.4
+	cm.top_radius = 0.95
+	cm.bottom_radius = 1.05
 	cm.height = 0.24
 	cm.radial_segments = 48
 	var stone := StandardMaterial3D.new()
-	stone.albedo_color = Color(0.74, 0.64, 0.5)
-	stone.roughness = 0.95
+	stone.albedo_color = Color(0.46, 0.38, 0.29)
+	stone.roughness = 1.0
 	cm.material = stone
 	base.mesh = cm
 	base.position = Vector3(0.0, -0.13, 0.0)
 	_stage.add_child(base)
 	var rim := MeshInstance3D.new()
 	var tm := TorusMesh.new()
-	tm.inner_radius = 1.2
-	tm.outer_radius = 1.28
+	tm.inner_radius = 0.9
+	tm.outer_radius = 0.96
 	tm.rings = 48
 	var bronze := StandardMaterial3D.new()
-	bronze.albedo_color = Color(0.62, 0.42, 0.2)
-	bronze.metallic = 0.85
-	bronze.roughness = 0.38
+	bronze.albedo_color = Color(0.5, 0.33, 0.16)
+	bronze.metallic = 0.6
+	bronze.roughness = 0.5
 	tm.material = bronze
 	rim.mesh = tm
 	rim.position = Vector3(0.0, -0.01, 0.0)
 	_stage.add_child(rim)
 	var top := MeshInstance3D.new()
 	var dm := CylinderMesh.new()
-	dm.top_radius = 1.2
-	dm.bottom_radius = 1.2
+	dm.top_radius = 0.9
+	dm.bottom_radius = 0.9
 	dm.height = 0.02
 	dm.radial_segments = 48
 	var sand := StandardMaterial3D.new()
-	sand.albedo_color = Color(0.55, 0.42, 0.27)
+	sand.albedo_color = Color(0.36, 0.27, 0.17)
 	sand.roughness = 1.0
+	sand.specular_mode = BaseMaterial3D.SPECULAR_DISABLED  # no glare streaks on the flat top
 	dm.material = sand
 	top.mesh = dm
 	top.position = Vector3(0.0, -0.02, 0.0)
@@ -164,22 +165,24 @@ func show_weapon(id: String, locked: bool) -> void:
 		_show_weapon = null
 	if id == "" or CombatData.weapon(id).is_empty():
 		return
+	# Build the real weapon, then keep only copies of its meshes: a physics body ignores any scale above it, and the
+	# close-up scales every weapon to one height.
 	var w := Weapon.new()
 	w.build(CombatData.weapon(id))
-	w.freeze = true
-	w.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
-	w.collision_layer = 0
-	w.collision_mask = 0
-	w.contact_monitor = false
 	var holder := Node3D.new()
-	holder.add_child(w)
+	var body := Node3D.new()
+	holder.add_child(body)
+	for c: Node in w.get_children():
+		if c is VisualInstance3D or (c is Node3D and not (c is CollisionShape3D) and not (c is Joint3D)):
+			body.add_child(c.duplicate())
 	var span: float = maxf(w.length, 0.3)
 	var k: float = SHOWCASE_H / maxf(span, SHOWCASE_H * 0.5)  # small weapons grow, long ones shrink
 	holder.scale = Vector3.ONE * k
 	# Centre it on its pivot: the grip is at the origin and the weapon runs up +Y.
-	w.position = Vector3(0.0, -(w.tip_local.y - span * 0.5 if w.shape_kind != "shield" else 0.0), 0.0)
+	body.position = Vector3(0.0, -(w.tip_local.y - span * 0.5) if w.shape_kind != "shield" else 0.0, 0.0)
+	w.free()
 	if locked:
-		_silhouette(w)
+		_silhouette(body)
 	_show_weapon = holder
 	_show_pivot.add_child(holder)
 	_fit_showcase()

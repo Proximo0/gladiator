@@ -15,11 +15,12 @@ const BODY_WIDE: int = 30
 const BODY_PORTRAIT: int = 26
 const SEP_WIDE: int = 18
 const SEP_PORTRAIT: int = 12
+const SCROLL_STEP: float = 64.0  ## units the table scrolls per up/down press
 const NAME_MIN: float = 160.0  ## the name column never gets less than this; the tier column gives way first
 
 var service: OnlineService = null
 
-var _title: Label
+var _title: ScreenHeader
 var _rows: VBoxContainer
 var _inner: VBoxContainer
 var _header: HBoxContainer
@@ -28,6 +29,7 @@ var _data: Dictionary = {}  ## the last data shown, redrawn when the orientation
 var _me_line: Label
 var _source: Label
 var _back: Button
+var _scroll: ScrollContainer
 
 
 func _init() -> void:
@@ -47,8 +49,7 @@ func _init() -> void:
 	root.offset_bottom = -16.0
 	root.add_theme_constant_override("separation", 10)
 	add_child(root)
-	_title = MenuTheme.label("ALBVM / Leaderboard", 52, MenuTheme.PARCHMENT)
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title = ScreenHeader.new("ALBVM / Leaderboard")
 	root.add_child(_title)
 	var panel := PanelContainer.new()
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -64,6 +65,7 @@ func _init() -> void:
 	rule.custom_minimum_size = Vector2(0.0, 3.0)
 	inner.add_child(rule)
 	var scroll := ScrollContainer.new()
+	_scroll = scroll
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	inner.add_child(scroll)
@@ -184,14 +186,20 @@ func _tier_width(size_px: int) -> float:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if visible and event.is_action_pressed("ui_cancel"):
+	if not visible:
+		return
+	if event.is_action_pressed("ui_cancel"):
 		back.emit()
+		get_viewport().set_input_as_handled()
+	elif _back.has_focus() and (event.is_action_pressed("ui_up", true) or event.is_action_pressed("ui_down", true)):
+		# Back is the only button: up and down scroll the table instead (pad and keys reach every row).
+		_scroll.scroll_vertical += int(SCROLL_STEP) * (-1 if event.is_action_pressed("ui_up", true) else 1)
 		get_viewport().set_input_as_handled()
 
 
 func _relayout() -> void:
 	var portrait: bool = size.x < size.y * 1.05
-	_title.add_theme_font_size_override("font_size", 40 if portrait else 52)
+	_title.set_compact(portrait)
 	if portrait == _portrait:
 		return
 	_portrait = portrait

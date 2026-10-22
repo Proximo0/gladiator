@@ -21,7 +21,7 @@ enum Phase { IDLE, SEARCHING, FOUND, CONNECTING, STARTED }
 const FOUND_DELAY_S: float = 1.6  ## the opponent card stays up this long before the connection is made (host listens at once)
 const SPIN_RATE: float = 5.0
 
-var _title: Label
+var _title: ScreenHeader
 var _body: BoxContainer
 var _left: VBoxContainer
 var _name_edit: LineEdit
@@ -68,8 +68,7 @@ func _init(p_state: MenuState) -> void:
 	root.offset_bottom = -16.0
 	root.add_theme_constant_override("separation", 10)
 	add_child(root)
-	_title = MenuTheme.label("ARENA REMOTA / Online 1v1", 52, MenuTheme.PARCHMENT)
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title = ScreenHeader.new("ARENA REMOTA / Online 1v1")
 	root.add_child(_title)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -209,7 +208,7 @@ func _set_mode(quick: bool) -> void:
 		c.visible = not quick
 	_quick_box.visible = quick
 	_opponent.visible = not quick
-	_title.text = "ARENA REMOTA / Quick Match" if quick else "ARENA REMOTA / Online 1v1"
+	_title.set_text("ARENA REMOTA / Quick Match" if quick else "ARENA REMOTA / Online 1v1")
 	_back.text = "Cancel" if quick else "Back"
 	_start.text = "Search again" if quick else "FIGHT!"
 	set_process(quick)
@@ -526,7 +525,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _relayout() -> void:
 	var portrait: bool = size.x < size.y * 1.05
 	_body.vertical = portrait
-	_title.add_theme_font_size_override("font_size", 40 if portrait else 52)
+	_title.set_compact(portrait)
 	_queue_link()
 
 
