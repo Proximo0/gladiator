@@ -109,6 +109,56 @@ func test_hit_counts_and_kinds() -> void:
 	assert_eq((d["contact_kinds"] as Dictionary)["flat"], 1)
 
 
+func _blow(att: int, part: String = "torso") -> Dictionary:
+	return {"attacker": att, "target": 1 - att, "part": part, "contact": "edge", "total": 10.0}
+
+
+func test_one_swing_touching_two_parts_is_one_blow() -> void:
+	var s := MatchStats.new()
+	s.on_hit(_blow(0), 1.0)
+	s.on_hit(_blow(0, "forearm_l"), 1.05)  # the same swing, inside combo_merge_s
+	s.on_hit(_blow(0), 2.0)
+	assert_eq(s.hits_by_side, [3, 0], "contacts")
+	assert_eq(s.blows_by_side, [2, 0], "blows")
+	assert_eq(s.longest_combo, [2, 0])
+
+
+func test_combo_runs_until_a_reply_or_a_gap() -> void:
+	var s := MatchStats.new()
+	for i: int in 4:
+		s.on_hit(_blow(0), 1.0 + 0.8 * float(i))  # 4 blows, 0.8 s apart
+	s.on_hit(_blow(1), 4.5)  # a reply breaks it
+	s.on_hit(_blow(0), 4.9)
+	s.on_hit(_blow(0), 9.0)  # past combo_gap_s: a new run
+	assert_eq(s.blows_by_side, [6, 1])
+	assert_eq(s.longest_combo, [4, 1])
+
+
+func test_parries_and_self_hits_are_not_blows() -> void:
+	var s := MatchStats.new()
+	s.on_hit({"attacker": 0, "target": 1, "hit_on_weapon": true}, 1.0)
+	s.on_hit({"attacker": 1, "target": 1, "contact": "flat"}, 2.0)
+	assert_eq(s.blows_by_side, [0, 0])
+	assert_eq(s.longest_combo, [0, 0])
+
+
+## "Hits landed" and "Longest combo" read the same blows: a side's combo never exceeds its blows, and a burst of
+## contacts inside the merge window adds one to each.
+func test_hits_landed_and_longest_combo_agree() -> void:
+	var s := MatchStats.new()
+	for i: int in 3:
+		var t: float = 1.0 + 0.5 * float(i)
+		s.on_hit(_blow(0), t)
+		s.on_hit(_blow(0, "upper_arm_l"), t + 0.02)
+		s.on_hit(_blow(0, "head"), t + 0.04)
+	assert_eq(s.hits_by_side[0], 9)
+	assert_eq(s.blows_by_side[0], 3)
+	assert_eq(s.longest_combo[0], 3)
+	var d: Dictionary = s.to_dict()
+	assert_eq(d["blows_by_side"], [3, 0])
+	assert_eq(d["longest_combo"], [3, 0])
+
+
 func test_finisher_and_severs() -> void:
 	var s := MatchStats.new()
 	s.on_gore({"kind": "sever", "part": "forearm_r"})
@@ -190,7 +240,7 @@ func test_explosions() -> void:
 func test_to_dict_has_contract_keys() -> void:
 	var d: Dictionary = MatchStats.new().to_dict()
 	for k: String in ["hits", "hits_by_side", "contact_kinds", "max_tip_speed", "mean_tip_speed", "severs", "finisher",
-			"disarms", "arm_drops", "rearms", "rearms_after_disarm", "stamina0_max_s", "getup_fails", "armor_dislodged", "self_hits", "knockdowns", "time_down_s", "stuck_s", "explosions",
+			"disarms", "arm_drops", "rearms", "rearms_after_disarm", "stamina0_max_s", "getup_fails", "armor_dislodged", "self_hits", "knockdowns", "blows_by_side", "longest_combo", "time_down_s", "stuck_s", "explosions",
 			"wall_time_s", "blood_left", "mean_dist", "strike_share", "travel0", "travel1", "cells"]:
 		assert_true(d.has(k), k)
 

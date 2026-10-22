@@ -131,6 +131,7 @@ static func normalize(config: Dictionary, default_seed: int) -> Dictionary:
 	out["presentation"] = bool(config.get("presentation", true))
 	out["time_limit_s"] = maxf(float(config.get("time_limit_s", DEFAULT_TIME_LIMIT_S)), 1.0)
 	out["loop"] = bool(config.get("loop", out["presentation"] and out["mode"] == "bot_vs_bot"))
+	out["fight_start_tick"] = maxi(int(config.get("fight_start_tick", 0)), 0)
 	return out
 
 

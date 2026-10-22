@@ -106,6 +106,7 @@ func on_events(bytes: PackedByteArray) -> void:
 func on_over(d: Dictionary) -> void:
 	result = {"winner": clampi(NetLobby.int_of(d.get("winner"), -1), -1, 1), "reason": str(d.get("reason", "")),
 		"ticks": maxi(NetLobby.int_of(d.get("ticks"), 0), 0), "seed": NetLobby.int_of(d.get("seed"), 0)}
+	result["fight_ticks"] = maxi(int(result["ticks"]) - (match_node.fight_start_tick if match_node != null else 0), 0)
 
 
 func _physics_process(delta: float) -> void:

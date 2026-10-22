@@ -9,7 +9,8 @@ extends Node
 ## is set aside (null reader + null brain = neutral input, the same path as the practice dummy), so the sim keeps
 ## ticking (camera primes, ragdolls settle, recorder sees neutral input) and nothing needs pausing. Online the hold is
 ## `hold_changed` (MenuFlow sets NetSession.input_blocked on each peer) and the clock is the match tick, so both peers
-## release on the same host tick; online intros cannot be skipped. No new net traffic either way.
+## release on the same host tick (START's fight_tick, Match.fight_start_tick); online intros cannot be skipped.
+## Either way the Match's fight clock (time limit, fight time, ranked report ticks) counts from the release.
 
 signal hold_changed(on: bool)
 signal intro_finished
@@ -32,7 +33,6 @@ var tally: FightTally = FightTally.new()
 var timeline: IntroTimeline = null
 var online: bool = false
 var local_side: int = 0  ## the fighter on this screen (an online client is side 1): the camera ends behind it
-var intro_end_tick: int = 0  ## the match tick the fighters were released on (fight time counts from here)
 
 var _intro: MatchIntro = null
 var _cam: Camera3D = null
@@ -73,9 +73,9 @@ func intro_phase() -> String:
 	return timeline.phase() if timeline != null else ""
 
 
-## Seconds of fighting so far (from the release), at `tick`.
+## Seconds of fighting so far (from the release, the Match's fight clock), at `tick`.
 func fight_seconds(tick: int) -> float:
-	return float(maxi(tick - intro_end_tick, 0)) / float(Engine.physics_ticks_per_second)
+	return float(maxi(tick - match_node.fight_start_tick, 0)) / float(Engine.physics_ticks_per_second)
 
 
 func _listen() -> void:
@@ -85,8 +85,7 @@ func _listen() -> void:
 
 
 func _on_hit(ev: Dictionary) -> void:
-	var tun: Tuning = Tuning.shared()
-	tally.on_hit(ev, float(match_node.tick) / float(Engine.physics_ticks_per_second), tun.combo_gap_s, tun.combo_merge_s)
+	tally.on_hit(ev)
 
 
 func _on_gore(ev: Dictionary, side: int) -> void:
@@ -100,9 +99,9 @@ func plates(mode: String, local_side: int, ratings: Array) -> Array:
 		"local_side": local_side, "ratings": ratings})
 
 
-## The results screen's content (MatchReport.build) for `result`: hits from MatchStats (an online client's stats see
-## the host's replayed hits), blood lost from the result's stats or the fighters, severs and combos from the tally,
-## fight time from the release. `rating` is the rating service's summary ({} unrated), `notes` extra lines.
+## The results screen's content (MatchReport.build) for `result`: blows and combos from MatchStats (an online
+## client's stats see the host's replayed hits), blood lost from the result's stats or the fighters, severs from the
+## tally, fight time from the release. `rating` is the rating service's summary ({} unrated), `notes` extra lines.
 func report(result: Dictionary, local_side: int, is_online: bool, rating: Dictionary, notes: String) -> Dictionary:
 	var m: Match = match_node
 	var stats: Dictionary = result.get("stats", {})
@@ -115,7 +114,7 @@ func report(result: Dictionary, local_side: int, is_online: bool, rating: Dictio
 	return MatchReport.build({
 		"mode": "online" if is_online else str(m.config.get("mode", "")), "names": m.names, "local_side": local_side,
 		"winner": int(result.get("winner", -1)), "reason": str(result.get("reason", "")),
-		"hits": m.stats.hits_by_side, "blood_lost": lost, "severs": tally.severs, "combos": tally.longest_combo,
+		"hits": m.stats.blows_by_side, "blood_lost": lost, "severs": tally.severs, "combos": m.stats.longest_combo,
 		"fight_s": fight_seconds(int(result.get("ticks", m.tick))), "rating": rating, "unlocked": notes,
 	})
 
@@ -153,6 +152,8 @@ func _begin_intro(plates: Array, intro_s: float, fight_s: float) -> void:
 	add_child(_intro)
 	_intro.setup(plates, timeline.skippable)
 	_hold(true)
+	if not online:
+		match_node.hold_fight_clock()  # online the clock is fixed by START (Match.fight_start_tick)
 	_fight_ui(false)
 	_cam = Camera3D.new()
 	_cam.name = "IntroCamera"
@@ -208,7 +209,8 @@ func _release() -> void:
 	_released = true
 	_hold(false)
 	_fight_ui(true)
-	intro_end_tick = match_node.tick
+	if not online:
+		match_node.start_fight_clock()
 	if _cam != null:
 		_cam.queue_free()
 		_cam = null

@@ -4,6 +4,11 @@ extends RefCounted
 ## Match owns one and puts `to_dict()` into its result. No Nodes, no wall clock (the Match sets `wall_time_s`).
 ##
 ## Definitions: a "hit" is a resolved weapon contact on a body (weapon-on-weapon contacts count as `parries`).
+## A "blow" is what the player sees as one strike: hits by one fighter on the other, where contacts closer than
+## `combo_merge_s` to that fighter's last counted blow (one swing touching several parts) count once. A combo is a run
+## of blows by one fighter with no blow landed back, each within `combo_gap_s` of the previous one. `blows_by_side`
+## and `longest_combo` are the results screen's "Hits landed" and "Longest combo" (the Match sets both windows from
+## Tuning); `hits_by_side` stays the raw contact count.
 ## "Swinging" is a tip speed of SWING_SPEED or more. "Stuck" is both fighters' pelvis speed under STUCK_SPEED and
 ## both tips slower than STUCK_TIP; `stuck_s` is the time spent stuck beyond STUCK_GRACE_S, summed over the match.
 ## An "explosion" is a tick where any body part moves faster than EXPLODE_SPEED, is NaN/inf, or falls below FALL_Y.
@@ -34,6 +39,10 @@ const STRIKE_MARGIN: float = 1.05
 var ticks: int = 0
 var hits: int = 0
 var hits_by_side: Array = [0, 0]
+var blows_by_side: Array = [0, 0]
+var longest_combo: Array = [0, 0]
+var combo_gap_s: float = 1.5
+var combo_merge_s: float = 0.15
 var contact_kinds: Dictionary = {"edge": 0, "point": 0, "flat": 0, "blunt": 0}
 var parries: int = 0
 var max_tip_speed: float = 0.0
@@ -66,10 +75,13 @@ var _prev_pos: Dictionary = {}
 var _prev_state: Array = ["", ""]
 var _weapon_log: Array = [{}, {}]
 var _stamina0_run: Array = [0.0, 0.0]
+var _run_side: int = -1
+var _run_len: int = 0
+var _last_blow_t: float = -1.0e9
 
 
-## A resolved hit event (Fighter.hit payload).
-func on_hit(ev: Dictionary) -> void:
+## A resolved hit event (Fighter.hit payload) at fight time `t_s` (seconds; only blows and combos use it).
+func on_hit(ev: Dictionary, t_s: float = 0.0) -> void:
 	if bool(ev.get("hit_on_weapon", false)):
 		if bool(ev.get("disarmed", false)):
 			disarms += 1
@@ -82,6 +94,8 @@ func on_hit(ev: Dictionary) -> void:
 		hits_by_side[att] = int(hits_by_side[att]) + 1
 	if att == tgt:
 		self_hits += 1
+	elif att == 0 or att == 1:
+		_on_blow(att, t_s)
 	var kind: String = str(ev.get("contact", ""))
 	if contact_kinds.has(kind):
 		contact_kinds[kind] = int(contact_kinds[kind]) + 1
@@ -92,6 +106,21 @@ func on_hit(ev: Dictionary) -> void:
 	var fin: String = str(ev.get("finisher", ""))
 	if fin != "":
 		finisher = fin
+
+
+## One contact by `att` on the other fighter at `t_s`: a new blow unless it is the same swing as the last blow.
+func _on_blow(att: int, t_s: float) -> void:
+	var dt: float = t_s - _last_blow_t
+	if att == _run_side and dt < combo_merge_s:
+		return
+	blows_by_side[att] = int(blows_by_side[att]) + 1
+	if att == _run_side and dt <= combo_gap_s:
+		_run_len += 1
+	else:
+		_run_side = att
+		_run_len = 1
+	_last_blow_t = t_s
+	longest_combo[att] = maxi(int(longest_combo[att]), _run_len)
 
 
 ## A Fighter.gore payload.
@@ -224,6 +253,7 @@ func mean_tip_speed() -> float:
 func to_dict() -> Dictionary:
 	return {
 		"ticks": ticks, "hits": hits, "hits_by_side": hits_by_side.duplicate(),
+		"blows_by_side": blows_by_side.duplicate(), "longest_combo": longest_combo.duplicate(),
 		"contact_kinds": contact_kinds.duplicate(), "parries": parries,
 		"max_tip_speed": max_tip_speed, "mean_tip_speed": mean_tip_speed(), "severs": severs, "finisher": finisher,
 		"disarms": disarms, "arm_drops": _log_sum("arm_drops"), "rearms": _log_sum("rearms"),
