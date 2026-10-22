@@ -54,6 +54,11 @@ server GUID, LAN device id).
 `Rating.reconcile` status (`agree`, `single`, `forfeit`, `disputed`, `voided`, `pending`). A `report` is
 `Rating.make_report(match_id, player_id, kind, winner_id, reason, ticks)` with `kind` `result`, `left` or `dropped`, signed
 with `Rating.sign_report(match_key, report)` (HMAC-SHA256).
+A report's `ticks` is **fight time**: match ticks from the pre-fight intro's release (`Match.fight_ticks()`, result key
+`fight_ticks`), not from the match start. The host puts the release tick in START (`fight_tick`, capped at
+`NetLobby.MAX_FIGHT_TICK`), so both peers count from the same tick and their reports carry the same number; the 180 s time
+limit counts from there too. A peer whose build predates `fight_tick` ignores it and reports ticks from the match start
+(about 138 more): harmless, since `reconcile` only checks `ticks` against `MIN_RATED_TICKS`, so no protocol bump.
 
 ### Running NetSession over the peer the service gives
 
@@ -195,6 +200,34 @@ the **server client credentials**, takes both players' signed reports, runs `Rat
 (the same GDScript logic can be ported, it is 150 lines of arithmetic), and calls the EOS Stats Web API
 (`POST /stats/v1/{deploymentId}/ingest/{accountId}`) with a server access token. That also lets it keep display names.
 Cost: one small VPS or a free-tier function.
+
+### Rematch on EOS (today unrated)
+
+A ranked (Quick Match) fight ends with no Rematch button: after the result both clients settle (`_settle`: each writes
+its signed report as a lobby member attribute, reads the other's, runs `Rating.reconcile`, lingers `REPORT_LINGER`) and
+then **leave the match lobby** (`_close_match(true, false)`). The lobby is what carries everything a rated fight needs:
+the match id (`lobby_id`), the per-match signing key (`ATTR_KEY`), both members (player ids) and the report channel. A
+NetSession rematch after that is a direct-lobby fight: no match id, no key, no reports, so it cannot be rated. The direct
+(IP) lobby's Rematch is unrated by design. What a **rated rematch** needs, in order of effort:
+
+1. **Keep the lobby (Tier 0, client-only).** After `_settle` do not close the match lobby; offer Rematch on both screens.
+   When both members set a `sb_rematch` member attribute (a nonce each), the lobby owner (the host) writes a new
+   `sb_mid` lobby attribute (`lobby_id + "#" + n`, n = rematch count) and a new `ATTR_KEY` derived from both nonces
+   (`HMAC(old_key, nonce_a + nonce_b)`, so neither side picks it alone), then sends START. Both sides clear their
+   `ATTR_REPORT` attribute before the fight and report under the new match id; `report_result` and `_reported` key on
+   it, so the existing duplicate rule still holds. The repeat-pair damper (K x 1, 1, 0.5, 0.25, 0.1 within 12 games)
+   already stops rematch farming. Leaving between fights is a plain leave (no report open, nobody rated). Cost: a
+   state in `ServiceEos` (matched, settled, rematch offered), a `match_info` refresh signal for OnlineScreen, and
+   the same P2P peer kept open (it is, until `_close_match(..., close_peer)`). Trust stays Tier 0: a modified client
+   can still lie in its own report, as in the first fight.
+2. **A verifier (Tier 1).** The small web service from "Tiers" above takes both signed reports per match id, runs
+   `Rating.reconcile`, and ingests the stats with server credentials. A rematch is then just a new match id the
+   verifier issues to the same pair (the host asks, the verifier answers both players with a new key), so the
+   lobby can be left or kept. This is the version a public leaderboard should use.
+
+Without one of these, an EOS rematch must stay unrated; the results screen already says so (no Rematch on ranked). Nothing
+here needs EOS calls from the cloud box: (1) is testable with `ServiceStub` (two reports per match id) and a `sim_net_quick`
+row that plays two fights in one lobby.
 
 ## Steam (alternative `ServiceSteam`)
 
