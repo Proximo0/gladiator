@@ -9,6 +9,8 @@ extends Node
 ##                           is normal. Without it nothing changes (the seeded personalities as before).
 ##   --side=0|1              which side gets --difficulty (default 0)
 ##   --w0=<id> --w1=<id>     force a side's weapon (no offhand); --armor=none|leather forces both sides' armor
+##   --o0=<id> --o1=<id>     force a side's off hand (after --w0/--w1; "" for none)
+##   --a0=<ids> --a1=<ids>   force a side's armor, comma-separated armor ids ("" for none)
 ##   --wide=0|1              that side swings broad horizontal sweeps (a human-style proxy)
 ##   --hitlog                add per-hit sums (damage, bleed, contact kinds, by weapon) to the stats as "hitlog"
 ## Prints one `BOT match ...` line per match and `BOT score=<pass fraction> matches=N failed=F ...`.
@@ -109,7 +111,9 @@ func _forced_loadouts(seed_v: int) -> Array:
 	var w0: String = Flags.get_arg("w0", "")
 	var w1: String = Flags.get_arg("w1", "")
 	var arm: String = Flags.get_arg("armor", "")
-	if w0 == "" and w1 == "" and arm == "":
+	var offs: Array = [Flags.get_arg("o0", "-"), Flags.get_arg("o1", "-")]
+	var sets: Array = [Flags.get_arg("a0", "-"), Flags.get_arg("a1", "-")]
+	if w0 == "" and w1 == "" and arm == "" and offs == ["-", "-"] and sets == ["-", "-"]:
 		return []
 	var base: Array = MatchConfig.normalize({"seed": seed_v}, seed_v)["loadouts"]
 	var out: Array = []
@@ -123,6 +127,12 @@ func _forced_loadouts(seed_v: int) -> Array:
 			l["armor"] = {}
 		elif arm == "leather":
 			l["armor"] = {"head": "helm_leather", "torso": "cuirass_leather", "upper_arm_l": "bracers_leather", "thigh_l": "greaves_leather"}
+		if str(offs[i]) != "-":
+			l["offhand"] = str(offs[i])
+		if str(sets[i]) != "-":
+			l["armor"] = {}
+			for aid: String in str(sets[i]).split(",", false):
+				l["armor"][str(CombatData.armor(aid).get("part", ""))] = aid
 		out.append(l)
 	return out
 

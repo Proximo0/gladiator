@@ -107,20 +107,23 @@ func build(d: Dictionary, physical_mass: float = -1.0) -> void:
 			_add_box(Vector3(0.26, 0.04, 0.04), Vector3(0, tip - 0.02, 0), steel * 0.7)
 			for i: int in range(5):
 				_add_box(Vector3(0.012, 0.012, 0.09), Vector3(-0.1 + 0.05 * i, tip - 0.03, 0.06), steel * 0.7)
-		"scutum":
-			# Tall curved board (assets/armor/scutum.glb, grip at the boss): one box collider over the face.
+		"scutum", "board":
+			# Tall board (scutum, kite, tower, pelta; grip at the boss): one box collider over the face, `width` by
+			# `length`, its centre at the def's "center" [x, y] off the grip (an off-centre kite).
+			var c: Vector3 = face_center(d)
 			var half_h: float = length * 0.5
-			tip_local = Vector3(0, half_h, 0.06)
-			com_local = Vector3(0, 0, 0.05)
-			_add_box(Vector3(float(d.get("width", 0.68)) - 0.02, length - 0.02, 0.06), Vector3(0, 0, 0.06), col)
+			tip_local = Vector3(c.x, c.y + half_h, 0.06)
+			com_local = Vector3(c.x, c.y, 0.05)
+			_add_box(Vector3(float(d.get("width", 0.68)) - 0.02, length - 0.02, 0.06), c + Vector3(0, 0, 0.06), col)
 			_add_box(Vector3(0.14, 0.03, 0.03), Vector3.ZERO, wood)
 		"shield":
 			var r: float = length * 0.5
-			tip_local = Vector3(0, r, 0.05)
-			com_local = Vector3(0, 0, 0.04)
-			_add_cylinder(r, 0.035, Vector3(0, 0, 0.05), Basis(Vector3(1, 0, 0), PI * 0.5), col)
-			_add_sphere(0.07, Vector3(0, 0, 0.08), steel * 0.8)
-			_add_box(Vector3(0.04, 0.14, 0.03), Vector3.ZERO, wood)
+			var c: Vector3 = face_center(d)
+			tip_local = Vector3(c.x, c.y + r, 0.05)
+			com_local = Vector3(c.x, c.y, 0.04)
+			_add_cylinder(r, 0.035, c + Vector3(0, 0, 0.05), Basis(Vector3(1, 0, 0), PI * 0.5), col)
+			_add_sphere(minf(0.07, r * 0.45), Vector3(0, 0, 0.08), steel * 0.8)
+			_add_box(Vector3(0.04, minf(0.14, r * 0.8), 0.03), Vector3.ZERO, wood)
 		_:
 			# bat and club: thin handle, thick head toward the tip.
 			var head_len: float = length * 0.6
@@ -149,12 +152,28 @@ func _use_art_mesh() -> void:
 	art.name = "Art"
 	# Houdini marks every material alpha-blend (depth pre-pass); that sorts and flickers, so force opaque.
 	_force_opaque_art(art)
+	# "art_roll" (degrees about the face normal) turns a mesh built the other way round: the aspis's arm band
+	# was modelled toward -X, but a left hand holds the shield with +X toward the holder's left (Fighter._wrist).
+	art.rotation.z = deg_to_rad(float(def.get("art_roll", 0.0)))
+	# "art_offset" [x, y, z] (m) shifts the mesh off the grip: the aspis bowl sits 3-6 cm off its grip, so the fist
+	# would poke through the face without a push forward.
+	var off: Variant = def.get("art_offset", [])
+	if off is Array and (off as Array).size() == 3:
+		art.position = Vector3(float(off[0]), float(off[1]), float(off[2]))
 	if weapon_id == "rake":
 		# The art was built at 1.6 m with a 0.36 m head; the collider is 1.45 m with a 0.26 m crossbar (balance_rake.md).
 		# The grip end stays at -0.2 m: y' = RAKE_ART_SCALE.y * y + offset.
 		art.scale = RAKE_ART_SCALE
 		art.position = Vector3(0, -RAKE_ART_BOTTOM * (1.0 - RAKE_ART_SCALE.y), 0)
 	add_child(art)
+
+
+## A shield face's centre off the grip, from the def's "center" [x, y] (m, weapon frame); zero when absent.
+static func face_center(d: Dictionary) -> Vector3:
+	var c: Variant = d.get("center", [])
+	if c is Array and (c as Array).size() == 2:
+		return Vector3(float((c as Array)[0]), float((c as Array)[1]), 0.0)
+	return Vector3.ZERO
 
 
 ## Rake art fit: x 0.36 -> 0.26 m, y 1.6 -> 1.45 m (z kept), see `_use_art_mesh`.

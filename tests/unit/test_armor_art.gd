@@ -15,7 +15,7 @@ func test_art_maps_point_at_covered_parts_and_assets() -> void:
 			var path: String = FighterArt.ARMOR_ART_DIR + str((ad["art"] as Dictionary)[pn]) + ".glb"
 			assert_true(ResourceLoader.exists(path), path + " exists")
 			seen += 1
-	assert_eq(seen, 5, "galea, two manicae, two greaves")
+	assert_eq(seen, 22, "galea, manicae, greaves, then 3 helmets, 2 loricae + belt/loincloth, belt, galerus + manicae, spaulders + manicae, fasciae")
 
 
 func test_armor_art_is_opaque_and_per_caller() -> void:
@@ -34,7 +34,9 @@ func test_armor_art_is_opaque_and_per_caller() -> void:
 
 ## Pieces are built in their part's frame: each one fits around its part's centre (no stray offsets).
 func test_art_sits_on_the_part() -> void:
-	for id: String in ["galea", "manica_r", "manica_l", "greave_r", "greave_l"]:
+	for id: String in ["galea", "manica_r", "manica_l", "greave_r", "greave_l", "murmillo", "thraex", "secutor",
+			"lorica_segmentata", "lorica_squamata", "balteus", "subligaculum", "galerus_l", "spaulder_r", "spaulder_l",
+			"fasciae_r", "fasciae_l"]:
 		var box: AABB = FighterArt.armor_art(id).get_aabb()
 		assert_true(box.has_point(Vector3.ZERO), id + " wraps the part centre")
-		assert_true(box.size.length() < 0.7, id + " is part sized")
+		assert_true(box.size.length() < 0.8, id + " is part sized (a lorica is 0.76 m corner to corner)")

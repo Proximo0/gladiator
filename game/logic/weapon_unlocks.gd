@@ -15,9 +15,12 @@ const STAT_WORDS: Dictionary = {
 }
 
 
-## {"stat", "count"} for an unlockable weapon, {} for a starter, a premium weapon or an unknown id.
+## {"stat", "count"} for an unlockable weapon, shield or armor piece, {} for a starter, a premium weapon or an
+## unknown id. Weapon and armor ids share one namespace (an armor def with "unlock" is earned the same way).
 static func rule(weapon_id: String) -> Dictionary:
 	var d: Dictionary = CombatData.weapon(weapon_id)
+	if d.is_empty():
+		d = CombatData.armor(weapon_id)
 	var u: Variant = d.get("unlock", null)
 	if not (u is Dictionary) or str(d.get("requires_outfit", "")) != "":
 		return {}
@@ -32,10 +35,10 @@ static func is_unlockable(weapon_id: String) -> bool:
 	return not rule(weapon_id).is_empty()
 
 
-## Every unlockable weapon id, in data order.
+## Every unlockable id in data order: weapons and shields (data/weapons.json), then armor (data/armor.json).
 static func unlockable_ids() -> Array:
 	var out: Array = []
-	for id: String in CombatData.weapon_ids():
+	for id: String in Array(CombatData.weapon_ids()) + Array(CombatData.armor_ids()):
 		if is_unlockable(id):
 			out.append(id)
 	return out

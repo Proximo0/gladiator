@@ -6,7 +6,7 @@
 #   --shards      parallel Godot processes (default 1, keep it at 2 or less on a small box)
 #   --difficulty  AI difficulty (easy|normal|hard) for --side (default 0); the other side is normal
 #   --side        which side gets --difficulty (default 0)
-#   --w0/--w1=<weapon> --armor=none|leather --wide=0|1 --hitlog  forced loadouts and per-hit stats (see tests/bot/bot.gd)
+#   --w0/--w1=<weapon> --o0/--o1=<shield> --a0/--a1=<armor,ids> --armor=none|leather --wide=0|1 --hitlog  forced loadouts and per-hit stats (see tests/bot/bot.gd)
 #   --keep        also save the flight recording of passing matches (out/bot/<seed>.rec.json)
 # Quiet: failing match lines, then the table. Per-match stats: out/bot/<seed>.json; every FAIL also writes
 # out/bot/<seed>.rec.json (replay it with tools/replay.sh). Exit 1 when any match fails.
@@ -21,7 +21,7 @@ for a in "$@"; do
     --time_limit=*) limit="${a#*=}" ;;
     --shards=*) shards="${a#*=}" ;;
     --keep) keep=(--keep) ;;
-    --difficulty=*|--side=*|--w0=*|--w1=*|--armor=*|--wide=*|--hitlog) extra+=("$a") ;;
+    --difficulty=*|--side=*|--w0=*|--w1=*|--o0=*|--o1=*|--a0=*|--a1=*|--armor=*|--wide=*|--hitlog) extra+=("$a") ;;
     *) echo "unknown argument $a"; exit 2 ;;
   esac
 done

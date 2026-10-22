@@ -160,6 +160,220 @@
 				"shin_r": "greave_r",
 				"shin_l": "greave_l"
 			}
+		},
+		{
+			"id": "helm_murmillo",
+			"name": "Murmillo helmet",
+			"part": "head",
+			"covers": [
+				"head"
+			],
+			"mass": 2.6,
+			"kind": "plate",
+			"cut_resist": 0.9,
+			"pierce_resist": 0.8,
+			"blunt_resist": 0.55,
+			"durability": 240,
+			"strap": 60,
+			"art": {
+				"head": "murmillo"
+			},
+			"unlock": {
+				"stat": "wins",
+				"count": 7
+			}
+		},
+		{
+			"id": "helm_thraex",
+			"name": "Thraex helmet",
+			"part": "head",
+			"covers": [
+				"head"
+			],
+			"mass": 2.2,
+			"kind": "plate",
+			"cut_resist": 0.95,
+			"pierce_resist": 0.9,
+			"blunt_resist": 0.3,
+			"durability": 180,
+			"strap": 75,
+			"art": {
+				"head": "thraex"
+			},
+			"unlock": {
+				"stat": "wins",
+				"count": 3
+			}
+		},
+		{
+			"id": "helm_secutor",
+			"name": "Secutor helmet",
+			"part": "head",
+			"covers": [
+				"head"
+			],
+			"mass": 2.0,
+			"kind": "plate",
+			"cut_resist": 0.93,
+			"pierce_resist": 0.7,
+			"blunt_resist": 0.45,
+			"durability": 220,
+			"strap": 110,
+			"art": {
+				"head": "secutor"
+			},
+			"unlock": {
+				"stat": "wins",
+				"count": 1
+			}
+		},
+		{
+			"id": "lorica_segmentata",
+			"name": "Lorica segmentata",
+			"part": "torso",
+			"covers": [
+				"torso",
+				"pelvis"
+			],
+			"mass": 7.5,
+			"kind": "plate",
+			"cut_resist": 0.9,
+			"pierce_resist": 0.75,
+			"blunt_resist": 0.35,
+			"durability": 220,
+			"strap": 400,
+			"art": {
+				"torso": "lorica_segmentata",
+				"pelvis": "balteus"
+			},
+			"unlock": {
+				"stat": "wins",
+				"count": 5
+			}
+		},
+		{
+			"id": "lorica_squamata",
+			"name": "Lorica squamata",
+			"part": "torso",
+			"covers": [
+				"torso",
+				"pelvis"
+			],
+			"mass": 6.5,
+			"kind": "mail",
+			"cut_resist": 0.8,
+			"pierce_resist": 0.5,
+			"blunt_resist": 0.2,
+			"durability": 180,
+			"strap": 550,
+			"art": {
+				"torso": "lorica_squamata",
+				"pelvis": "subligaculum"
+			},
+			"unlock": {
+				"stat": "matches",
+				"count": 6
+			}
+		},
+		{
+			"id": "balteus",
+			"name": "Balteus belt",
+			"part": "torso",
+			"covers": [
+				"pelvis"
+			],
+			"mass": 1.6,
+			"kind": "plate",
+			"cut_resist": 0.9,
+			"pierce_resist": 0.8,
+			"blunt_resist": 0.35,
+			"durability": 160,
+			"strap": 300,
+			"art": {
+				"pelvis": "balteus"
+			},
+			"unlock": {
+				"stat": "matches",
+				"count": 3
+			}
+		},
+		{
+			"id": "retiarius_arm",
+			"name": "Galerus and manicae",
+			"part": "upper_arm_l",
+			"covers": [
+				"upper_arm_l",
+				"forearm_l",
+				"forearm_r"
+			],
+			"mass": 3.0,
+			"kind": "plate",
+			"cut_resist": 0.95,
+			"pierce_resist": 0.9,
+			"blunt_resist": 0.4,
+			"durability": 240,
+			"strap": 280,
+			"art": {
+				"upper_arm_l": "galerus_l",
+				"forearm_l": "manica_l",
+				"forearm_r": "manica_r"
+			},
+			"unlock": {
+				"stat": "wins",
+				"count": 2
+			}
+		},
+		{
+			"id": "spaulders",
+			"name": "Spaulders and manicae",
+			"part": "upper_arm_l",
+			"covers": [
+				"upper_arm_l",
+				"upper_arm_r",
+				"forearm_l",
+				"forearm_r"
+			],
+			"mass": 4.2,
+			"kind": "plate",
+			"cut_resist": 0.88,
+			"pierce_resist": 0.8,
+			"blunt_resist": 0.45,
+			"durability": 220,
+			"strap": 280,
+			"art": {
+				"upper_arm_l": "spaulder_l",
+				"upper_arm_r": "spaulder_r",
+				"forearm_l": "manica_l",
+				"forearm_r": "manica_r"
+			},
+			"unlock": {
+				"stat": "matches",
+				"count": 2
+			}
+		},
+		{
+			"id": "fasciae",
+			"name": "Fasciae wraps",
+			"part": "thigh_l",
+			"covers": [
+				"thigh_l",
+				"thigh_r"
+			],
+			"mass": 0.8,
+			"kind": "leather",
+			"cut_resist": 0.4,
+			"pierce_resist": 0.3,
+			"blunt_resist": 0.3,
+			"durability": 80,
+			"strap": 140,
+			"art": {
+				"thigh_l": "fasciae_l",
+				"thigh_r": "fasciae_r"
+			},
+			"unlock": {
+				"stat": "matches",
+				"count": 1
+			}
 		}
 	]
 }

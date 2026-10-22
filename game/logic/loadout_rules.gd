@@ -31,7 +31,7 @@ static func is_premium_weapon(weapon_id: String) -> bool:
 	return required_outfit(weapon_id) != ""
 
 
-## True when `weapon_id` is a starter, or `owned` holds what it needs: its outfit's store product id (premium) or its
+## True when `weapon_id` (a weapon, shield or armor id) is a starter, or `owned` holds what it needs: its outfit's store product id (premium) or its
 ## earned-weapon token (WeaponUnlocks.access builds that list). `owned` null means "do not check" (bots, dev runs,
 ## network loadouts the host cannot verify).
 static func weapon_unlocked(weapon_id: String, owned: Variant) -> bool:
@@ -134,6 +134,8 @@ static func sanitize(loadout: Dictionary, owned: Variant = null) -> Dictionary:
 	var given: Dictionary = loadout.get("armor") as Dictionary if loadout.get("armor") is Dictionary else {}  # a network loadout may hold anything
 	for slot: String in slot_names():
 		var id: String = str(given.get(slot, ""))
+		if id != "" and not weapon_unlocked(id, owned):
+			id = str(DEFAULT_ARMOR.get(slot, ""))  # an armor piece not yet earned
 		if id != "" and str(CombatData.armor(id).get("part", "")) == slot:
 			armor[slot] = id
 	var out: Dictionary = {"weapon": weapon, "offhand": off, "armor": armor}
@@ -169,7 +171,7 @@ static func weapon_stats(id: String) -> Dictionary:
 	return out
 
 
-## {name, mass, cut, blunt, pierce (0..1), line} for an armor id.
+## {name, mass, cut, blunt, pierce (0..1), line} for an armor id; the line names the parts it covers.
 static func armor_stats(id: String) -> Dictionary:
 	var d: Dictionary = CombatData.armor(id)
 	if d.is_empty():
@@ -180,8 +182,36 @@ static func armor_stats(id: String) -> Dictionary:
 		"blunt": clampf(float(d.get("blunt_resist", 0.0)), 0.0, 1.0),
 		"pierce": clampf(float(d.get("pierce_resist", 0.0)), 0.0, 1.0),
 	}
-	out["line"] = "%.1f kg  |  %s" % [out["mass"], str(d.get("kind", ""))]
+	out["line"] = "%.1f kg  |  %s  |  %s" % [out["mass"], str(d.get("kind", "")), covers_text(d.get("covers", []))]
 	return out
+
+
+## "head", "torso, belly", "both arms", "left arm": what an armor def's `covers` protects, in screen words.
+static func covers_text(covers: Variant) -> String:
+	var parts: Array = covers if covers is Array else []
+	var words: PackedStringArray = PackedStringArray()
+	var groups: Array = [["head", ["head"]], ["chest", ["torso"]], ["belly", ["pelvis"]],
+		["arm", ["upper_arm", "forearm"]], ["leg", ["thigh", "shin"]]]
+	for g: Array in groups:
+		var l: bool = false
+		var r: bool = false
+		var mid: bool = false
+		for p: Variant in parts:
+			for stem: String in g[1]:
+				var ps: String = str(p)
+				if ps == stem:
+					mid = true
+				elif ps == stem + "_l":
+					l = true
+				elif ps == stem + "_r":
+					r = true
+		if mid:
+			words.append(str(g[0]))
+		elif l and r:
+			words.append("both %ss" % g[0])
+		elif l or r:
+			words.append(("left " if l else "right ") + str(g[0]))
+	return ", ".join(words)
 
 
 static func bar(factor: float) -> float:
