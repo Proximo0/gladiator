@@ -61,3 +61,61 @@ func test_flicker_target_does_not_make_blend_jitter() -> void:
 		lo = minf(lo, t)
 		hi = maxf(hi, t)
 	assert_true(hi - lo < 0.1)
+
+
+func test_choose_view_stays_inside_the_wall() -> void:
+	# Victim near the wall on +X, attacker inside: a side-on camera 3.6 m away fits on one side only.
+	var v: Dictionary = FinaleShot.choose_view(Vector3(6, 0, 0), Vector3(9.5, 0, 0), 3.6, 11.0, 0.7)
+	var d: Vector3 = v["dir"]
+	assert_true(not bool(v["high"]))
+	var cam := Vector2(9.5 + d.x * 3.6, d.z * 3.6)
+	assert_true(cam.length() <= 11.0 - 0.7 + 0.001, "camera inside the wall radius")
+
+
+func test_choose_view_falls_back_to_high_three_quarter() -> void:
+	# Both sides are outside the wall: high shot from the interior side.
+	var v: Dictionary = FinaleShot.choose_view(Vector3(8, 0, 0), Vector3(10, 0, 0), 6.0, 11.0, 0.7)
+	assert_true(bool(v["high"]))
+	var d: Vector3 = v["dir"]
+	assert_true(d.x < 0.0, "points toward the arena centre")
+	assert_true(absf(d.length() - 1.0) < 0.001)
+
+
+func test_inside_wall_clamps_a_flung_victim() -> void:
+	var p: Vector3 = FinaleShot.inside_wall(Vector3(30, 0.4, 0), 11.0, 0.7)
+	assert_true(Vector2(p.x, p.z).length() <= 10.3 + 0.001)
+	assert_true(absf(p.y - 0.4) < 0.0001)
+	assert_eq(FinaleShot.inside_wall(Vector3(3, 1, 3), 11.0, 0.7), Vector3(3, 1, 3))
+
+
+func test_head_bias_moves_from_fountain_to_head() -> void:
+	assert_true(absf(FinaleShot.head_bias(0.0, 0.2, 0.65, 2.0) - 0.2) < 0.001)
+	assert_true(absf(FinaleShot.head_bias(5.0, 0.2, 0.65, 2.0) - 0.65) < 0.001)
+	assert_true(FinaleShot.head_bias(1.0, 0.2, 0.65, 2.0) > 0.2)
+
+
+func test_head_distance_and_reach_are_clamped() -> void:
+	assert_eq(FinaleShot.framing_dist(3.6, 0.0, 7.5), 3.6)
+	assert_eq(FinaleShot.framing_dist(3.6, 40.0, 7.5), 7.5)
+	var h: Vector3 = FinaleShot.clamp_head(Vector3.ZERO, Vector3(20, 0, 0), 5.0)
+	assert_true(absf(h.x - 5.0) < 0.001)
+	assert_eq(FinaleShot.clamp_head(Vector3.ZERO, Vector3(2, 0, 0), 5.0), Vector3(2, 0, 0))
+
+
+func test_beheading_shot_tracks_head_then_leans_to_it() -> void:
+	var tun: Tuning = Tuning.shared()
+	var f := FinaleShot.new()
+	f.start(Vector3(1, 1, 0), Vector3(-1, 0.3, 0), Vector3(-1, 1.5, 0), tun, 11.0, 0.7)
+	var body := Vector3(-1, 0.3, 0)
+	f.update(0.016, body, Vector3(-1.2, 0.2, 0.0))
+	assert_true(f.has_head())
+	var early: float = f.look().distance_to(f.look_body())
+	for i: int in 180:
+		f.update(1.0 / 60.0, body, Vector3(-3.5, 0.15, 1.0))
+	var late: float = f.look().distance_to(f.look_body())
+	assert_true(late > early, "look point has moved toward the rolled head")
+	assert_true(f.distance() > tun.feel_finale_dist and f.distance() <= tun.feel_finale_dist_max + 0.001)
+	f.update(0.016, body, Vector3(200, 0, 0))
+	assert_true(f.head_point().distance_to(f.look_body()) <= tun.feel_finale_head_reach + 0.01, "far head is clamped")
+	f.update(0.016, body)
+	assert_true(not f.has_head())

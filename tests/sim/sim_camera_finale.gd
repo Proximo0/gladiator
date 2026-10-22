@@ -45,5 +45,29 @@ func run() -> Array:
 	rows.append(row("restart_prime_waits", cam.global_position.is_equal_approx(before), ""))
 	await step(3)
 	rows.append(row("restart_primes_after_wait", not cam.global_position.is_equal_approx(before), ""))
+	# Victim flung past the wall, and a beheading with the head rolling far: the camera stays inside the wall radius.
+	cam.arena_radius = 11.0
+	cam.snap()
+	a.position = Vector3(8.5, 0.95, 0.0)
+	b.position = Vector3(10.4, 0.95, 0.0)
+	var head := Node3D.new()
+	world.add_child(head)
+	head.position = b.position + Vector3(0.0, 1.5, 0.0)
+	await step(2)
+	cam.start_finale(a.global_position, b, b.global_position, 1.0, head)
+	cam.finale_head_free = true
+	var worst_r: float = 0.0
+	var seen_head: bool = false
+	var high_seen: bool = false
+	for i: int in 300:
+		b.position = Vector3(10.4 + float(i) * 0.02, 0.3, 0.0)  # keeps sliding out past the wall
+		head.position = head.position + Vector3(0.0, 0.0, 0.05)  # the head rolls a long way
+		await step(1)
+		worst_r = maxf(worst_r, Vector2(cam.global_position.x, cam.global_position.z).length())
+		seen_head = seen_head or cam.finale.has_head()
+	rows.append(row("finale_past_wall_camera_inside", worst_r <= 11.0 - FightCamera.WALL_MARGIN + 0.05, "max camera radius %.2f" % worst_r))
+	rows.append(row("finale_tracks_severed_head", seen_head, ""))
+	# Slow motion: the same scaled frame time yields the same real-time shot.
+	rows.append(row("camera_real_delta_under_slowmo", absf(FightCamera.real_delta(1.0 / 240.0, 0.25) - 1.0 / 60.0) < 0.0001, ""))
 	await clear()
 	return rows

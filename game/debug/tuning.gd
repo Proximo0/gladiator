@@ -201,6 +201,12 @@ const FIELDS: Array = [
 	["feel_finale_dist", 3.6, 1.5, 7.0, 0.1, "Feel", "Distance of the finisher camera from the held point, m."],
 	["feel_finale_height", 1.1, 0.3, 3.0, 0.1, "Feel", "Height of the finisher camera above the held point, m."],
 	["feel_finale_look_y", 0.8, 0.3, 1.5, 0.05, "Feel", "Height of the held finisher look point, m."],
+	["feel_finale_head_bias0", 0.2, 0.0, 1.0, 0.05, "Feel", "Share of the beheading look point on the severed head at first (the rest stays on the body's fountain)."],
+	["feel_finale_head_bias1", 0.65, 0.0, 1.0, 0.05, "Feel", "Share of the beheading look point on the head once it has rolled."],
+	["feel_finale_head_s", 2.0, 0.2, 5.0, 0.1, "Feel", "Seconds over which the beheading shot shifts from the fountain to the head, s."],
+	["feel_finale_head_reach", 5.0, 1.5, 10.0, 0.1, "Feel", "Furthest the beheading shot follows the head from the body, m."],
+	["feel_finale_dist_max", 7.5, 3.0, 12.0, 0.1, "Feel", "Most the finisher camera backs off to keep body and head in frame, m."],
+	["feel_finale_high", 3.2, 1.5, 6.0, 0.1, "Feel", "Camera height of the high 3/4 finisher fallback when no side-on angle fits inside the wall, m."],
 	["feel_prime_ticks", 1.0, 0.0, 10.0, 1.0, "Feel", "Physics ticks the camera waits after a restart before it primes, so ragdolls settle."],
 	["feel_close_far", 3.6, 1.0, 8.0, 0.1, "Feel", "Fighter separation at or over which the close-range camera shift is gone, m."],
 	["blood_faint", 3.5, 2.6, 5.0, 0.1, "Health", "Blood (L) below which consciousness is capped; zero at blood_death."],
@@ -495,6 +501,12 @@ var feel_finale_release_s: float
 var feel_finale_dist: float
 var feel_finale_height: float
 var feel_finale_look_y: float
+var feel_finale_head_bias0: float
+var feel_finale_head_bias1: float
+var feel_finale_head_s: float
+var feel_finale_head_reach: float
+var feel_finale_dist_max: float
+var feel_finale_high: float
 var feel_prime_ticks: float
 var blood_faint: float
 var health_head_ko: float

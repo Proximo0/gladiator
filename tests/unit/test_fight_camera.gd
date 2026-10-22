@@ -122,3 +122,10 @@ func test_limit_coord_and_finite_check() -> void:
 	assert_eq(v, Vector3(FightCamera.MAX_COORD, -FightCamera.MAX_COORD, 3.0))
 	var c: Vector3 = FightCamera.clamp_to_arena(v, 11.0, 0.7, 0.5)
 	assert_true(Vector2(c.x, c.z).length() <= 10.3 + 0.001)
+
+
+func test_real_delta_undoes_slow_motion() -> void:
+	assert_true(absf(FightCamera.real_delta(0.004, 0.25) - 0.016) < 0.0001)
+	assert_eq(FightCamera.real_delta(0.016, 1.0), 0.016)
+	assert_eq(FightCamera.real_delta(0.016, 0.0) > 0.0, true)
+	assert_eq(FightCamera.real_delta(NAN, 0.5), 0.0)

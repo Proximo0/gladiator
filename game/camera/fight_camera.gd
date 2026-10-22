@@ -39,6 +39,8 @@ var shake: CameraShake = CameraShake.new()
 ## Finisher / death shot (see FinaleShot) and the node it watches.
 var finale: FinaleShot = FinaleShot.new()
 var _finale_victim: Node3D = null
+var finale_head: Node3D = null  ## the victim's head part; tracked once `finale_head_free` (the presenter sets it)
+var finale_head_free: bool = false
 var _squeeze_t: float = 0.0  ## smoothed wall-squeeze blend toward the side-on shot (with hysteresis)
 var _prime_wait: int = 0  ## physics ticks left before a restart primes the camera
 
@@ -234,11 +236,14 @@ static func step_squeeze(t: float, target: float, delta: float, rate_in: float, 
 
 
 ## Starts the finisher / death shot around `victim`. Does nothing under reduced motion (`scale` 0).
-func start_finale(attacker_pos: Vector3, victim: Node3D, hit_pos: Vector3, scale: float) -> void:
+func start_finale(attacker_pos: Vector3, victim: Node3D, hit_pos: Vector3, scale: float, head: Node3D = null) -> void:
 	if scale <= 0.0 or not is_instance_valid(victim) or not is_finite_v3(attacker_pos) or not is_finite_v3(victim.global_position):
 		return
 	_finale_victim = victim
-	finale.start(limit_coord(attacker_pos), limit_coord(victim.global_position), limit_coord(hit_pos), Tuning.shared())
+	finale_head = head
+	finale_head_free = false
+	finale.start(limit_coord(attacker_pos), limit_coord(victim.global_position), limit_coord(hit_pos), Tuning.shared(),
+			arena_radius, WALL_MARGIN)
 
 
 ## Jump straight to the framed pose on the next update.
@@ -248,6 +253,8 @@ func snap() -> void:
 	_prime_wait = 0
 	finale.clear()
 	_finale_victim = null
+	finale_head = null
+	finale_head_free = false
 	_fov_extra = 0.0
 	shake.clear()
 	if _base_fov > 0.0:
@@ -266,8 +273,16 @@ func _physics_process(_delta: float) -> void:
 		_prime_wait -= 1
 
 
+## Real (unscaled) seconds for a frame `delta` that ran under `time_scale`: the camera's kick spring, zoom, shake and
+## finale timings must not stretch in the end-of-match slow motion.
+static func real_delta(delta: float, time_scale: float) -> float:
+	if not is_finite(delta) or not is_finite(time_scale):
+		return 0.0
+	return delta / clampf(time_scale, 0.05, 1.0) if time_scale < 1.0 else delta
+
+
 func _process(delta: float) -> void:
-	update_camera(delta)
+	update_camera(real_delta(delta, Engine.time_scale))
 
 
 func update_camera(delta: float) -> void:
@@ -336,12 +351,17 @@ func update_camera(delta: float) -> void:
 		var vp: Vector3 = me
 		if is_instance_valid(_finale_victim) and _finale_victim.is_inside_tree() and is_finite_v3(_finale_victim.global_position):
 			vp = limit_coord(_finale_victim.global_position)
-		finale.update(delta, vp)
+		var hp: Vector3 = FinaleShot.NO_HEAD
+		if finale_head_free and is_instance_valid(finale_head) and finale_head.is_inside_tree() and is_finite_v3(finale_head.global_position):
+			hp = limit_coord(finale_head.global_position)
+		finale.update(delta, vp, hp)
 		fin_w = finale.weight
 		if finale.active and fin_w > 0.0:
 			var f_look: Vector3 = finale.look()
 			var f_raw: Vector3 = finale.pos()
 			var f_pts: Array = frame_points(vp) + [f_look]
+			if finale.has_head():
+				f_pts.append(finale.head_point())
 			var f_pull: float = pull_back_for(f_raw, f_look, _base_fov, aspect, f_pts, tun.feel_frame_margin, tun.feel_frame_pull_max)
 			var f_away: Vector3 = (f_raw - f_look).normalized()
 			var f_pos: Vector3 = clamp_to_arena(f_raw + f_away * f_pull, arena_radius, WALL_MARGIN, 0.4)

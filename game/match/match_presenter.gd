@@ -39,6 +39,7 @@ var sfx: SfxDirector = null
 var hud: HUD = null
 var camera: FightCamera = null
 var _finale_done: Array[bool] = [false, false]
+var _finale_fighter: Fighter = null  ## the finale's victim, to see when its head comes off
 var panel: TuningPanel = null
 var hit_fx: HitFx = null
 
@@ -111,6 +112,7 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 	# Prime after the ragdolls have had a physics tick to settle, not on the freshly placed pose.
 	camera.snap_after_ticks(roundi(Tuning.shared().feel_prime_ticks))
 	_finale_done = [false, false]
+	_finale_fighter = null
 
 
 ## Drops the old fighters' tracking and clears the sand and blood for the next match.
@@ -176,7 +178,8 @@ func _finale(tgt: int, hit: Vector3) -> void:
 		return
 	_finale_done[tgt] = true
 	camera.start_finale((other.parts["pelvis"] as Node3D).global_position, victim.parts["pelvis"] as Node3D, hit,
-			FeelOptions.motion_scale(Tuning.shared()))
+			FeelOptions.motion_scale(Tuning.shared()), victim.parts.get("head") as Node3D)
+	_finale_fighter = victim
 
 
 ## Gamepad rumble for the fighter who landed the blow and the one who took it, and phone vibration for the human side.
@@ -303,6 +306,8 @@ func _tip(fr: Dictionary, side: int) -> void:
 
 
 func _process(_delta: float) -> void:
+	if camera != null and camera.finale.active and is_instance_valid(_finale_fighter):
+		camera.finale_head_free = _finale_fighter.is_limb_cut("head")
 	# The stands follow the crowd's noise level.
 	if arena != null and sfx != null:
 		arena.set_crowd_excitement(sfx.crowd_excitement())
