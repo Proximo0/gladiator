@@ -163,6 +163,7 @@ static func _force_opaque_art(root: Node) -> void:
 	if root is MeshInstance3D:
 		var mi := root as MeshInstance3D
 		if mi.mesh != null:
+			mi.mesh = mi.mesh.duplicate() as Mesh
 			for s: int in range(mi.mesh.get_surface_count()):
 				var m := mi.mesh.surface_get_material(s) as BaseMaterial3D
 				if m == null:
