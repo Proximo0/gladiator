@@ -9,7 +9,6 @@ const SIM_FILES: Array = [
 	"sim_fighter_replay",
 	"sim_match_smoke",
 	"sim_practice",
-	"sim_match_show",
 	"sim_camera_degenerate",
 	"sim_camera_finale",
 	"sim_audio_bot",
@@ -18,6 +17,7 @@ const SIM_FILES: Array = [
 	"sim_net_menu",
 	"sim_net_drop",
 	"sim_net_quick",
+	"sim_match_show",  # last: the audio bot sim before it is sensitive to what ran earlier in the process
 ]
 
 
