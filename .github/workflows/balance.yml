@@ -1,0 +1,43 @@
+# Weapon balance round-robin fanned out over 20 runners (tools/balance_matrix.py, docs/balance_matrix.md).
+# Each shard prints its records as one gzip+base64 line between BALANCE_DATA markers; merge them with
+# `tools/balance_matrix.py report`.
+name: balance
+
+on:
+  push:
+    branches: ['ramp/balance-*', 'claude/project-thread-y09y5i']
+    paths: [data/weapons.json, data/armor.json, tools/balance_matrix.py, .github/workflows/balance.yml]
+  workflow_dispatch:
+
+concurrency:
+  group: balance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+  GODOT: godot
+
+jobs:
+  shard:
+    name: balance-${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+      - name: Fights
+        shell: bash
+        run: |
+          godot --headless --path . --import > /tmp/import.log 2>&1 || { cat /tmp/import.log; exit 1; }
+          python3 tools/balance_matrix.py run --fights=10 --jobs=4 --shard=${{ matrix.shard }} --nshards=20 --out=out/balance/shard.json
+          echo "BALANCE_DATA_BEGIN $(gzip -c out/balance/shard.json | base64 -w0) BALANCE_DATA_END"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: balance-${{ matrix.shard }}
+          path: out/balance/shard.json
+          if-no-files-found: ignore

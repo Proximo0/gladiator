@@ -2,13 +2,14 @@
 """Weapon balance round-robin on headless bot fights.
 
 Usage:
-  tools/balance_matrix.py run [--fights=N] [--jobs=K] [--seed=S] [--only=a,b,...] [--vs=a,b,...] [--out=FILE]
+  tools/balance_matrix.py run [--fights=N] [--jobs=K] [--seed=S] [--only=a,b,...] [--vs=a,b,...] [--shard=i --nshards=n] [--out=FILE]
   tools/balance_matrix.py report FILE [FILE ...] [--md=docs/balance_matrix.md] [--csv=docs/balance_matrix.csv]
 
 run: every unordered weapon pair from data/weapons.json fights N times with each weapon on side 0 and N times on
 side 1 (2N per cell). Both orientations of a pair reuse the same seeds, so the seed-rolled armor and personalities
 swap sides and cancel out. Seeds are fixed per pair: S + pair_index * 100 + k. --only limits the matrix to pairs
-inside that list; --vs limits it to pairs with at least one weapon in that list. Records go to out/balance/*.json.
+inside that list; --vs limits it to pairs with at least one weapon in that list; --shard/--nshards take every
+n-th pair (CI fan-out, .github/workflows/balance.yml). Records go to out/balance/*.json.
 report: merges run files (a later file replaces earlier records for the same pair) and writes the tables.
 Quiet: failing fights and one summary line.
 """
@@ -103,6 +104,8 @@ def cmd_run(opts):
     if opts.get("vs"):
         keep = set(opts["vs"].split(","))
         pairs = [p for p in pairs if p[0] in keep or p[1] in keep]
+    if opts.get("nshards"):
+        pairs = pairs[int(opts.get("shard", "0"))::int(opts["nshards"])]
     out = opts.get("out") or os.path.join(ROOT, "out", "balance", "run.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     subprocess.run([GODOT, "--headless", "--path", ROOT, "--import"], capture_output=True)
