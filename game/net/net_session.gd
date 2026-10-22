@@ -33,6 +33,7 @@ var remote_joined: bool = false  ## host: a client said hello; client: the host 
 var local_tick: int = 0
 var bw_out: NetBandwidth = NetBandwidth.new()
 var bw_in: NetBandwidth = NetBandwidth.new()
+var max_sent: Dictionary = {}  ## message type -> largest payload sent (bytes), for the soak and the relay budget
 var link: NetLinkSim = NetLinkSim.new()
 var host_driver: NetHostDriver = null
 var client_driver: NetClientDriver = null
@@ -227,6 +228,8 @@ func send(bytes: PackedByteArray, reliable: bool) -> void:
 	if not is_open() or _remote_id == 0:
 		return
 	bw_out.add(local_tick, bytes.size())
+	var mt: int = NetConfig.msg_type(bytes)
+	max_sent[mt] = maxi(int(max_sent.get(mt, 0)), bytes.size())
 	if link.active():
 		link.send(local_tick, _tag(bytes, reliable), reliable)
 	else:

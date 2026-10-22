@@ -11,6 +11,7 @@ const SIM_FILES: Array = [
 	"sim_net_loopback",
 	"sim_net_presented",
 	"sim_net_menu",
+	"sim_net_drop",
 	"sim_net_quick",
 ]
 

@@ -6,8 +6,12 @@ extends RefCounted
 ## (the client ran ahead, or a burst arrived) skips to `target`. The buffer is adaptive: it starts `target` (1) tick
 ## deep and grows by itself, one tick per underrun (the stall leaves the stream one tick further ahead); every
 ## SHRINK_WINDOW pops, if it never came within `target` ticks of empty, it drops one tick again. So a clean link
-## sits at `target` and a jittery one settles at the depth its jitter needs. Pure; counters for the debug line and the tests.
+## sits at `target` and a jittery one settles at the depth its jitter needs. A press-once button (roll, grab) on a tick
+## that gets skipped or arrives late is carried onto the next tick played, so the press still happens. When nothing new
+## has arrived for `stale_ticks` pops the last input stops being repeated: movement and buttons go neutral (the aim
+## stays), so a client that stalls or vanishes does not keep charging and swinging on its last input. Pure; counters for the debug line and the tests.
 
+const EDGE_BUTTONS: int = FighterInput.ROLL | FighterInput.GRAB  ## press-once buttons: a skipped tick must not swallow one
 const SHRINK_WINDOW: int = 90  ## pops (1.5 s) the buffer must stay deeper than `target` before it gives one tick back
 
 var target: int = NetConfig.INPUT_BUFFER_TARGET
@@ -18,6 +22,9 @@ var duplicates: int = 0
 var late: int = 0  ## arrived after its tick was played or skipped
 var underruns: int = 0  ## pops with nothing to play (last input repeated)
 var skipped: int = 0  ## ticks jumped over (lost for good, or dropped to shrink the buffer)
+var carried: int = 0  ## press-once buttons moved from a skipped or late tick onto the next one played
+var stale_ticks: int = NetConfig.INPUT_STALE_TICKS  ## consecutive underruns after which the repeated input goes neutral
+var stale_pops: int = 0  ## pops played neutral because the stream had gone quiet
 
 var _inputs: Dictionary = {}  ## client tick -> FighterInput
 var _next: int = -1
@@ -25,6 +32,8 @@ var _newest: int = -1
 var _last: FighterInput = FighterInput.new()
 var _min_lead: int = 1 << 20  ## smallest (newest - next) seen at a pop in the current window
 var _window: int = 0
+var _run: int = 0  ## consecutive underruns
+var _carry: int = 0  ## press-once bits waiting for the next tick played
 var _played: Dictionary = {}  ## recently played client ticks, to tell redundant copies from late arrivals
 
 
@@ -42,6 +51,7 @@ func push(tick: int, inp: FighterInput) -> void:
 			duplicates += 1  # a redundant copy of a tick already played
 		else:
 			late += 1
+			_keep_edges(inp)
 		return
 	_inputs[tick] = inp
 	received += 1
@@ -64,6 +74,7 @@ func pop() -> FighterInput:
 		var to: int = _newest - target
 		for t: int in range(_next, to):
 			if _inputs.has(t):
+				_keep_edges(_inputs[t])
 				_inputs.erase(t)
 			skipped += 1
 		_next = to
@@ -74,11 +85,27 @@ func pop() -> FighterInput:
 		_played[_next] = true
 		_played.erase(_next - 64)
 		_next += 1
+		_run = 0
+		if _carry != 0:
+			var merged: Array = _last.to_array()
+			merged[4] = int(merged[4]) | _carry
+			_carry = 0
+			carried += 1
+			return FighterInput.from_array(merged)
 		return _last
 	underruns += 1
+	_run += 1
 	if _newest > _next:
 		skipped += 1  # never coming: newer ticks are here, so move past it
 		_next += 1
+		_run = 0
+	if _run > stale_ticks:
+		stale_pops += 1
+		var quiet: Array = _last.to_array()
+		quiet[0] = 0
+		quiet[1] = 0
+		quiet[4] = 0
+		return FighterInput.from_array(quiet)
 	return _last
 
 
@@ -90,11 +117,16 @@ func _shrink_check() -> void:
 	if _window < SHRINK_WINDOW:
 		return
 	if _min_lead > target and _inputs.has(_next):
+		_keep_edges(_inputs[_next])
 		_inputs.erase(_next)
 		_next += 1
 		skipped += 1
 	_window = 0
 	_min_lead = 1 << 20
+
+
+func _keep_edges(inp: FighterInput) -> void:
+	_carry |= inp.buttons & EDGE_BUTTONS
 
 
 func last_input() -> FighterInput:

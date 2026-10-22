@@ -10,6 +10,7 @@ const SNAP_EVERY_TICKS: int = 2  ## host sends a snapshot every 2 physics ticks:
 const INPUT_REDUNDANCY: int = 4  ## each input packet repeats the last 4 ticks, so 3 lost packets in a row are harmless
 const INPUT_BUFFER_TARGET: int = 1  ## host plays the client's inputs this many ticks behind the newest received (grows with jitter, see NetInputBuffer)
 const INPUT_BUFFER_MAX: int = 10  ## above this depth the host skips ahead to the target depth
+const INPUT_STALE_TICKS: int = 12  ## ticks without a new client input after which the host stops repeating the last one (200 ms)
 const INTERP_MIN_DELAY: float = 2.25  ## client interpolation delay floor, ticks (one snapshot interval + a quarter tick)
 const INTERP_MAX_DELAY: float = 24.0  ## ceiling, ticks (400 ms)
 const INTERP_RESYNC: float = 30.0  ## render clock this far (ticks) from its target jumps instead of easing

@@ -108,3 +108,67 @@ func test_jitter_grows_the_buffer_by_itself_and_calm_gives_it_back() -> void:
 		b.pop()
 	assert_true(b.depth() < deep or deep <= b.target + 1, "depth %d -> %d" % [deep, b.depth()])
 	assert_true(b.depth() <= b.target + 1, "back to about the target: %d" % b.depth())
+
+
+func _btn(move: int, buttons: int) -> FighterInput:
+	return FighterInput.from_array([move, move, 0, 0, buttons])
+
+
+func test_roll_press_on_a_skipped_tick_is_carried() -> void:
+	# Soak 2026-10: a one-tick ROLL press on a tick the host skipped (lost for good, or dropped to shrink) never rolled.
+	var b := NetInputBuffer.new(0, 8)
+	b.push(0, _btn(0, 0))
+	b.pop()
+	b.push(2, _btn(0, 0))
+	assert_eq(b.pop().buttons, 0, "tick 1 missing: hold")
+	b.push(1, _btn(0, FighterInput.ROLL))  # arrives late, after its tick was passed
+	assert_eq(b.late, 1)
+	b.push(3, _btn(0, 0))
+	assert_true(b.pop().has(FighterInput.ROLL), "the late press rides on the next tick played")
+	assert_eq(b.carried, 1)
+	assert_false(b.pop().has(FighterInput.ROLL), "and only once")
+
+
+func test_roll_press_on_a_buffer_skip_is_carried() -> void:
+	var b := NetInputBuffer.new(1, 4)
+	for t: int in range(3):
+		b.push(t, _inp(t))
+	b.pop()
+	b.pop()
+	for t: int in range(3, 14):  # a burst deeper than the maximum: the buffer jumps ahead, over tick 5
+		b.push(t, _btn(0, FighterInput.ROLL if t == 5 else 0))
+	var got: bool = false
+	for _i: int in range(3):
+		got = got or b.pop().has(FighterInput.ROLL)
+	assert_true(b.skipped > 0)
+	assert_true(got, "the press on a skipped tick still arrives")
+
+
+func test_held_buttons_are_not_carried() -> void:
+	var b := NetInputBuffer.new(0, 8)
+	b.push(0, _btn(0, 0))
+	b.pop()
+	b.push(1, _btn(0, FighterInput.SWING | FighterInput.SPRINT))
+	b.push(3, _btn(0, 0))
+	b.pop()
+	b.pop()
+	assert_eq(b.carried, 0)
+
+
+func test_silent_stream_goes_neutral_but_keeps_aim() -> void:
+	# Soak 2026-10: with the client's packets gone the host's fighter 1 kept walking and swinging on the last input.
+	var b := NetInputBuffer.new(0, 8)
+	b.push(0, FighterInput.from_array([300, 1000, 200, 150, FighterInput.SWING | FighterInput.SPRINT]))
+	b.pop()
+	for _i: int in range(NetConfig.INPUT_STALE_TICKS):
+		var held: FighterInput = b.pop()
+		assert_eq(held.move_y, 1000, "a short gap repeats the last input")
+	var quiet: FighterInput = b.pop()
+	assert_eq(quiet.move_x, 0)
+	assert_eq(quiet.move_y, 0)
+	assert_eq(quiet.buttons, 0)
+	assert_eq(quiet.aim_x, 200, "the weapon hand stays where it was")
+	assert_eq(quiet.aim_y, 150)
+	assert_eq(b.stale_pops, 1)
+	b.push(1, FighterInput.from_array([0, 500, 0, 0, 0]))
+	assert_eq(b.pop().move_y, 500, "input resumes at once when the stream does")
