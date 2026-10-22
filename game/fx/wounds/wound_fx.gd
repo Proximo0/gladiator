@@ -5,7 +5,8 @@ extends Node
 ## by the fighters' `hit` and `gore` signals, which an online client already replays from the host's events, so both
 ## screens draw the same marks. BloodFx also routes its body stains here (`add_stain`: the soak of a bleeding blow,
 ## `add_drop`: blood drops landing on a fighter), so every mark on skin or armor wraps the real surface. A severed limb
-## or neck gets a blood collar on both cut ends. Presentation only: never part of the fight state.
+## or neck gets a sever ring (a wet band of blood round the limb) on both cut ends. Presentation only: never part of
+## the fight state.
 ## Drawing: each marked body part (or bloodied weapon) gets a "shell": a second MeshInstance3D per visible mesh, with
 ## the same mesh and a wound shader that is transparent except where the marks are. Shells live in their own node
 ## (not under Look / ArmorSlot, so HitFx flashes and armor code never see them) and follow their source's visibility.
@@ -24,6 +25,8 @@ const BRUISE_RED: Color = Color(0.20, 0.03, 0.16)
 const BRUISE_RED_OLD: Color = Color(0.42, 0.40, 0.10)
 const ART_RAY_OUT: float = 0.15  ## the art ray starts this far outside the collider surface
 const ART_RAY_IN: float = 0.08  ## and accepts drawn surfaces up to this far inside it
+const RING_R_SCALE: float = 1.7  ## a sever ring reaches this many limb radii from the bone (skin, outfit and armor)
+const RING_NECK_R: float = 0.11  ## and this far round a beheaded neck, m
 static var _TRI_CACHE: Dictionary = {}  ## Mesh -> TriangleMesh
 
 var quality: int = 2
@@ -190,8 +193,8 @@ static func drop_stretch(vel: Vector3) -> float:
 	return clampf(1.0 + vel.length() * 0.12, 1.0, WoundMarks.STRETCH_MAX)
 
 
-## A severed limb or head: a blood collar on the stump (the parent part, at the joint) and on the cut end of the part
-## that came off, so the skin round both cap faces reads as cut, not clean.
+## A severed limb or head: a sever ring on the stump (the parent part, at the joint) and on the cut end of the part
+## that came off, a band of wet blood all round the limb so both cut ends read as cut from the fight camera.
 func on_gore(ev: Dictionary, side: int) -> void:
 	var kind: String = str(ev.get("kind", ""))
 	if kind != "sever" and kind != "behead":
@@ -205,11 +208,25 @@ func on_gore(ev: Dictionary, side: int) -> void:
 	if ends.is_empty():
 		return
 	var slot: int = clampi(side, 0, 1)
+	var wm: WoundMarks = _marks.get(side) as WoundMarks
+	var radius: float = ring_radius(part)
 	for e: Array in ends:
 		var body: Node3D = _part(f, str(e[0]))
-		if body != null:
-			var at: Vector3 = body.to_global(e[1] as Vector3)
-			_mark(side, body, str(e[0]), WoundMarks.Kind.SMEAR, at, body.global_transform.basis * Vector3.UP, sev, slot)
+		if body == null or wm == null:
+			continue
+		var joint: Vector3 = e[1]
+		_ensure_shells(body, true)
+		if wm.add_ring(str(e[0]), joint, joint, radius, _tn().wound_ring_band, sev, slot) != null:
+			_push_part(wm, str(e[0]), body)
+
+
+## How far from the bone a sever ring reaches round the cut of `part` (m): the severed limb's radius with room for
+## the drawn skin and armor over it; the neck for a head.
+static func ring_radius(part: String) -> float:
+	if part == "head":
+		return RING_NECK_R
+	var shape: Array = _shape_of(part)
+	return (shape[1] as Vector3).x * RING_R_SCALE
 
 
 ## [[part, joint point in that part's frame], ...] for the two cut ends of severing `part` from its parent (the
@@ -454,6 +471,7 @@ func _push_part(wm: WoundMarks, part: String, body: Node3D) -> void:
 	wm.dirty.erase(part)
 	var tn: Tuning = _tn()
 	var glow_dry: float = WoundMarks.dryness(tn.wound_rim_glow_s)
+	var ring_dry: float = WoundMarks.dryness(tn.wound_ring_glow_s)
 	for pair: Array in pairs:
 		if not is_instance_valid(pair[0]):
 			continue
@@ -461,6 +479,10 @@ func _push_part(wm: WoundMarks, part: String, body: Node3D) -> void:
 		mat.set_shader_parameter("core_scale", tn.wound_core_scale)
 		mat.set_shader_parameter("rim_glow", tn.wound_rim_glow)
 		mat.set_shader_parameter("rim_glow_dry", glow_dry)
+		mat.set_shader_parameter("smear_lobe", tn.wound_smear_lobe)
+		mat.set_shader_parameter("smear_drops", tn.wound_smear_drops)
+		mat.set_shader_parameter("ring_glow", tn.wound_ring_glow)
+		mat.set_shader_parameter("ring_glow_dry", ring_dry)
 		mat.set_shader_parameter("count", int(pk["count"]))
 		mat.set_shader_parameter("wa", pk["a"])
 		mat.set_shader_parameter("wb", pk["b"])

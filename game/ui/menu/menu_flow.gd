@@ -149,6 +149,8 @@ func _process(_delta: float) -> void:
 	_layout()
 	if _backdrop != null:
 		_backdrop.frame_x = _title.backdrop_frame_x() if screen == Screen.TITLE else 0.0
+		_backdrop.frame_y = _title.backdrop_frame_y() if screen == Screen.TITLE else 0.0
+		_backdrop.band = _title.backdrop_band() if screen == Screen.TITLE else 1.0
 	_sounds.active = screen != Screen.FIGHT
 	_sounds.back_ok = screen != Screen.TITLE
 	_nav.active = screen != Screen.FIGHT
@@ -185,7 +187,9 @@ func _layout() -> void:
 			# Portrait: the compact meters span the width, so the pause button sits under the right one.
 			var block: float = HUD.touch_block_px(vp.x * k, vp.y * k, ins.y) / ppu
 			pause_pos = Vector2(_root.size.x - side - (ins.z + HUD.TOUCH_EDGE_PX) / ppu, block + 6.0)
-			hint_y = block + 8.0
+			# The clock mirrors the pause button under the left meter, so the hint goes below both.
+			var clock_h: float = (HUD.CLOCK_GAP_PX + HUD.CLOCK_TEXT_PX * 1.4 + HUD.CLOCK_PAD_PX * 2.0) / ppu
+			hint_y = maxf(pause_pos.y + side, block + clock_h) + 8.0
 	if _hint.visible:
 		_hint.position = Vector2((_root.size.x - _hint.size.x) * 0.5, hint_y)
 	if _practice_panel.visible:

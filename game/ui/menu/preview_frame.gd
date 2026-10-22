@@ -2,7 +2,13 @@ class_name PreviewFrame
 extends Control
 ## The loadout screen's 3D preview in its frame: a warm pool of light behind the plinth, bronze corner brackets, the
 ## LoadoutPreview itself (drag across it to turn it), and, while a locked weapon is browsed, a banner over its foot
-## with a padlock, the weapon's name, what unlocks it and a progress bar.
+## with a padlock, the weapon's name, what unlocks it and a progress bar. In a short, wide frame (the portrait
+## loadout's preview strip) the banner docks in the bottom-left corner instead, and the preview moves the fighter
+## right, between the banner and the weapon close-up, so the banner covers neither.
+
+const DOCK_ASPECT: float = 1.6  ## a frame this many times wider than tall docks the banner to the side
+const DOCK_FRAC: float = 0.36  ## of the frame's width the docked banner takes
+const EDGE: float = 12.0
 
 var preview: LoadoutPreview
 var _banner: PanelContainer
@@ -10,6 +16,7 @@ var _lock_name: Label
 var _lock_why: Label
 var _bar: Control
 var _frac: float = 0.0
+var _lock_id: String = ""
 var _dragging: bool = false
 
 
@@ -58,8 +65,9 @@ func _init() -> void:
 func set_lock(weapon_id: String, why: String, frac: float) -> void:
 	_banner.visible = weapon_id != ""
 	if weapon_id == "":
+		preview.left_clear = 0.0
 		return
-	_lock_name.text = "%s  -  LOCKED" % LoadoutRules.display_name(weapon_id).to_upper()
+	_lock_id = weapon_id
 	_lock_why.text = why
 	_frac = clampf(frac, 0.0, 1.0)
 	_bar.visible = frac >= 0.0
@@ -71,12 +79,23 @@ func lock_visible() -> bool:
 	return _banner.visible
 
 
+## True when the banner docks to the side (see DOCK_ASPECT).
+func docked() -> bool:
+	return size.x > size.y * DOCK_ASPECT
+
+
 func _fit_banner() -> void:
-	var w: float = minf(size.x - 24.0, 620.0)
+	var dock: bool = docked()
+	var w: float = clampf(size.x * DOCK_FRAC, 240.0, 420.0) if dock else minf(size.x - EDGE * 2.0, 620.0)
+	_lock_name.clip_text = not dock
+	if _lock_id != "":
+		_lock_name.text = ("%s\nLOCKED" if dock else "%s  -  LOCKED") % LoadoutRules.display_name(_lock_id).to_upper()
 	_lock_why.custom_minimum_size.x = maxf(w - 90.0, 60.0)  # wrap at the banner's width, not one word per line
 	_banner.reset_size()
 	_banner.size.x = w
-	_banner.position = Vector2((size.x - w) * 0.5, size.y - _banner.get_combined_minimum_size().y - 12.0)
+	var y: float = size.y - _banner.get_combined_minimum_size().y - EDGE
+	_banner.position = Vector2(EDGE if dock else (size.x - w) * 0.5, y)
+	preview.left_clear = (EDGE * 2.0 + w) / maxf(size.x, 1.0) if dock and _banner.visible else 0.0
 
 
 func _gui_input(event: InputEvent) -> void:

@@ -1,13 +1,16 @@
 class_name WoundMarks
 extends RefCounted
 ## Accumulated damage on one fighter's body, as marks in each part's own frame: gashes (edged hits), punctures
-## (points), bruises (blunt, they swell) and smears (blood splashed on skin or armor, bloody knuckles). Marks stay for
-## the whole match, darken as they dry, and gashes and punctures grow a trickle of blood running down. A part keeps at
-## most `cap` marks (the body shader loops over them); a new mark near an old one of the same kind deepens it instead.
+## (points), bruises (blunt, they swell), smears (blood splashed on skin or armor, bloody knuckles) and rings (the wet
+## band round a stump or a severed part's cut end). Marks stay for the whole match, darken as they dry, and gashes and
+## punctures grow a trickle of blood running down. A part keeps at most `cap` marks (the body shader loops over them);
+## a new mark near an old one of the same kind deepens it instead. A full part drops its oldest lesser mark (smears,
+## then bruises) for a new one; when nothing lesser is left the new mark deepens the nearest of its kind instead, so a
+## part's marks stop churning once it fills up with wounds.
 ## Pure data and math: no nodes, no RNG (seeds come from the hit itself, so a host and a client draw the same marks).
 ## Presentation only: never read back by the fight.
 
-enum Kind { GASH, PUNCTURE, BRUISE, SMEAR }
+enum Kind { GASH, PUNCTURE, BRUISE, SMEAR, RING }
 
 const MAX_CAP: int = 8  ## the shader's loop bound; a part never holds more
 const CAPS: Array[int] = [6, 8, 8]  ## marks per part per graphics level (low, medium, high)
@@ -28,6 +31,9 @@ const BRUISE_MAX: float = 0.1
 const SMEAR_MIN: float = 0.025
 const SMEAR_MAX: float = 0.08
 const STRETCH_MAX: float = 3.0  ## longest streak of a smear, as length over width
+## Rank of each kind when a full part must drop a mark (lower goes first): smear, bruise, open wounds, ring.
+const RANK: Array[int] = [2, 2, 1, 0, 3]
+const FULL_DEEPEN: float = 0.4  ## share of a new mark's strength that deepens the nearest one when the part is full
 ## Damage at which a mark reaches full size and strength.
 const FULL_CUT: float = 20.0
 const FULL_PIERCE: float = 18.0
@@ -56,6 +62,7 @@ class Mark extends RefCounted:
 var cap: int = MAX_CAP
 var marks: Dictionary = {}  ## part name -> Array of Mark, oldest first
 var dirty: Dictionary = {}  ## part name -> true when its packed uniforms changed shape (added or merged)
+var evicted: int = 0  ## marks dropped from a full part so far (churn)
 
 
 func _init(level: int = 2) -> void:
@@ -155,11 +162,12 @@ static func dryness(age: float) -> float:
 
 
 ## Adds a mark on `part`. `pos`, `nrm`, `motion` (the weapon's motion, for a gash's direction) and `down` are in
-## the part frame. Returns the mark (a merged one when it deepened an old mark), or null for a bad kind.
+## the part frame. Returns the mark (a merged one when it deepened an old mark), or null for a bad kind or a full part
+## with nothing to make room or deepen.
 ## `stretch` (smears only, 1..3) streaks the smear along `motion`.
 func add(part: String, kind: int, pos: Vector3, nrm: Vector3, motion: Vector3, down: Vector3, sev: float,
 		slot: int, stretch: float = 1.0) -> Mark:
-	if kind < Kind.GASH or kind > Kind.SMEAR:
+	if kind < Kind.GASH or kind > Kind.RING:
 		return null
 	var list: Array = marks.get(part, [])
 	var n: Vector3 = nrm.normalized() if nrm.length_squared() > 1e-8 else Vector3.FORWARD
@@ -181,9 +189,48 @@ func add(part: String, kind: int, pos: Vector3, nrm: Vector3, motion: Vector3, d
 	mk.bleeds = kind == Kind.GASH or kind == Kind.PUNCTURE
 	mk.stretch = clampf(stretch, 1.0, STRETCH_MAX) if kind == Kind.SMEAR else 1.0
 	_size(mk)
+	return _insert(part, list, mk)
+
+
+## A blood ring round the cut end of `part`: centred on the joint `pos`, running back into the part from the cut along
+## `-axis` (`axis` points out of the part, through the cut) for `band` m, on the surface within `radius` m of the bone.
+func add_ring(part: String, pos: Vector3, axis: Vector3, radius: float, band: float, sev: float, slot: int) -> Mark:
+	var list: Array = marks.get(part, [])
+	var n: Vector3 = axis.normalized() if axis.length_squared() > 1e-8 else Vector3.UP
+	for m: Mark in list:
+		if m.kind == Kind.RING and m.pos.distance_to(pos) < MERGE_DIST:
+			_deepen(m, sev)
+			dirty[part] = true
+			return m
+	var mk: Mark = Mark.new()
+	mk.kind = Kind.RING
+	mk.pos = pos
+	mk.nrm = n
+	mk.seed = seed_of(pos)
+	mk.dir = tangent(Vector3.RIGHT, n, Vector3.FORWARD)
+	mk.down = tangent(Vector3.DOWN, n, Vector3.DOWN)
+	mk.slot = slot
+	mk.sev = clampf(sev, 0.0, 1.0)
+	mk.size = maxf(radius, 0.01)
+	mk.width = maxf(band, 0.005)
+	return _insert(part, list, mk)
+
+
+## Puts `mk` on `part`, making room on a full part (see the class notes). Returns the mark that holds it: `mk`, or the
+## old mark it deepened, or null when the part had no room and nothing of its kind to deepen.
+func _insert(part: String, list: Array, mk: Mark) -> Mark:
+	if list.size() >= cap:
+		var i: int = _evict_index(list, mk.kind)
+		if i < 0:
+			var near: Mark = _nearest(list, mk.kind, mk.slot, mk.pos)
+			if near == null:
+				return null
+			_deepen(near, mk.sev * FULL_DEEPEN)
+			dirty[part] = true
+			return near
+		list.remove_at(i)
+		evicted += 1
 	list.append(mk)
-	while list.size() > cap:
-		list.remove_at(_evict_index(list))
 	marks[part] = list
 	dirty[part] = true
 	return mk
@@ -207,7 +254,7 @@ func _size(m: Mark) -> void:
 		Kind.BRUISE:
 			m.size = lerpf(BRUISE_MIN, BRUISE_MAX, s)
 			m.width = m.size
-		_:
+		Kind.SMEAR:
 			m.size = lerpf(SMEAR_MIN, SMEAR_MAX, s) * sqrt(m.stretch)
 			m.width = m.size / m.stretch
 
@@ -217,13 +264,35 @@ static func smear_sev_for(radius: float) -> float:
 	return clampf(inverse_lerp(SMEAR_MIN, SMEAR_MAX, radius), 0.0, 1.0)
 
 
-## Which mark to drop when a part is full: the oldest smear, else the oldest bruise, else the oldest mark.
-static func _evict_index(list: Array) -> int:
-	for k: int in [Kind.SMEAR, Kind.BRUISE]:
-		for i: int in list.size():
-			if (list[i] as Mark).kind == k:
-				return i
-	return 0
+## Which mark a new mark of `kind` replaces on a full part: the oldest of the lowest rank below the new one's (smears
+## first, then bruises, then open wounds for a ring), or -1 when every mark ranks as high or higher.
+static func _evict_index(list: Array, kind: int) -> int:
+	var best: int = -1
+	var best_rank: int = RANK[kind]
+	for i: int in list.size():
+		var r: int = RANK[(list[i] as Mark).kind]
+		if r < best_rank:
+			best_rank = r
+			best = i
+	return best
+
+
+## The mark of `kind` and palette `slot` nearest `pos`, or null.
+static func _nearest(list: Array, kind: int, slot: int, pos: Vector3) -> Mark:
+	var best: Mark = null
+	var best_d: float = INF
+	for m: Mark in list:
+		if m.kind == kind and m.slot == slot and m.pos.distance_squared_to(pos) < best_d:
+			best_d = m.pos.distance_squared_to(pos)
+			best = m
+	return best
+
+
+## A smear's outline radius (share of its size) at angle `ang` round its centre: a few soft lobes from low, whole
+## harmonics (so the outline closes on itself with no seam), at most `amp` in or out. Mirrors wound_overlay.gdshader.
+static func smear_lobe(ang: float, seed: float, amp: float) -> float:
+	var p: float = seed * TAU
+	return 1.0 + amp * (0.55 * sin(2.0 * ang + p) + 0.3 * sin(3.0 * ang + 2.3 * p) + 0.15 * sin(5.0 * ang + 4.1 * p))
 
 
 func step(dt: float) -> void:
@@ -274,7 +343,7 @@ func pack(part: String) -> Dictionary:
 ## not paint over a cut or a hole). Oldest first within each group.
 static func draw_order(list: Array) -> Array:
 	var out: Array = []
-	for group: Array in [[Kind.SMEAR], [Kind.BRUISE], [Kind.GASH, Kind.PUNCTURE]]:
+	for group: Array in [[Kind.SMEAR], [Kind.BRUISE], [Kind.GASH, Kind.PUNCTURE, Kind.RING]]:
 		for m: Mark in list:
 			if group.has(m.kind):
 				out.append(m)
@@ -284,3 +353,4 @@ static func draw_order(list: Array) -> Array:
 func clear() -> void:
 	marks.clear()
 	dirty.clear()
+	evicted = 0

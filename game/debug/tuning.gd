@@ -29,6 +29,7 @@ const FIELDS: Array = (
 	+ ROWS_ARMOR
 	+ ROWS_BLOOD
 	+ ROWS_SAND
+	+ ROWS_WOUNDS
 	+ ROWS_AI
 )
 

@@ -1,4 +1,4 @@
-extends "res://game/debug/tuning/tuning_sand.gd"
+extends "res://game/debug/tuning/tuning_wounds.gd"
 ## Tuning rows of the "AI" group: one link of the chain that `Tuning` (game/debug/tuning.gd) extends, so each
 ## group's rows and vars live in their own file and branches that tune different systems never touch the same file.
 ## Add a field: a row in ROWS_AI and a matching `var` below. Row format: [field, default, min, max, step, group, doc].

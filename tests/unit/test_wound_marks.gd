@@ -139,3 +139,89 @@ func test_smears_streak_without_growing_and_size_inverts() -> void:
 	assert_eq(gash.stretch, 1.0, "only smears streak")
 	assert_near(WoundMarks.smear_sev_for(lerpf(WoundMarks.SMEAR_MIN, WoundMarks.SMEAR_MAX, 0.4)), 0.4, 0.0001)
 	assert_eq(WoundMarks.smear_sev_for(0.001), 0.0)
+
+
+func test_a_full_part_stops_churning_once_it_holds_only_wounds() -> void:
+	var wm: WoundMarks = WoundMarks.new(0)
+	var n: Vector3 = Vector3.BACK
+	for i: int in wm.cap:
+		wm.add("torso", WoundMarks.Kind.GASH, Vector3(-0.15 + 0.06 * float(i), 0.0, 0.11), n, Vector3.RIGHT,
+				Vector3.DOWN, 0.3, 0)
+	var held: Array = (wm.marks["torso"] as Array).duplicate()
+	# A stream of landed drops (the old cause of churn after ~10 s on low) only deepens what is there.
+	for i: int in 60:
+		var m: WoundMarks.Mark = wm.add("torso", WoundMarks.Kind.SMEAR, Vector3(0.01 * float(i % 7), -0.2, 0.11), n,
+				Vector3.RIGHT, Vector3.DOWN, 0.4, 0)
+		assert_true(m == null, "no smear to deepen: the drop leaves no mark")
+	var bruise: WoundMarks.Mark = wm.add("torso", WoundMarks.Kind.BRUISE, Vector3(0, 0.2, 0.11), n, Vector3.RIGHT,
+			Vector3.DOWN, 0.5, 0)
+	assert_true(bruise == null, "a bruise never pushes a cut out")
+	var cut: WoundMarks.Mark = wm.add("torso", WoundMarks.Kind.GASH, Vector3(0.2, 0.2, 0.11), n, Vector3.RIGHT,
+			Vector3.DOWN, 0.5, 0)
+	assert_true(held.has(cut), "a new cut on a part full of cuts deepens the nearest one")
+	assert_eq(wm.marks["torso"], held, "the same marks, none dropped")
+	assert_eq(wm.evicted, 0)
+
+
+func test_a_full_part_drops_lesser_marks_first_and_folds_smears() -> void:
+	var wm: WoundMarks = WoundMarks.new(0)
+	var n: Vector3 = Vector3.BACK
+	for i: int in wm.cap:
+		wm.add("torso", WoundMarks.Kind.SMEAR, Vector3(-0.15 + 0.06 * float(i), 0.0, 0.11), n, Vector3.RIGHT,
+				Vector3.DOWN, 0.3, 0)
+	var first: WoundMarks.Mark = wm.marks["torso"][0]
+	var folded: WoundMarks.Mark = wm.add("torso", WoundMarks.Kind.SMEAR, Vector3(0.3, 0.3, 0.11), n, Vector3.RIGHT,
+			Vector3.DOWN, 0.5, 0)
+	assert_true((wm.marks["torso"] as Array).has(folded) and folded.sev > 0.3, "a smear on a full part deepens one")
+	assert_eq(wm.evicted, 0)
+	var cut: WoundMarks.Mark = wm.add("torso", WoundMarks.Kind.GASH, Vector3(0, 0.2, 0.11), n, Vector3.RIGHT,
+			Vector3.DOWN, 0.5, 0)
+	assert_true((wm.marks["torso"] as Array).has(cut), "a cut makes room")
+	assert_false((wm.marks["torso"] as Array).has(first), "by dropping the oldest smear")
+	assert_eq(wm.evicted, 1)
+	assert_eq(wm.count("torso"), wm.cap)
+
+
+func test_a_ring_wraps_the_cut_end_and_outranks_every_mark() -> void:
+	var wm: WoundMarks = WoundMarks.new(0)
+	for i: int in wm.cap:
+		wm.add("upper_arm_r", WoundMarks.Kind.GASH, Vector3(0.05, -0.15 + 0.06 * float(i), 0.0), Vector3.RIGHT,
+				Vector3.UP, Vector3.DOWN, 0.4, 0)
+	var r: WoundMarks.Mark = wm.add_ring("upper_arm_r", Vector3(0, -0.14, 0), Vector3(0, -0.14, 0), 0.08, 0.06, 1.0, 0)
+	assert_true(r != null and r.kind == WoundMarks.Kind.RING)
+	assert_true(r.nrm.y < -0.99, "the axis points out of the part through the cut")
+	assert_near(r.size, 0.08)
+	assert_near(r.width, 0.06)
+	assert_eq(wm.count("upper_arm_r"), wm.cap)
+	assert_eq(wm.evicted, 1, "the oldest cut made room for the stump")
+	assert_true(wm.add_ring("upper_arm_r", Vector3(0, -0.14, 0), Vector3.DOWN, 0.08, 0.06, 1.0, 0) == r, "one ring per cut")
+	var c: PackedVector4Array = wm.pack("upper_arm_r")["c"]
+	assert_near(c[wm.cap - 1].w, float(WoundMarks.Kind.RING), 0.0001, "drawn with the open wounds, on top")
+	for i: int in 3:
+		wm.add("upper_arm_r", WoundMarks.Kind.SMEAR, Vector3(-0.05, 0.1, 0.0), Vector3.LEFT, Vector3.UP, Vector3.DOWN,
+				0.4, 0)
+	assert_true((wm.marks["upper_arm_r"] as Array).has(r), "the ring is never dropped")
+
+
+func test_smear_outline_is_a_soft_blot_not_a_star() -> void:
+	var amp: float = Tuning.new().wound_smear_lobe
+	for seed: float in [0.0, 0.13, 0.5, 0.77, 0.99]:
+		var lo: float = INF
+		var hi: float = 0.0
+		var peaks: int = 0
+		var steps: int = 360
+		var prev2: float = WoundMarks.smear_lobe(TAU * float(steps - 2) / float(steps) - PI, seed, amp)
+		var prev: float = WoundMarks.smear_lobe(TAU * float(steps - 1) / float(steps) - PI, seed, amp)
+		for i: int in steps:
+			var r: float = WoundMarks.smear_lobe(TAU * float(i) / float(steps) - PI, seed, amp)
+			lo = minf(lo, r)
+			hi = maxf(hi, r)
+			if prev > prev2 and prev >= r:
+				peaks += 1
+			prev2 = prev
+			prev = r
+		assert_true(hi / lo < 1.75, "seed %.2f: outline radius varies %.2fx" % [seed, hi / lo])
+		assert_true(peaks <= 5, "seed %.2f: %d lobes" % [seed, peaks])
+		assert_near(WoundMarks.smear_lobe(-PI, seed, amp), WoundMarks.smear_lobe(PI, seed, amp), 0.0001,
+				"no seam at the back")
+	assert_near(WoundMarks.smear_lobe(1.0, 0.3, 0.0), 1.0)

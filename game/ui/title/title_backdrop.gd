@@ -4,7 +4,8 @@ extends Node3D
 ## (real Fighters on neutral input with a little guard sway, far enough apart that nothing ever connects), dust
 ## motes drifting through warm low sun and haze, and a camera on a slow drift (TitleCam). MenuFlow builds it when a
 ## menu opens and frees it when a fight starts. `frame_x` slides the pair right of centre while the landscape title
-## menu covers the left side; it eases there, so switching screens never jumps the camera.
+## menu covers the left side; `frame_y` and `band` fit the pair into the open middle of the portrait title (see
+## TitleCam). All three ease, so switching screens never jumps the camera.
 
 const HALF_GAP: float = 1.75  ## m from the centre to each fighter (3.5 m apart: no weapon here reaches that)
 const FOV: float = 46.0
@@ -20,7 +21,11 @@ var arena: Arena
 var cam: Camera3D
 var fighters: Array[Fighter] = []
 var frame_x: float = 0.0
+var frame_y: float = 0.0
+var band: float = 1.0
 var _frame_now: float = 0.0
+var _frame_y_now: float = 0.0
+var _band_now: float = 1.0
 var _t: float = 0.0
 var _tick: int = 0
 var _with_fighters: bool = true
@@ -47,6 +52,8 @@ func _ready() -> void:
 		arena.stock_racks(LOADOUTS)  # the racks hold the pair's spares
 	cam.current = true
 	_frame_now = frame_x
+	_frame_y_now = frame_y
+	_band_now = band
 	_place_camera()
 	if arena.has_method("set_crowd_excitement"):
 		arena.set_crowd_excitement(0.25)
@@ -54,7 +61,10 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	_frame_now += (frame_x - _frame_now) * (1.0 - exp(-FRAME_EASE * delta))
+	var follow: float = 1.0 - exp(-FRAME_EASE * delta)
+	_frame_now += (frame_x - _frame_now) * follow
+	_frame_y_now += (frame_y - _frame_y_now) * follow
+	_band_now += (band - _band_now) * follow
 	_place_camera()
 
 
@@ -74,7 +84,8 @@ func _physics_process(_delta: float) -> void:
 
 func _place_camera() -> void:
 	var vp: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(16.0, 9.0)
-	var p: Dictionary = TitleCam.pose(_t, _frame_now, FOV, vp.x / maxf(vp.y, 1.0))
+	var p: Dictionary = TitleCam.pose(_t, _frame_now, FOV, vp.x / maxf(vp.y, 1.0), _frame_y_now, _band_now)
+	cam.fov = float(p["fov"])
 	cam.look_at_from_position(p["pos"], p["target"], Vector3.UP)
 
 

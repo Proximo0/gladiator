@@ -2,7 +2,7 @@ extends Node3D
 ## Textured-art renders in the real arena light: every textured weapon, the armor pieces and the gut spill pieces laid
 ## on the sand, through the same loaders the game uses (Weapon, FighterArt.armor_art, GutArt). Run in a real (xvfb)
 ## window: godot --path . --resolution 1280x720 res://tests/render/art_capture.tscn -- --out=DIR --name=after
-## [--untextured] (TexturedArt off: the before shot). Writes <name>_weapons.png, <name>_armor.png, <name>_gore.png,
+## [--untextured] (TexturedArt off: the before shot) [--quality=0|1|2]. Writes <name>_weapons.png, <name>_armor.png, <name>_gore.png,
 ## then prints the video memory in use. Never part of the check suite; writes only the PNGs it is told to.
 
 const WEAPONS: PackedStringArray = ["longsword", "gladius", "falchion", "machete", "dai_katana", "axe", "mace", "warhammer",
@@ -24,6 +24,8 @@ func _ready() -> void:
 			_name = a.substr(7)
 		elif a == "--untextured":
 			TexturedArt.enabled = false
+		elif a.begins_with("--quality="):
+			GfxQuality.set_level(int(a.substr(10)))
 	DirAccess.make_dir_recursive_absolute(_out)
 	add_child(Arena.new())
 	_cam = Camera3D.new()

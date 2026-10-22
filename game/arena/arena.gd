@@ -760,8 +760,8 @@ func _build_environment() -> void:
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if GfxQuality.pick_i(GfxQuality.SHADOW_SPLITS) >= 2 \
 			else DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = GfxQuality.pick_f(GfxQuality.SHADOW_DISTANCE)
-	sun.shadow_bias = 0.05
-	sun.shadow_normal_bias = 0.5
+	sun.shadow_bias = GfxQuality.pick_f(GfxQuality.SHADOW_BIAS)
+	sun.shadow_normal_bias = GfxQuality.pick_f(GfxQuality.SHADOW_NORMAL_BIAS)
 	add_child(sun)
 
 	var sky_mat := ProceduralSkyMaterial.new()
