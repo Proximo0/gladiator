@@ -38,6 +38,7 @@ var blood: BloodFx = null
 var sfx: SfxDirector = null
 var hud: HUD = null
 var camera: FightCamera = null
+var _finale_done: Array[bool] = [false, false]
 var panel: TuningPanel = null
 var hit_fx: HitFx = null
 
@@ -100,13 +101,16 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 		blood.set_palette(f.side, OutfitRules.blood_palette_of(f.loadout))
 		blood.track(f)
 		sfx.track(f)
+		f.died.connect(_on_fighter_died.bind(f.side))
 	var human: int = clampi(player_side, 0, 1)
 	_player_side = human
 	hud.track((fighters[human] as Fighter).health, (fighters[1 - human] as Fighter).health,
 			str(names[human]), str(names[1 - human]))
 	camera.target = (fighters[human] as Fighter).parts["pelvis"]
 	camera.look_at_node = (fighters[1 - human] as Fighter).parts["pelvis"]
-	camera.snap()
+	# Prime after the ragdolls have had a physics tick to settle, not on the freshly placed pose.
+	camera.snap_after_ticks(roundi(Tuning.shared().feel_prime_ticks))
+	_finale_done = [false, false]
 
 
 ## Drops the old fighters' tracking and clears the sand and blood for the next match.
@@ -152,7 +156,27 @@ func _feel(ev: Dictionary) -> void:
 		var strength: float = FeelLogic.camera_strength(imp, tun) * (1.0 if tgt == _player_side else 0.8)
 		var fin: bool = FeelLogic.is_finisher(ev)
 		camera.hit_impact(FeelLogic.blow_dir(ev), strength, fin, FeelOptions.motion_scale(tun))
+		if fin or (victim != null and (victim as Fighter).health != null and (victim as Fighter).health.dead):
+			_finale(tgt, ev.get("point", Vector3.ZERO))
 	_rumble(ev, imp, tun)
+
+
+func _on_fighter_died(side: int) -> void:
+	if camera != null and side >= 0 and side < _fighters.size() and is_instance_valid(_fighters[side]):
+		_finale(side, ((_fighters[side] as Fighter).parts["pelvis"] as Node3D).global_position)
+
+
+## Finisher / death camera for fighter `tgt`, once per fighter per match. Presentation only (client-local).
+func _finale(tgt: int, hit: Vector3) -> void:
+	if tgt < 0 or tgt >= _fighters.size() or _finale_done[tgt] or not is_instance_valid(_fighters[tgt]):
+		return
+	var victim: Fighter = _fighters[tgt]
+	var other: Fighter = _fighters[1 - tgt]
+	if not victim.parts.has("pelvis") or not other.parts.has("pelvis"):
+		return
+	_finale_done[tgt] = true
+	camera.start_finale((other.parts["pelvis"] as Node3D).global_position, victim.parts["pelvis"] as Node3D, hit,
+			FeelOptions.motion_scale(Tuning.shared()))
 
 
 ## Gamepad rumble for the fighter who landed the blow and the one who took it, and phone vibration for the human side.

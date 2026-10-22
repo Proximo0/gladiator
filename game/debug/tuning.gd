@@ -195,6 +195,13 @@ const FIELDS: Array = [
 	["feel_close_shoulder", 1.1, 0.0, 2.5, 0.05, "Feel", "Extra sideways shift of the follow camera at melee range, so the opponent is not hidden behind your back, m."],
 	["feel_close_height", 0.7, 0.0, 2.0, 0.05, "Feel", "Extra height of the follow camera at melee range, m."],
 	["feel_close_near", 1.7, 0.5, 4.0, 0.1, "Feel", "Fighter separation at or under which the full close-range camera shift applies, m."],
+	["feel_finale_hold_s", 3.0, 0.5, 8.0, 0.1, "Feel", "How long the finisher / death camera holds its framing, s."],
+	["feel_finale_ease_s", 0.6, 0.1, 2.0, 0.05, "Feel", "Ease-in of the finisher camera, s."],
+	["feel_finale_release_s", 1.5, 0.2, 4.0, 0.1, "Feel", "Ease-out back to the normal camera after the hold, s."],
+	["feel_finale_dist", 3.6, 1.5, 7.0, 0.1, "Feel", "Distance of the finisher camera from the held point, m."],
+	["feel_finale_height", 1.1, 0.3, 3.0, 0.1, "Feel", "Height of the finisher camera above the held point, m."],
+	["feel_finale_look_y", 0.8, 0.3, 1.5, 0.05, "Feel", "Height of the held finisher look point, m."],
+	["feel_prime_ticks", 1.0, 0.0, 10.0, 1.0, "Feel", "Physics ticks the camera waits after a restart before it primes, so ragdolls settle."],
 	["feel_close_far", 3.6, 1.0, 8.0, 0.1, "Feel", "Fighter separation at or over which the close-range camera shift is gone, m."],
 	["blood_faint", 3.5, 2.6, 5.0, 0.1, "Health", "Blood (L) below which consciousness is capped; zero at blood_death."],
 	["health_head_ko", 0.04, 0.0, 0.2, 0.005, "Health", "Consciousness lost per blunt point on the head (0.04: a solid club blow dazes into the finisher window, only a huge one knocks out)."],
@@ -482,6 +489,13 @@ var feel_close_shoulder: float
 var feel_close_height: float
 var feel_close_near: float
 var feel_close_far: float
+var feel_finale_hold_s: float
+var feel_finale_ease_s: float
+var feel_finale_release_s: float
+var feel_finale_dist: float
+var feel_finale_height: float
+var feel_finale_look_y: float
+var feel_prime_ticks: float
 var blood_faint: float
 var health_head_ko: float
 var health_stagger_ko: float

@@ -90,3 +90,13 @@ func test_non_finite_inputs_leave_the_shake_clean() -> void:
 	assert_true(FightCamera.is_finite_v3(fx["offset"]) and FightCamera.is_finite_v3(fx["jitter"]))
 	fx = sh.update(0.0)
 	assert_true(FightCamera.is_finite_v3(fx["offset"]))
+
+
+func test_slow_frames_do_not_blow_up_the_kick() -> void:
+	var sh := CameraShake.new()
+	sh.add_hit(Vector3.RIGHT, 1.0, Tuning.shared(), 1.0)
+	var worst: float = 0.0
+	for i: int in 60:
+		var fx: Dictionary = sh.update(0.1)
+		worst = maxf(worst, (fx["offset"] as Vector3).length())
+	assert_true(worst < 1.0, "kick stays small at 10 fps, got %f" % worst)

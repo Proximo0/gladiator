@@ -17,6 +17,9 @@ const WIDE_HEIGHT: float = 4.4
 ## below, so there is sand under the feet and the fighters sit in the lower-middle of the frame.
 const FRAME_UP: float = 1.0
 const FRAME_DOWN: float = 0.75
+const SQUEEZE_RATE_IN: float = 6.0  ## per second the squeeze blend rises
+const SQUEEZE_RATE_OUT: float = 1.2  ## per second it falls: slower, so it does not flicker at the wall
+const SQUEEZE_DEADBAND: float = 0.12  ## the target must drop this far below the blend before it starts to fall
 const MODES: PackedStringArray = ["follow", "orbit", "wide"]
 
 var target: Node3D
@@ -32,6 +35,12 @@ var orbit_speed: float = 0.3
 
 ## Impact state (kick, shake, zoom punch). The presenter feeds it through `hit_impact`.
 var shake: CameraShake = CameraShake.new()
+
+## Finisher / death shot (see FinaleShot) and the node it watches.
+var finale: FinaleShot = FinaleShot.new()
+var _finale_victim: Node3D = null
+var _squeeze_t: float = 0.0  ## smoothed wall-squeeze blend toward the side-on shot (with hysteresis)
+var _prime_wait: int = 0  ## physics ticks left before a restart primes the camera
 
 var _look_point: Vector3 = Vector3.ZERO
 var _base_pos: Vector3 = Vector3.ZERO
@@ -214,14 +223,47 @@ func set_mode(new_mode: String) -> void:
 		mode = new_mode
 
 
+## One step of the squeeze blend with hysteresis: rises quickly toward `target`, holds while the target is within
+## `deadband` below it, and falls slowly beyond that.
+static func step_squeeze(t: float, target: float, delta: float, rate_in: float, rate_out: float, deadband: float) -> float:
+	if target > t:
+		return lerpf(t, target, smooth_factor(rate_in, delta))
+	if target < t - deadband:
+		return lerpf(t, target, smooth_factor(rate_out, delta))
+	return t
+
+
+## Starts the finisher / death shot around `victim`. Does nothing under reduced motion (`scale` 0).
+func start_finale(attacker_pos: Vector3, victim: Node3D, hit_pos: Vector3, scale: float) -> void:
+	if scale <= 0.0 or not is_instance_valid(victim) or not is_finite_v3(attacker_pos) or not is_finite_v3(victim.global_position):
+		return
+	_finale_victim = victim
+	finale.start(limit_coord(attacker_pos), limit_coord(victim.global_position), limit_coord(hit_pos), Tuning.shared())
+
+
 ## Jump straight to the framed pose on the next update.
 func snap() -> void:
 	_primed = false
+	_squeeze_t = 0.0
+	_prime_wait = 0
+	finale.clear()
+	_finale_victim = null
 	_fov_extra = 0.0
 	shake.clear()
 	if _base_fov > 0.0:
 		fov = _base_fov
 	update_camera(0.0)
+
+
+## Like snap(), but waits `ticks` physics ticks first so freshly placed ragdolls have settled into their first pose.
+func snap_after_ticks(ticks: int) -> void:
+	snap()
+	_prime_wait = maxi(ticks, 0)
+
+
+func _physics_process(_delta: float) -> void:
+	if _prime_wait > 0:
+		_prime_wait -= 1
 
 
 func _process(delta: float) -> void:
@@ -233,6 +275,8 @@ func update_camera(delta: float) -> void:
 		return
 	if not is_finite(delta):
 		delta = 0.0
+	if _prime_wait > 0:
+		return
 	var me: Vector3 = target.global_position
 	var opp: Vector3 = me + Vector3(0.0, 0.0, -3.0)
 	if is_instance_valid(look_at_node) and look_at_node.is_inside_tree():
@@ -280,13 +324,31 @@ func update_camera(delta: float) -> void:
 	if mode == "follow":
 		# Squeezed against the wall behind the fighter: slide toward a side-on shot from the inner side.
 		var squeeze: float = want_pos.distance_to(raw_pos + away * pull)
-		if squeeze > SQUEEZE_FREE_M:
+		var t_target: float = clampf((squeeze - SQUEEZE_FREE_M) / (SQUEEZE_FULL_M - SQUEEZE_FREE_M), 0.0, 1.0)
+		_squeeze_t = t_target if not _primed else step_squeeze(_squeeze_t, t_target, delta, SQUEEZE_RATE_IN, SQUEEZE_RATE_OUT, SQUEEZE_DEADBAND)
+		if _squeeze_t > 0.001:
 			var alt: Dictionary = wide_pose(me, opp, _base_fov, WIDE_HEIGHT, 6.0, arena_radius - WALL_MARGIN)
-			var t: float = clampf((squeeze - SQUEEZE_FREE_M) / SQUEEZE_FULL_M, 0.0, 1.0)
+			var t: float = _squeeze_t
 			want_pos = want_pos.lerp(clamp_to_arena(alt["pos"], arena_radius, WALL_MARGIN, 0.5), t)
 			want_look = want_look.lerp(alt["look"], t)
+	var fin_w: float = 0.0
+	if finale.active:
+		var vp: Vector3 = me
+		if is_instance_valid(_finale_victim) and _finale_victim.is_inside_tree() and is_finite_v3(_finale_victim.global_position):
+			vp = limit_coord(_finale_victim.global_position)
+		finale.update(delta, vp)
+		fin_w = finale.weight
+		if finale.active and fin_w > 0.0:
+			var f_look: Vector3 = finale.look()
+			var f_raw: Vector3 = finale.pos()
+			var f_pts: Array = frame_points(vp) + [f_look]
+			var f_pull: float = pull_back_for(f_raw, f_look, _base_fov, aspect, f_pts, tun.feel_frame_margin, tun.feel_frame_pull_max)
+			var f_away: Vector3 = (f_raw - f_look).normalized()
+			var f_pos: Vector3 = clamp_to_arena(f_raw + f_away * f_pull, arena_radius, WALL_MARGIN, 0.4)
+			want_pos = want_pos.lerp(f_pos, fin_w)
+			want_look = want_look.lerp(f_look, fin_w)
 	var ratio: float = frame_ratio(want_pos, want_look, _base_fov, aspect, pts)
-	var want_extra: float = fov_to_fit(ratio, _base_fov, tun.feel_frame_margin, FOV_EXTRA_MAX) - _base_fov
+	var want_extra: float = (fov_to_fit(ratio, _base_fov, tun.feel_frame_margin, FOV_EXTRA_MAX) - _base_fov) * (1.0 - fin_w)
 	if not _primed:
 		_base_pos = want_pos
 		_look_point = want_look

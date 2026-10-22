@@ -27,6 +27,8 @@ var _roll_deg: float = 1.6
 
 
 ## Adds a blow. `strength` 0..1 (already scaled by impact and the master scale), `dir` the world direction it travelled.
+const SUBSTEP_S: float = 1.0 / 120.0  ## largest spring step
+
 func add_hit(dir: Vector3, strength: float, tun: Tuning, motion_scale: float) -> void:
 	var s: float = clampf(strength, 0.0, 1.0) * maxf(motion_scale, 0.0)
 	if not is_finite(s) or s <= 0.0 or not (is_finite(dir.x) and is_finite(dir.y) and is_finite(dir.z)):
@@ -71,9 +73,13 @@ func update(delta: float) -> Dictionary:
 	if is_idle():
 		return {"offset": Vector3.ZERO, "jitter": Vector3.ZERO, "roll": 0.0, "fov": 0.0}
 	# Semi-implicit damped spring toward zero.
-	var acc: Vector3 = -kick * _freq * _freq - kick_vel * (2.0 * ZETA * _freq)
-	kick_vel += acc * d
-	kick += kick_vel * d
+	# Substepped: a slow frame (phone, software render) must not push the stiff spring past its stability limit.
+	var steps: int = maxi(ceili(d / SUBSTEP_S), 1)
+	var h: float = d / float(steps)
+	for _i: int in steps:
+		var acc: Vector3 = -kick * _freq * _freq - kick_vel * (2.0 * ZETA * _freq)
+		kick_vel += acc * h
+		kick += kick_vel * h
 	_phase += d
 	var tr: float = shake * shake
 	var jitter: Vector3 = Vector3(
