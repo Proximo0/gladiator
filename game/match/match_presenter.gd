@@ -16,6 +16,11 @@ const BODY_RADIUS: Dictionary = {
 	"forearm_r": 0.05, "thigh_l": 0.09, "thigh_r": 0.09,
 }
 const BODY_SLIDE_SPEED: float = 0.5
+const BODY_ROLL_GAP: float = 0.6  ## a rolling drag segment longer than this is a teleport, not a furrow
+const BODY_HALF_LEN: Dictionary = {
+	"torso": 0.14, "pelvis": 0.10, "upper_arm_l": 0.10, "upper_arm_r": 0.10, "forearm_l": 0.12, "forearm_r": 0.12,
+	"thigh_l": 0.15, "thigh_r": 0.15,
+}  ## half the part's long axis between its end caps (pelvis lies along local x, the rest along local y)
 const TIP_DRAG_Y: float = 0.05
 const TIP_DRAG_SPEED: float = 0.8
 const TIP_STAB_SPEED: float = 3.5
@@ -236,15 +241,23 @@ func _bodies(f: Fighter, side: int, _delta: float) -> void:
 		var touching: bool = pos.y < r + BODY_TOUCH_MARGIN
 		var was: bool = bool(_part_touch.get(key, false))
 		var flat: Vector3 = Vector3(pos.x, 0.0, pos.z)
-		if touching and not was:
+		var rolling: bool = f.rolling()
+		if touching and not was and not rolling:
 			var impact: float = clampf(absf(b.linear_velocity.y) / 4.0, 0.0, 1.0)
-			sand.call("stamp", flat, r * 1.5, 0.012 + 0.05 * impact, Vector3(b.linear_velocity.x, 0.0, b.linear_velocity.z) * 0.2)
+			var push: Vector3 = Vector3(b.linear_velocity.x, 0.0, b.linear_velocity.z) * 0.2
+			if BODY_HALF_LEN.has(n):
+				var ax: Vector3 = b.global_transform.basis.x if n == "pelvis" else b.global_transform.basis.y
+				var half: Vector3 = Vector3(ax.x, 0.0, ax.z) * float(BODY_HALF_LEN[n])
+				sand.call("stamp_capsule", flat - half, flat + half, r * 1.3, 0.012 + 0.05 * impact, push)
+			else:
+				sand.call("stamp", flat, r * 1.5, 0.012 + 0.05 * impact, push)
 			if impact > 0.45:
 				_spray(flat, Vector3(b.linear_velocity.x, 0.0, b.linear_velocity.z), impact)
-		elif touching and was and _drags < MAX_DRAGS_PER_TICK:
+		elif touching and (was or rolling) and _drags < MAX_DRAGS_PER_TICK:
 			var hv: Vector3 = Vector3(b.linear_velocity.x, 0.0, b.linear_velocity.z)
-			if hv.length() > BODY_SLIDE_SPEED:
-				var prev: Vector3 = _last_pos.get(key, pos)
+			var prev: Vector3 = _last_pos.get(key, pos)
+			var gap: float = Vector2(prev.x - pos.x, prev.z - pos.z).length()
+			if (hv.length() > BODY_SLIDE_SPEED or rolling) and gap < BODY_ROLL_GAP:
 				sand.call("drag", Vector3(prev.x, 0.0, prev.z), flat, r, 0.014)
 				_drags += 1
 		_part_touch[key] = touching
