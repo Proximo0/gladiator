@@ -4,6 +4,9 @@ extends TestCase
 
 const NEW_WEAPONS: Array[String] = ["machete", "sledgehammer", "mace", "falchion", "warhammer", "halberd"]
 const STARTERS: Array[String] = ["fists", "rake", "bat", "club", "gladius", "longsword", "axe", "spear"]
+const NEW_SHIELDS: Array[String] = ["buckler", "parma", "pelta", "kite_shield", "aspis", "tower_shield"]
+const NEW_ARMOR: Array[String] = ["helm_murmillo", "helm_thraex", "helm_secutor", "lorica_segmentata", "lorica_squamata",
+	"balteus", "retiarius_arm", "spaulders", "fasciae"]
 const KAT: String = "sandblood.outfit.samurai"
 
 
@@ -23,7 +26,8 @@ func test_new_weapons_have_data_and_rules() -> void:
 		assert_true(float(d["balance_point"]) < float(d["length"]) - float(d["grip_offset"]), id + " balance inside the weapon")
 		assert_true(WeaponUnlocks.is_unlockable(id), id + " is unlockable")
 		assert_false(LoadoutRules.is_premium_weapon(id))
-	assert_eq(WeaponUnlocks.unlockable_ids(), Array(NEW_WEAPONS) + ["scutum"], "data order (the scutum is an earned shield)")
+	assert_eq(WeaponUnlocks.unlockable_ids(), Array(NEW_WEAPONS) + ["scutum"] + NEW_SHIELDS + NEW_ARMOR,
+		"data order: weapons and shields, then armor")
 
 
 ## The scutum: an earned off-hand shield, a side-grade to the round shield (bigger and heavier), gated like a weapon.
@@ -93,12 +97,13 @@ func test_milestones_and_text() -> void:
 	assert_false(WeaponUnlocks.is_unlocked("halberd", _p(50, 50, 2)), "off-line wins are not ranked wins")
 	assert_true(WeaponUnlocks.is_unlocked("halberd", _p(3, 3, 3)))
 	assert_eq(WeaponUnlocks.earned_ids({}), [])
-	assert_eq(WeaponUnlocks.earned_ids(_p(2, 1)), ["machete", "mace"])
+	assert_eq(WeaponUnlocks.earned_ids(_p(2, 1)), ["machete", "mace", "buckler", "helm_secutor", "spaulders", "fasciae"])
 
 
 func test_newly_unlocked() -> void:
-	assert_eq(WeaponUnlocks.newly_unlocked(_p(1, 0), _p(2, 1)), ["machete", "mace"])
-	assert_eq(WeaponUnlocks.newly_unlocked(_p(2, 1), _p(3, 1)), [])
+	assert_eq(WeaponUnlocks.newly_unlocked(_p(1, 0), _p(2, 1)), ["machete", "mace", "helm_secutor", "spaulders"])
+	assert_eq(WeaponUnlocks.newly_unlocked(_p(2, 1), _p(3, 1)), ["parma", "balteus"])
+	assert_eq(WeaponUnlocks.newly_unlocked(_p(9, 3), _p(9, 3)), [])
 
 
 func test_access_tokens_and_bypass() -> void:

@@ -5,8 +5,8 @@ extends TestCase
 func test_record_counts() -> void:
 	var p := PlayerProgress.new()
 	assert_eq(p.get_count("matches"), 0)
-	assert_eq(p.record_match(false, false), [])
-	assert_eq(p.record_match(true, false), ["machete", "mace"], "2 fights and a win")
+	assert_eq(p.record_match(false, false), ["buckler", "fasciae"], "the first fight earns a buckler and wraps")
+	assert_eq(p.record_match(true, false), ["machete", "mace", "helm_secutor", "spaulders"], "2 fights and a win")
 	assert_eq(p.get_count("matches"), 2)
 	assert_eq(p.get_count("wins"), 1)
 	assert_eq(p.get_count("ranked_wins"), 0)
@@ -23,7 +23,7 @@ func test_sync_ranked_never_lowers() -> void:
 	assert_eq(p.sync_ranked(2, 1), [])
 	assert_eq(p.get_count("ranked_wins"), 4)
 	var q := PlayerProgress.new()
-	assert_eq(q.sync_ranked(5, 3), ["halberd"])
+	assert_eq(q.sync_ranked(5, 3), ["halberd", "tower_shield"])
 	assert_eq(q.sync_ranked(1, 9).size(), 0)
 	assert_eq(q.get_count("ranked_wins"), 3, "wins never exceed games")
 

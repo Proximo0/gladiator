@@ -4,7 +4,8 @@ extends PanelContainer
 ## last focused. Emits loadout_changed(loadout). Extra rows (the CPU's difficulty, say) go in through add_row().
 ## Locked weapons (premium without the outfit, play-to-unlock not yet earned; see set_weapon_access) stay in the list,
 ## greyed with a padlock; browsing one shows its stats and a note with what unlocks it, while the loadout keeps the
-## last usable weapon ("Fighting with ...").
+## last usable weapon ("Fighting with ..."). Locked shields and armor pieces are greyed the same way; picking one
+## carries the round shield or the slot's default piece, and the stat card says what unlocks it.
 
 signal loadout_changed(loadout: Dictionary)
 
@@ -58,9 +59,7 @@ func _init() -> void:
 	offhand_picker = _add_picker("Off hand", ol)
 	for s: Array in LoadoutRules.ARMOR_SLOTS:
 		var items: Array = []
-		for id: String in LoadoutRules.armor_options(str(s[0])):
-			items.append([id, LoadoutRules.display_name(id)])
-		armor_pickers[str(s[0])] = _add_picker(str(s[1]), items)
+		armor_pickers[str(s[0])] = _add_picker(str(s[1]), _armor_items(str(s[0])))
 	var card := VBoxContainer.new()
 	card.add_theme_constant_override("separation", 4)
 	v.add_child(card)
@@ -121,6 +120,8 @@ func loadout() -> Dictionary:
 	var armor: Dictionary = {}
 	for slot: String in armor_pickers:
 		var id: String = (armor_pickers[slot] as MenuPicker).current_id()
+		if id != "" and (armor_pickers[slot] as MenuPicker).is_locked():
+			id = str(LoadoutRules.DEFAULT_ARMOR.get(slot, ""))
 		if id != "":
 			armor[slot] = id
 	var off: String = "" if LoadoutRules.offhand_blocked(_usable_weapon) else offhand_picker.current_id()
@@ -129,10 +130,18 @@ func loadout() -> Dictionary:
 	return {"weapon": _usable_weapon, "offhand": off, "armor": armor}
 
 
-## The loadout as browsed: the weapon on show even when it is locked (for the preview).
+## The loadout as browsed: the weapon and armor on show even when locked (for the preview).
 func browsed_loadout() -> Dictionary:
 	var l: Dictionary = loadout()
 	l["weapon"] = weapon_picker.current_id()
+	if offhand_picker.enabled:
+		l["offhand"] = offhand_picker.current_id()
+	for slot: String in armor_pickers:
+		var id: String = (armor_pickers[slot] as MenuPicker).current_id()
+		if id != "":
+			(l["armor"] as Dictionary)[slot] = id
+		else:
+			(l["armor"] as Dictionary).erase(slot)
 	if LoadoutRules.offhand_blocked(weapon_picker.current_id()):
 		l["offhand"] = ""
 	return l
@@ -157,6 +166,15 @@ func set_weapon_access(access: Variant, progress: Dictionary = {}) -> void:
 		_usable_weapon = weapon_picker.current_id()
 	if _usable_weapon != was:
 		_refresh_offhand(offhand_picker.current_id() if offhand_picker.enabled else LoadoutRules.DEFAULT_OFFHAND)
+	elif offhand_picker.enabled:
+		_refresh_offhand(offhand_picker.current_id())
+	for slot: String in armor_pickers:
+		var ap: MenuPicker = armor_pickers[slot]
+		var keep_a: String = ap.current_id()
+		ap.items = _armor_items(slot)
+		ap.index = clampi(ap.index, 0, ap.items.size() - 1)
+		ap.select(keep_a, false)
+		ap.queue_redraw()
 	_sync_lock_note()
 
 
@@ -179,6 +197,14 @@ func set_locked(locked: bool) -> void:
 		p.enabled = not locked
 	if not locked:
 		_refresh_offhand(offhand_picker.current_id())
+
+
+## [[id, label, locked]] for an armor slot's picker: none, then the slot's pieces lightest first.
+func _armor_items(slot: String) -> Array:
+	var items: Array = []
+	for id: String in LoadoutRules.armor_options(slot):
+		items.append([id, LoadoutRules.display_name(id), not LoadoutRules.weapon_unlocked(id, _access)])
+	return items
 
 
 func first_focus() -> Control:
@@ -224,6 +250,8 @@ func _show_card(p: MenuPicker) -> void:
 	var l: Dictionary = loadout()
 	_card_name.text = str(stats["name"]) if id != "" else "%s: none" % p.title
 	_card_line.text = str(stats["line"]) if id != "" else "Carrying %.1f kg in all" % LoadoutRules.total_mass(l)
+	if id != "" and p != weapon_picker and p.is_locked():
+		_card_line.text = "Locked: " + LoadoutRules.lock_reason(id, _access, _progress)
 	for k: String in _bars:
 		(_bars[k] as MenuStatBar).fraction = float(stats[k]) if id != "" else 0.0
 		(_bars[k] as MenuStatBar).queue_redraw()
