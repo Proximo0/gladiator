@@ -123,7 +123,7 @@
       "shape": "club",
       "edge_len": 0.0,
       "point": false,
-      "blunt_factor": 1.1,
+      "blunt_factor": 1.55,
       "cut_factor": 0.0,
       "pierce_factor": 0.0,
       "two_handed": false,

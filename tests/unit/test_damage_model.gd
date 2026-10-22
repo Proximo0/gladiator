@@ -193,7 +193,9 @@ func test_upward_blow_dislodges_more_easily() -> void:
 
 
 func test_wear_weakens_strap() -> void:
-	var h: Dictionary = _hit("head", "club", "blunt", 8.0, 1.6, ["helm_iron"])
+	# Round 7: this sat on a knife edge (8 m/s club = 51 J x club blunt vs strap 70), so any club blunt retune
+	# above ~1.37 flipped the "fresh" half. 6.5 m/s keeps both halves clear for club blunt 0.7 to 2.0.
+	var h: Dictionary = _hit("head", "club", "blunt", 6.5, 1.6, ["helm_iron"])
 	h["armor_wear"] = {"helm_iron": 0.0}
 	var fresh: bool = bool(_r(h)["dislodge"])
 	h["armor_wear"] = {"helm_iron": 1.0}
