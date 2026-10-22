@@ -43,6 +43,7 @@ var _finale_done: Array[bool] = [false, false]
 var _finale_fighter: Fighter = null  ## the finale's victim, to see when its head comes off
 var panel: TuningPanel = null
 var hit_fx: HitFx = null
+var killcam: KillCam = null  ## instant replay of the finishing blow (records every shown tick)
 
 var _fighters: Array = []
 var _foot_down: Dictionary = {}
@@ -91,6 +92,11 @@ func build(camera_mode: String) -> void:
 	panel = TuningPanel.new()
 	panel.name = "TuningPanel"
 	add_child(panel)
+	killcam = KillCam.new()
+	killcam.name = "KillCam"
+	killcam.presenter = self
+	killcam.arena_radius = Tuning.shared().arena_radius
+	add_child(killcam)
 
 
 ## Points everything at a fresh pair of fighters (also after a loop restart).
@@ -101,6 +107,7 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 	_last_pos.clear()
 	_tip_valid = [false, false]
 	_drags = 0
+	killcam.track(fighters)  # first, so it reads each event before the blood effects use their RNG
 	for f: Fighter in fighters:
 		# Blood colour follows the outfit in the fighter's loadout (online it is the loadout both sides already have).
 		blood.set_palette(f.side, OutfitRules.blood_palette_of(f.loadout))

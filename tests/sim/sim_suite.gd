@@ -11,12 +11,14 @@ const SIM_FILES: Array = [
 	"sim_practice",
 	"sim_camera_degenerate",
 	"sim_camera_finale",
+	"sim_killcam",
 	"sim_audio_bot",
 	"sim_net_loopback",
 	"sim_net_presented",
 	"sim_net_menu",
 	"sim_net_drop",
 	"sim_net_quick",
+	"sim_killcam_net",
 ]
 
 
