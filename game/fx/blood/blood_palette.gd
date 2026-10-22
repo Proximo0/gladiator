@@ -94,3 +94,13 @@ func inner(kind: String) -> Color:
 		"bone":
 			return bone
 	return flesh
+
+
+## Intestine colour: the flesh tone washed out toward pink-white, `t` 0..1 picks a variant. Alien flesh keeps its hue.
+func gut_color(t: float) -> Color:
+	return flesh.lerp(Color(1.0, 0.62, 0.6), 0.28 + 0.2 * t).lerp(fat, 0.1 * (1.0 - t))
+
+
+## Organ chunk colour (liver, kidney): the flesh tone darkened with a purple lean.
+func organ_color(t: float) -> Color:
+	return flesh.darkened(0.3 + 0.2 * t).lerp(Color(0.34, 0.08, 0.22), 0.3)

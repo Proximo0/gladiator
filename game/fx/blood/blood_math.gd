@@ -226,3 +226,24 @@ static func fountain_dir(axis: Vector3, up_bias: float, fan: float, wobble: floa
 	var u: Vector3 = a.cross(ref).normalized()
 	var w: Vector3 = a.cross(u)
 	return (a * cos(lean) + (u * cos(az) + w * sin(az)) * sin(lean)).normalized()
+
+
+# --- Gut spill ----------------------------------------------------------------------------------------------
+
+const GUT_MULT: Array[float] = [0.67, 1.0, 1.34]  ## share of the strings and chunks per spill by quality
+const GUT_CAP_MULT: Array[float] = [0.5, 1.0, 2.0]
+const GUT_SEG_MULT: Array[float] = [0.67, 1.0, 1.2]
+
+
+static func gut_mult(level: int) -> float:
+	return GUT_MULT[clampi(level, 0, 2)]
+
+
+## Most live strings (or chunks) at a quality level.
+static func gut_cap(base: float, level: int) -> int:
+	return maxi(roundi(base * GUT_CAP_MULT[clampi(level, 0, 2)]), 0)
+
+
+## Points per intestine string at a quality level (never fewer than 4).
+static func gut_segs(base: float, level: int) -> int:
+	return maxi(roundi(base * GUT_SEG_MULT[clampi(level, 0, 2)]), 4)

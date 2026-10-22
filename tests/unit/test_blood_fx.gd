@@ -171,3 +171,90 @@ func test_behead_fountain_droplets_carry_the_victims_palette_slot() -> void:
 	assert_eq(alien, fx.sim.count, "every droplet of the fountain is the fighter's own colour")
 	(pair[1] as Node).free()
 	fx.free()
+
+
+class _GutFighter extends Node3D:
+	var side: int = 1
+	var health: _DummyHealth = _DummyHealth.new()
+	var torso: Node3D = Node3D.new()
+
+
+func _gutted(kind: String, quality: int) -> Array:
+	var fx: BloodFx = BloodFx.new()
+	fx.auto_step = false
+	fx._build()
+	fx.set_quality(quality)
+	fx.set_palette(1, OutfitRules.blood_palette("alien"))
+	var f: _GutFighter = _GutFighter.new()
+	f.add_child(f.torso)
+	(Engine.get_main_loop() as SceneTree).root.add_child(f)
+	f.torso.position = Vector3(0, 1.2, 0)
+	fx.track(f)
+	fx.on_gore({"kind": kind, "part": "torso", "point": Vector3(0, 1.2, 0.2), "normal": Vector3(0, 0, 1), "amount": 1.0}, f)
+	return [fx, f]
+
+
+func test_gut_spills_strings_and_chunks_without_touching_blood() -> void:
+	var pair: Array = _gutted("gut", 1)
+	var fx: BloodFx = pair[0]
+	var f: _GutFighter = pair[1]
+	assert_true(fx.guts.rope_count() >= 2)
+	assert_true(fx.guts.blob_count() >= 2)
+	var peak: int = 0
+	for i: int in 120:
+		fx.step(1.0 / 60.0)
+		peak = maxi(peak, fx.live_droplets())
+	assert_true(peak > 300, "a big gush")
+	assert_near(f.health.blood, 2.0)
+	for i: int in 60 * 8:
+		fx.step(1.0 / 60.0)
+	assert_eq(fx._spurts.size(), 0, "the gush ends")
+	assert_true(fx.guts.rope_count() >= 2, "the guts stay on the sand")
+	f.free()
+	fx.free()
+
+
+func test_run_through_gushes_from_both_sides_and_spills_guts() -> void:
+	var pair: Array = _gutted("run_through", 1)
+	var fx: BloodFx = pair[0]
+	var kinds: Array = []
+	for s: Variant in fx._spurts:
+		kinds.append(s.kind)
+	assert_true(kinds.has("gut") and kinds.has("gut_exit"), "entry and exit")
+	var exit_s: Variant = fx._spurts[1]
+	var entry_s: Variant = fx._spurts[0]
+	assert_true(exit_s.ldir.z < 0.0 and entry_s.ldir.z > 0.0, "the exit points the other way")
+	assert_true(fx.guts.rope_count() >= 2)
+	(pair[1] as Node).free()
+	fx.free()
+
+
+func test_gut_spill_scales_with_quality_and_respects_caps() -> void:
+	var ropes: Array[int] = []
+	for q: int in 3:
+		var pair: Array = _gutted("gut", q)
+		var fx: BloodFx = pair[0]
+		ropes.append(fx.guts.rope_count())
+		for k: int in 6:
+			fx.on_gore({"kind": "gut", "part": "torso", "point": Vector3(0, 1.2, 0.2), "normal": Vector3(0, 0, 1), "amount": 1.0}, pair[1])
+		assert_true(fx.guts.rope_count() <= fx.guts.rope_cap)
+		assert_true(fx.guts.blob_count() <= fx.guts.blob_cap)
+		for i: int in 30:
+			fx.step(1.0 / 60.0)
+		(pair[1] as Node).free()
+		fx.free()
+	assert_true(ropes[0] < ropes[2], "low quality spills less")
+
+
+func test_gut_droplets_and_guts_carry_the_victims_slot() -> void:
+	var pair: Array = _gutted("run_through", 1)
+	var fx: BloodFx = pair[0]
+	for i: int in 20:
+		fx.step(1.0 / 60.0)
+	assert_true(fx.sim.count > 100)
+	for i: int in fx.sim.count:
+		assert_eq(fx.sim.slot_of(i), 1)
+	for r: GutRope in fx.guts.ropes:
+		assert_eq(r.slot, 1)
+	(pair[1] as Node).free()
+	fx.free()

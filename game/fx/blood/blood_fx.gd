@@ -57,6 +57,11 @@ class _BfSpurt extends RefCounted:
 	var pool_acc: float = 0.0
 	var sand_acc: float = 0.0
 	var sand_timer: float = 0.0
+	var hold: float = -1.0  ## fountain full-strength seconds (negative: the beheading fountain's)
+	var rate: float = -1.0  ## droplets per second per jet at full flow (negative: the beheading fountain's)
+	var v_scale: float = 1.0  ## exit speed relative to the fountain's
+	var pool_rate: float = -1.0  ## presentation litres per second poured on the sand (negative: the fountain's)
+	var drop_scale: float = -1.0  ## droplet size multiplier (negative: the fountain's)
 
 class _BfWound extends RefCounted:
 	var anchor: Node3D = null
@@ -143,6 +148,11 @@ var _stain_mesh: QuadMesh = null
 var _height_fn: Callable = Callable()
 var _reach: PackedVector3Array = PackedVector3Array()
 var _free_this_step: int = 0
+var guts: GutSim = null
+var _mm_guts: MultiMeshInstance3D = null
+var _gut_rope_cols: Array = []  ## [slot][variant] -> Color
+var _gut_blob_cols: Array = []
+var stat_gut_ms: float = 0.0
 
 
 func _init() -> void:
@@ -205,6 +215,28 @@ func _build() -> void:
 	_mm_decals.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mm_decals.multimesh = _make_multimesh(dq, false)
 	add_child(_mm_decals)
+	var gut_mat: StandardMaterial3D = StandardMaterial3D.new()
+	gut_mat.vertex_color_use_as_albedo = true
+	gut_mat.vertex_color_is_srgb = true
+	gut_mat.roughness = 0.3
+	gut_mat.metallic_specular = 0.35
+	var gut_mesh: SphereMesh = SphereMesh.new()
+	gut_mesh.radius = 1.0
+	gut_mesh.height = 2.0
+	gut_mesh.radial_segments = 10
+	gut_mesh.rings = 6
+	_mm_guts = MultiMeshInstance3D.new()
+	_mm_guts.name = "Guts"
+	_mm_guts.material_override = gut_mat
+	_mm_guts.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var gmm: MultiMesh = MultiMesh.new()
+	gmm.transform_format = MultiMesh.TRANSFORM_3D
+	gmm.use_colors = true
+	gmm.mesh = gut_mesh
+	gmm.custom_aabb = AABB(Vector3(-40, -2, -40), Vector3(80, 30, 80))
+	_mm_guts.multimesh = gmm
+	add_child(_mm_guts)
+	guts = GutSim.new()
 	sim = BloodSim.new(BloodMath.budget(quality))
 	mist = BloodMist.new(BloodMath.mist_budget(quality))
 	decals = BloodDecals.new(BloodMath.decal_budget(quality))
@@ -237,6 +269,7 @@ func _apply_palette(slot: int) -> void:
 	_decal_mat.set_shader_parameter("fresh_c" + str(slot), pal.decal_fresh())
 	_decal_mat.set_shader_parameter("old_c" + str(slot), pal.decal_dried())
 	_decal_mat.set_shader_parameter("glow" + str(slot), pal.emission)
+	_apply_gut_colors(slot, pal)
 	var by_bucket: Array = _stain_mats[slot]
 	for b: int in STAIN_BUCKETS:
 		var dry: float = (float(b) + 0.35) / float(STAIN_BUCKETS)
@@ -244,6 +277,21 @@ func _apply_palette(slot: int) -> void:
 			m.set_shader_parameter("blood_color", pal.stain_color(dry))
 			m.set_shader_parameter("gloss", 1.0 - 0.75 * dry)
 			m.set_shader_parameter("glow", (0.3 + pal.emission) * (1.0 - dry))
+
+
+func _apply_gut_colors(slot: int, pal: BloodPalette) -> void:
+	while _gut_rope_cols.size() < PALETTE_SLOTS:
+		_gut_rope_cols.append([])
+		_gut_blob_cols.append([])
+	var ropes_c: Array = []
+	var blobs_c: Array = []
+	for i: int in 5:
+		ropes_c.append(pal.gut_color(float(i) / 4.0))
+		blobs_c.append(pal.organ_color(float(i) / 4.0))
+	_gut_rope_cols[slot] = ropes_c
+	_gut_blob_cols[slot] = blobs_c
+	if guts != null:
+		guts.dirty = true
 
 
 func _push_sand_palette(slot: int) -> void:
@@ -280,6 +328,19 @@ func _apply_sizes() -> void:
 	_mm_mist.multimesh.instance_count = 0
 	_mm_mist.multimesh.instance_count = mist.capacity
 	_mm_mist.multimesh.visible_instance_count = 0
+	var tn: Tuning = Tuning.shared()
+	var segs: int = BloodMath.gut_segs(tn.gut_segs, quality)
+	guts.clear()
+	guts.set_caps(BloodMath.gut_cap(tn.gut_max_ropes, quality), BloodMath.gut_cap(tn.gut_max_blobs, quality))
+	_mm_guts.multimesh.instance_count = 0
+	_mm_guts.multimesh.instance_count = guts.max_instances(segs_cap_for(tn))
+	_mm_guts.multimesh.visible_instance_count = 0
+	guts.reserve(_mm_guts.multimesh.instance_count)
+
+
+## Longest rope any gut spill may use (points per string), for sizing the instance buffer.
+func segs_cap_for(tn: Tuning) -> int:
+	return maxi(BloodMath.gut_segs(tn.gut_segs, quality), 2)
 
 
 func set_quality(level: int) -> void:
@@ -327,6 +388,8 @@ func clear() -> void:
 	_wounds.clear()
 	_jets.clear()
 	_splat.clear()
+	if guts != null:
+		guts.clear()
 	if sim != null:
 		sim.count = 0
 		mist.count = 0
@@ -473,15 +536,23 @@ func on_gore(event: Dictionary, f: Object = null) -> void:
 				_wound_owner_tag(f)
 		"gut":
 			start_spurt(anchor, point, nrm, strength, "gut", cb, gslot)
-			_burst(point, nrm, 90, 0.8, 4.2, 0.8, 0.0085, gslot)
-			_ground_splash(point, 26, gslot)
+			_spill_guts(anchor, point, nrm, gslot, 1.0)
+			_burst(point, nrm, 170, 0.8, 5.5, 0.9, 0.0095, gslot)
+			_ground_splash(point, 48, gslot)
 			if anchor != null:
 				add_wound(anchor, anchor.to_local(point), 30.0, cb, 1.5, gslot)
 				_wound_owner_tag(f)
 		"run_through":
+			var exit_pt: Vector3 = point - nrm * Tuning.shared().gut_exit_depth
 			start_spurt(anchor, point, nrm, strength, "gut", cb, gslot)
-			start_spurt(anchor, point, -nrm, strength * 0.7, "jet", cb, gslot)
-			_burst(point, nrm, 80, 1.0, 5.0, 0.6, 0.012, gslot)
+			if Tuning.shared().gut_exit_streams > 0.0:
+				start_spurt(anchor, exit_pt, -nrm, strength, "gut_exit", cb, gslot)
+			_spill_guts(anchor, point, nrm, gslot, 1.0)
+			_spill_guts(anchor, exit_pt, -nrm, gslot, 0.0)  ## a few chunks fly out of the back as well
+			_burst(point, nrm, 150, 1.0, 6.0, 0.7, 0.012, gslot)
+			_burst(exit_pt, -nrm, 150, 1.5, 8.0, 0.5, 0.012, gslot)
+			_ground_splash(point, 40, gslot)
+			_ground_splash(exit_pt, 40, gslot)
 			if anchor != null:
 				add_wound(anchor, anchor.to_local(point), 26.0, cb, 1.4, gslot)
 				_wound_owner_tag(f)
@@ -527,17 +598,23 @@ func start_spurt(anchor: Node3D, point: Vector3, dir: Vector3, strength: float, 
 			s.r_min = 0.0026
 			s.r_max = 0.0075
 			s.stretch = 3.0
-		"gut":
-			s.tau = 18.0
-			s.dur = 45.0
-			s.max_rate = 1100.0
-			s.v_min = 0.8
-			s.v_max = 4.0
-			s.spread = 0.6
-			s.r_min = 0.003
-			s.r_max = 0.008
-			s.stretch = 2.2
-			s.base_flow = 0.4
+		"gut", "gut_exit":
+			var gt: Tuning = Tuning.shared()
+			var is_exit: bool = kind == "gut_exit"
+			s.fountain = true
+			s.streams = BloodMath.fountain_streams(gt.gut_exit_streams if is_exit else gt.gut_streams, quality)
+			s.up_bias = gt.gut_up_bias
+			s.dur = gt.gut_dur
+			s.hold = gt.gut_hold
+			s.rate = gt.gut_rate
+			s.v_scale = gt.gut_v_scale * (gt.gut_exit_v_scale if is_exit else 1.0)
+			s.pool_rate = gt.gut_pool * (0.6 if is_exit else 1.0)
+			s.drop_scale = gt.fountain_drop_scale * 0.9
+			s.stream_acc.resize(s.streams)
+			s.phase = rng.randf()
+			s.r_min = 0.0028
+			s.r_max = 0.0078
+			s.stretch = 2.6
 		"jet":
 			s.tau = 1.4
 			s.dur = 3.5
@@ -598,6 +675,7 @@ func step(dt_in: float) -> void:
 	_update_jets(dt)
 	_update_spurts(dt)
 	_update_wounds(dt)
+	_update_guts(dt)
 	_refresh_reach()
 	var t1: int = _mark(t0, "emit")
 	var grace: float = 0.05
@@ -640,6 +718,11 @@ func _upload() -> void:
 	var mm3: MultiMesh = _mm_decals.multimesh
 	mm3.buffer = decals.buf
 	mm3.visible_instance_count = decals.count
+	if guts.dirty:
+		var gn: int = guts.write(_gut_rope_cols, _gut_blob_cols)
+		var mm4: MultiMesh = _mm_guts.multimesh
+		mm4.buffer = guts.buf
+		mm4.visible_instance_count = gn
 
 
 func _refresh_reach() -> void:
@@ -712,7 +795,8 @@ func _update_spurts(dt: float) -> void:
 ## neck (or the head's cut face), aimed mostly up, swaying and circling, pulsing like a heartbeat and tapering off.
 func _emit_fountain(s: _BfSpurt, origin: Vector3, axis: Vector3, dt: float) -> void:
 	var tn: Tuning = Tuning.shared()
-	var env: float = BloodMath.fountain_envelope(s.age, tn.fountain_hold, s.dur)
+	var hold: float = tn.fountain_hold if s.hold < 0.0 else s.hold
+	var env: float = BloodMath.fountain_envelope(s.age, hold, s.dur)
 	if env <= 0.0:
 		_spurts.erase(s)
 		return
@@ -724,8 +808,9 @@ func _emit_fountain(s: _BfSpurt, origin: Vector3, axis: Vector3, dt: float) -> v
 	s.prev_pulse = beat
 	var room: float = BloodMath.fountain_headroom(sim.free_slots(), sim.capacity, tn.fountain_headroom)
 	var per_jet_cap: int = maxi(int(tn.fountain_emit_cap / float(s.streams)), 1)
-	var rate: float = tn.fountain_rate * BloodMath.rate_mult(quality) * room
-	var speed: float = BloodMath.spurt_speed((beat - tn.fountain_pulse_floor) / maxf(1.0 - tn.fountain_pulse_floor, 0.01) * minf(env + 0.15, 1.0), tn.fountain_v_min, tn.fountain_v_max)
+	var rate: float = (tn.fountain_rate if s.rate < 0.0 else s.rate) * BloodMath.rate_mult(quality) * room
+	var speed: float = BloodMath.spurt_speed((beat - tn.fountain_pulse_floor) / maxf(1.0 - tn.fountain_pulse_floor, 0.01) * minf(env + 0.15, 1.0), tn.fountain_v_min, tn.fountain_v_max) * s.v_scale
+	var dscale: float = tn.fountain_drop_scale if s.drop_scale < 0.0 else s.drop_scale
 	for k: int in s.streams:
 		var jet_dir: Vector3 = BloodMath.fountain_dir(axis, s.up_bias, tn.fountain_fan, tn.fountain_wobble, tn.fountain_swirl,
 				k, s.streams, s.age)
@@ -742,12 +827,13 @@ func _emit_fountain(s: _BfSpurt, origin: Vector3, axis: Vector3, dt: float) -> v
 			var d: Vector3 = BloodMath.cone_dir(jet_dir, 0.05 + 0.05 * (1.0 - minf(flow, 1.0)), rng.randf(), rng.randf())
 			var v: Vector3 = d * speed * rng.randf_range(0.85, 1.12) + s.anchor_vel * 0.8
 			var p: Vector3 = s.last_origin.lerp(origin, frac) + v * ta + Vector3(0, -0.5 * gravity * ta * ta, 0)
-			var r: float = BloodMath.drop_radius(rng.randf(), s.r_min, s.r_max) * tn.fountain_drop_scale * (0.7 + 0.5 * minf(flow, 1.0))
+			var r: float = BloodMath.drop_radius(rng.randf(), s.r_min, s.r_max) * dscale * (0.7 + 0.5 * minf(flow, 1.0))
 			sim.emit(p, v, r, s.stretch, 6.0, rng.randf(), s.slot)
 	# Pools on the sand under the body, poured while the fountain runs (a head's trail makes none).
-	if s.share >= 1.0 and tn.fountain_pool > 0.0:
+	var pool_rate: float = tn.fountain_pool if s.pool_rate < 0.0 else s.pool_rate
+	if s.share >= 1.0 and pool_rate > 0.0:
 		var ground: Vector3 = Vector3(origin.x, _ground_y(origin) + 0.006, origin.z)
-		var l: float = tn.fountain_pool * env * (0.5 + 0.5 * beat) * dt * BloodMath.rate_mult(quality)
+		var l: float = pool_rate * env * (0.5 + 0.5 * beat) * dt * BloodMath.rate_mult(quality)
 		s.pool_acc += l
 		s.sand_acc += l
 		s.sand_timer += dt
@@ -759,6 +845,71 @@ func _emit_fountain(s: _BfSpurt, origin: Vector3, axis: Vector3, dt: float) -> v
 			sand.call("add_blood", at, BloodMath.splat_radius(s.sand_acc), s.sand_acc, s.slot)
 			s.sand_acc = 0.0
 			s.sand_timer = 0.0
+
+
+## Spills guts from a wound: `rope_share` of the normal number of intestine strings (0 for chunks only) plus organ
+## chunks. Presentation only; they hang from the anchor part at the wound and then lie on the sand.
+func _spill_guts(anchor: Node3D, point: Vector3, nrm: Vector3, slot: int, rope_share: float) -> void:
+	var tn: Tuning = Tuning.shared()
+	var n_ropes: int = roundi(tn.gut_ropes * rope_share * BloodMath.gut_mult(quality))
+	var segs: int = BloodMath.gut_segs(tn.gut_segs, quality)
+	var side: Vector3 = nrm.cross(Vector3.UP)
+	side = side.normalized() if side.length_squared() > 0.0001 else Vector3.RIGHT
+	for i: int in n_ropes:
+		var off: Vector3 = side * rng.randf_range(-0.1, 0.1) + Vector3(0, rng.randf_range(-0.05, 0.05), 0)
+		var lean: float = (float(i) + 0.5) / float(maxi(n_ropes, 1)) * 2.0 - 1.0  ## strings fan out left to right
+		var dir: Vector3 = (nrm + Vector3.DOWN * rng.randf_range(0.1, 0.5) + side * (lean * 1.6 + rng.randf_range(-0.3, 0.3))).normalized()
+		var r: GutRope = GutRope.new()
+		r.setup(segs, tn.gut_seg_len * rng.randf_range(0.7, 1.3), tn.gut_radius * rng.randf_range(0.85, 1.15),
+				tn.gut_pay_time * rng.randf_range(0.8, 1.2), point + off, dir, tn.gut_eject * rng.randf_range(0.7, 1.2),
+				tn.gut_push, slot, rng.randf(), side * (lean * tn.gut_sway))
+		if anchor != null:
+			r.set_meta("node", anchor)
+			r.set_meta("lpos", anchor.to_local(point + off))
+		guts.add_rope(r)
+	var n_blobs: int = roundi(tn.gut_blobs * BloodMath.gut_mult(quality) * (1.0 if rope_share > 0.0 else 0.5))
+	for j: int in n_blobs:
+		var v: Vector3 = nrm * tn.gut_eject * rng.randf_range(0.5, 1.6) + Vector3(0, rng.randf_range(0.6, 2.2), 0) \
+				+ side * rng.randf_range(-1.0, 1.0)
+		guts.add_blob(point + _jit(0.04), v, tn.gut_blob_radius * rng.randf_range(0.7, 1.3), rng.randf() * TAU, slot, rng.randf())
+
+
+func _update_guts(dt: float) -> void:
+	if guts == null:
+		return
+	var t0: int = Time.get_ticks_usec() if profile_on else 0
+	var tn: Tuning = Tuning.shared()
+	var anchors: PackedVector3Array = PackedVector3Array()
+	for r: GutRope in guts.ropes:
+		var node: Variant = r.get_meta("node", null)
+		if node is Node3D and is_instance_valid(node):
+			anchors.append((node as Node3D).to_global(r.get_meta("lpos") as Vector3))
+		else:
+			anchors.append(r.anchor)
+	guts.step(dt, gravity, anchors, _height_fn, tn.gut_damp, tn.gut_friction, tn.gut_sleep_speed, tn.gut_sleep_time,
+			tn.gut_bounce)
+	for r: GutRope in guts.ropes:  # blood dripping off the hanging tips
+		if r.asleep or r.age > tn.gut_drip_time or tn.gut_drip <= 0.0:
+			continue
+		var want: float = tn.gut_drip * BloodMath.rate_mult(quality) * dt * (1.0 - r.age / maxf(tn.gut_drip_time, 0.1))
+		if rng.randf() < want:
+			sim.emit(r.pos[r.n - 1] + _jit(0.02), Vector3(0, -0.3, 0) + _jit(0.25),
+					rng.randf_range(0.004, 0.009), 1.2, 5.0, rng.randf(), r.slot)
+	var l: float = tn.gut_smear
+	for i: int in guts.touches.size():  # where a string or chunk first lands: a smear and a pool on the sand
+		var at: Vector3 = guts.touches[i]
+		var sl: int = guts.touch_slots[i]
+		if l <= 0.0:
+			break
+		var ground: Vector3 = Vector3(at.x, _ground_y(at) + 0.006, at.z)
+		decals.add(ground, l, rng.randf(), sl)
+		if sand != null and sand.has_method("add_blood"):
+			sand.call("add_blood", ground, BloodMath.splat_radius(l * 1.5), l, sl)
+		for k: int in roundi(10.0 * BloodMath.rate_mult(quality)):
+			sim.emit(at + Vector3(0, 0.05, 0), Vector3(rng.randf_range(-1.2, 1.2), rng.randf_range(0.8, 2.2), rng.randf_range(-1.2, 1.2)),
+					BloodMath.drop_radius(rng.randf(), 0.0035, 0.008), 2.0, 5.0, rng.randf(), sl)
+	if profile_on:
+		stat_gut_ms += float(Time.get_ticks_usec() - t0) / 1000.0
 
 
 func _update_wounds(dt: float) -> void:
