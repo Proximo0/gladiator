@@ -78,3 +78,19 @@ func test_fighters_sit_in_the_lower_middle_with_sand_under_their_feet() -> void:
 			assert_true(feet < 0.82, "feet on screen with sand below: %f" % feet)
 			assert_true(head > 0.2, "head on screen: %f" % head)
 			assert_true((feet + head) * 0.5 > 0.42 and (feet + head) * 0.5 < 0.7, "body centre in the lower middle: %f" % ((feet + head) * 0.5))
+
+
+func test_close_blend_is_full_in_melee_and_gone_at_range() -> void:
+	assert_near(FightCamera.close_blend(1.0, 1.7, 3.6), 1.0)
+	assert_near(FightCamera.close_blend(5.0, 1.7, 3.6), 0.0)
+	var mid: float = FightCamera.close_blend(2.65, 1.7, 3.6)
+	assert_true(mid > 0.4 and mid < 0.6, "smooth in between: %f" % mid)
+
+
+func test_close_follow_pose_moves_off_the_back_line_and_up() -> void:
+	var me := Vector3(0, 0.95, 0)
+	var opp := Vector3(0, 0.95, -1.5)
+	var far: Dictionary = FightCamera.follow_pose(me, opp, 3.4, 2.3, 0.7)
+	var near: Dictionary = FightCamera.follow_pose(me, opp, 3.4, 2.3, 0.7, 1.0, 1.1, 0.7)
+	assert_near(absf((near["pos"] as Vector3).x - (far["pos"] as Vector3).x), 1.1)
+	assert_near((near["pos"] as Vector3).y - (far["pos"] as Vector3).y, 0.7)

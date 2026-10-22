@@ -55,12 +55,23 @@ static func smooth_factor(rate: float, delta: float) -> float:
 
 ## Over-the-shoulder pose: behind and above `me`, shifted to the right shoulder, looking at a point between us
 ## that leans toward the opponent. Returns {"pos": Vector3, "look": Vector3}.
-static func follow_pose(me: Vector3, opp: Vector3, distance: float, height: float, shoulder_off: float) -> Dictionary:
+static func follow_pose(me: Vector3, opp: Vector3, distance: float, height: float, shoulder_off: float, close: float = 0.0, close_shoulder: float = 0.0, close_height: float = 0.0) -> Dictionary:
+	shoulder_off += close * close_shoulder
+	height += close * close_height
 	var f: Vector3 = flat_dir(me, opp)
 	var right: Vector3 = f.cross(Vector3.UP)
 	var pos: Vector3 = me - f * distance + right * shoulder_off + Vector3(0.0, height, 0.0)
 	var look: Vector3 = me.lerp(opp, 0.6) + Vector3(0.0, FOLLOW_LOOK_Y, 0.0)
 	return {"pos": pos, "look": look}
+
+
+## 1 at melee range (separation <= near), 0 at or beyond far, smooth between. Moves the follow camera off the line
+## through your back so the opponent is not hidden behind you.
+static func close_blend(sep: float, near: float, far: float) -> float:
+	if far <= near:
+		return 1.0 if sep <= near else 0.0
+	var t: float = clampf((far - sep) / (far - near), 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
 
 
 ## Side-on pose that fits both fighters. Distance grows with their separation.
@@ -213,7 +224,10 @@ func update_camera(delta: float) -> void:
 		"wide":
 			pose = wide_pose(me, opp, fov, WIDE_HEIGHT, 6.0, arena_radius - WALL_MARGIN)
 		_:
-			pose = follow_pose(me, opp, follow_distance, follow_height, shoulder)
+			var tun_c: Tuning = Tuning.shared()
+			var sep_f: float = Vector2(me.x - opp.x, me.z - opp.z).length()
+			var close: float = close_blend(sep_f, tun_c.feel_close_near, tun_c.feel_close_far)
+			pose = follow_pose(me, opp, follow_distance, follow_height, shoulder, close, tun_c.feel_close_shoulder, tun_c.feel_close_height)
 	var tun: Tuning = Tuning.shared()
 	if _base_fov <= 0.0:
 		_base_fov = fov

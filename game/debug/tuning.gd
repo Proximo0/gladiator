@@ -192,6 +192,10 @@ const FIELDS: Array = [
 	["feel_rumble_min", 0.2, 0.0, 0.8, 0.01, "Feel", "Impact below which a hit does not rumble."],
 	["feel_frame_pull_max", 5.0, 0.0, 12.0, 0.5, "Feel", "Most the follow camera pulls back to keep both fighters on screen, m."],
 	["feel_frame_margin", 0.82, 0.4, 1.0, 0.01, "Feel", "Share of the half field of view both fighters must stay inside."],
+	["feel_close_shoulder", 1.1, 0.0, 2.5, 0.05, "Feel", "Extra sideways shift of the follow camera at melee range, so the opponent is not hidden behind your back, m."],
+	["feel_close_height", 0.7, 0.0, 2.0, 0.05, "Feel", "Extra height of the follow camera at melee range, m."],
+	["feel_close_near", 1.7, 0.5, 4.0, 0.1, "Feel", "Fighter separation at or under which the full close-range camera shift applies, m."],
+	["feel_close_far", 3.6, 1.0, 8.0, 0.1, "Feel", "Fighter separation at or over which the close-range camera shift is gone, m."],
 	["blood_faint", 3.5, 2.6, 5.0, 0.1, "Health", "Blood (L) below which consciousness is capped; zero at blood_death."],
 	["health_head_ko", 0.04, 0.0, 0.2, 0.005, "Health", "Consciousness lost per blunt point on the head (0.04: a solid club blow dazes into the finisher window, only a huge one knocks out)."],
 	["health_stagger_ko", 0.05, 0.0, 0.5, 0.01, "Health", "Consciousness lost per unit of stagger on any part."],
@@ -470,6 +474,10 @@ var feel_rumble_s: float
 var feel_rumble_min: float
 var feel_frame_pull_max: float
 var feel_frame_margin: float
+var feel_close_shoulder: float
+var feel_close_height: float
+var feel_close_near: float
+var feel_close_far: float
 var blood_faint: float
 var health_head_ko: float
 var health_stagger_ko: float
