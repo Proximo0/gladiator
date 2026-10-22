@@ -1,7 +1,12 @@
 class_name HUD
 extends CanvasLayer
-## In-fight HUD: a blood meter per fighter (player bottom-left, opponent bottom-right) and a centre banner for big
-## moments. There is no health bar. Call track() once the two fighters exist, and announce() for big moments.
+## In-fight HUD: a blood meter per fighter (player bottom-left, opponent bottom-right), a match clock and a centre
+## banner for big moments. There is no health bar. Call track() once the two fighters exist, bind_clock() with the
+## Match, and announce() for big moments.
+## The clock shows fight time (Match.fight_ticks(): from the intro's release) as m:ss, then counts down the last
+## CLOCK_COUNTDOWN_S seconds of the time limit in warning red with a pop each second; hidden in practice (no limit).
+## Placement: bottom centre between the meters with mouse/pad; on touch, which owns the lower screen, in the top row
+## left of the centred pause button (landscape) or under the player's meter, mirroring the pause button (portrait).
 ## announce() takes "LATIN / English" (for example "MORS / Death"): the Latin is set large in Roman capitals with the
 ## English beneath it, between ochre meander rules. Text without a slash is shown as one line.
 ## Layout is in 1920x1080 design units (the project stretches canvas_items), so it holds at 1280x720 and on phones.
@@ -39,6 +44,16 @@ const LATIN_TEXT: Color = Color(0.92, 0.84, 0.66)
 const ENGLISH_TEXT: Color = Color(0.85, 0.77, 0.58, 0.9)
 const OUTLINE_COLOR: Color = Color(0.12, 0.05, 0.03, 0.9)
 const SEPARATOR: String = " / "
+const CLOCK_COUNTDOWN_S: float = 30.0  ## The clock counts down over the last this many seconds of the time limit.
+const CLOCK_TEXT_PX: float = 30.0  ## On-screen font size of the clock, whatever the screen.
+const CLOCK_PAD_PX: float = 6.0  ## On-screen padding inside the clock plaque (vertical; double sideways).
+const CLOCK_GAP_PX: float = 8.0  ## On-screen gap to the pause button or the meter it sits beside.
+const CLOCK_POP: float = 1.18  ## Countdown: scale of the pop on each new second.
+const CLOCK_POP_S: float = 0.25
+const CLOCK_TEXT: Color = Color(0.92, 0.84, 0.66)
+const CLOCK_WARN: Color = Color(0.98, 0.42, 0.3)
+const CLOCK_BACK: Color = Color(0.1, 0.06, 0.04, 0.72)
+const PAUSE_DESIGN: float = 96.0  ## MenuTheme.pause_button side in menu layout units (MenuFlow places it).
 
 var player_meter: BloodMeter = null
 var opponent_meter: BloodMeter = null
@@ -49,6 +64,11 @@ var _banner_tween: Tween = null
 var _text_w: float = 0.0  ## widest banner line, px at scale 1
 var _rules: PackedVector2Array = PackedVector2Array()  ## Meander segments of both rules (one multiline call).
 var _hairlines: PackedVector2Array = PackedVector2Array()
+var _clock: PanelContainer = null
+var _clock_label: Label = null
+var _clock_box: StyleBoxFlat = null
+var _clock_source: Node = null  ## the Match (duck-typed: fight_ticks(), config, over)
+var _clock_tween: Tween = null
 
 
 func _init() -> void:
@@ -75,6 +95,27 @@ func _init() -> void:
 
 	_latin = _make_line(LATIN_TOP, LATIN_FONT, LATIN_TEXT)
 	_english = _make_line(ENGLISH_TOP, ENGLISH_FONT, ENGLISH_TEXT)
+	_build_clock(root)
+
+
+func _build_clock(root: Control) -> void:
+	_clock = PanelContainer.new()
+	_clock.name = "Clock"
+	_clock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_clock_box = StyleBoxFlat.new()
+	_clock_box.bg_color = CLOCK_BACK
+	_clock_box.border_color = BloodMeter.BRONZE
+	_clock_box.set_corner_radius_all(8)
+	_clock.add_theme_stylebox_override("panel", _clock_box)
+	_clock_label = Label.new()
+	_clock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_clock_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_clock_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_clock_label.add_theme_color_override("font_outline_color", OUTLINE_COLOR)
+	_clock_label.text = "0:00"
+	_clock.add_child(_clock_label)
+	_clock.visible = false
+	root.add_child(_clock)
 
 
 func _make_line(top: float, font_px: int, colour: Color) -> Label:
@@ -150,6 +191,7 @@ func _line_w(label: Label, text: String) -> float:
 
 
 func _process(_delta: float) -> void:
+	_update_clock()
 	_layout()
 
 
@@ -175,6 +217,103 @@ func _layout() -> void:
 	bs = minf(bs, fit_scale(_text_w, vp.x, BANNER_FIT_FRAC))
 	_banner.scale = Vector2(bs, bs)
 	_banner.position = Vector2(vp.x * 0.5 - BANNER_W * bs * 0.5, vp.y * BANNER_Y_FRAC)
+	if _clock.visible:
+		_layout_clock(vp, k, touch, compact, spots[0] as Vector2, design * u)
+
+
+## Font, padding and border in screen px (so the clock reads the same on a phone and a monitor), then the spot.
+func _layout_clock(vp: Vector2, k: float, touch: bool, compact: bool, meter_at: Vector2, meter: Vector2) -> void:
+	_clock_label.add_theme_font_size_override("font_size", roundi(CLOCK_TEXT_PX / k))
+	_clock_label.add_theme_constant_override("outline_size", maxi(roundi(4.0 / k), 1))
+	_clock_label.custom_minimum_size = Vector2(_clock_label.get_theme_font("font").get_string_size("00:00",
+			HORIZONTAL_ALIGNMENT_LEFT, -1.0, roundi(CLOCK_TEXT_PX / k)).x, 0.0)
+	_clock_box.set_border_width_all(maxi(roundi(2.0 / k), 1))
+	_clock_box.content_margin_left = CLOCK_PAD_PX * 2.0 / k
+	_clock_box.content_margin_right = CLOCK_PAD_PX * 2.0 / k
+	_clock_box.content_margin_top = CLOCK_PAD_PX / k
+	_clock_box.content_margin_bottom = CLOCK_PAD_PX / k
+	var sz: Vector2 = _clock.get_combined_minimum_size()
+	_clock.size = sz
+	_clock.pivot_offset = sz * 0.5
+	var ins: Vector4 = SafeArea.window_insets() if touch else Vector4.ZERO
+	_clock.position = clock_position(vp, sz, k, ins, touch, compact, meter_at, meter)
+
+
+## Top-left corner (layout units) of a clock `clock` big. Mouse/pad: bottom centre, just above the render-toggles
+## line (RenderToggles, always at the bottom centre).
+## Touch landscape: the top row, right edge CLOCK_GAP_PX left of the centred pause button (MenuFlow's layout).
+## Touch portrait (`compact`): under the player's meter (`meter_at`, `meter`), mirroring the pause button.
+static func clock_position(vp: Vector2, clock: Vector2, k: float, insets: Vector4, touch: bool, compact: bool,
+		meter_at: Vector2, meter: Vector2) -> Vector2:
+	var kk: float = maxf(k, 0.0001)
+	var gap: float = CLOCK_GAP_PX / kk
+	if not touch:
+		return Vector2((vp.x - clock.x) * 0.5, vp.y - diag_clear() - gap - clock.y)
+	if compact:
+		return Vector2(meter_at.x, meter_at.y + meter.y + gap)
+	var pause: float = pause_side(vp, kk)
+	var top: float = insets.y / kk + TOUCH_EDGE_PX / kk
+	return Vector2(vp.x * 0.5 - pause * 0.5 - gap - clock.x, top + maxf(pause - clock.y, 0.0) * 0.5)
+
+
+## Layout units the bottom-centre render-toggles plate takes (offset 8, padding 6 each side, one line of text).
+static func diag_clear() -> float:
+	return 8.0 + 12.0 + float(RenderToggles.FONT_SIZE) * 1.5
+
+
+## Side of MenuFlow's touch pause button in HUD layout units: its menu layer is scaled by `s` (1 on a landscape
+## screen, vp.x / PORTRAIT_UNITS otherwise) and the button is at least PAUSE_MIN_PX on screen.
+static func pause_side(vp: Vector2, k: float) -> float:
+	var s: float = 1.0 if vp.y <= 0.0 or vp.x / vp.y >= 1.2 else vp.x / MenuFlow.PORTRAIT_UNITS
+	return maxf(PAUSE_DESIGN * s, MenuFlow.PAUSE_MIN_PX / maxf(k, 0.0001))
+
+
+## True while the clock counts down: a time limit is set and at most CLOCK_COUNTDOWN_S of it is left.
+static func clock_counts_down(fight_s: float, limit_s: float) -> bool:
+	return limit_s > 0.0 and limit_s - fight_s <= CLOCK_COUNTDOWN_S
+
+
+## The clock's text: fight time as m:ss (whole seconds gone), or in the countdown the seconds left, rounded up so it
+## reads 0:01 until the limit and 0:00 at it.
+static func clock_text(fight_s: float, limit_s: float) -> String:
+	var secs: int = maxi(floori(maxf(fight_s, 0.0)), 0)
+	if clock_counts_down(fight_s, limit_s):
+		secs = maxi(ceili(limit_s - maxf(fight_s, 0.0) - 0.0001), 0)
+	return "%d:%02d" % [secs / 60, secs % 60]
+
+
+## Reads the clock from `source` (the Match: fight_ticks(), config["time_limit_s"], is_practice(), over) each frame.
+## Null hides it.
+func bind_clock(source: Node) -> void:
+	_clock_source = source
+	_clock_label.text = ""
+	_update_clock()
+
+
+func _update_clock() -> void:
+	var src: Node = _clock_source
+	if src == null or not is_instance_valid(src) or not src.has_method("fight_ticks") or bool(src.call("is_practice")):
+		_clock.visible = false
+		return
+	_clock.visible = true
+	if bool(src.get("over")) and _clock_label.text != "":
+		return  # frozen on the final second (the match tick runs on through the victory pause)
+	var cfg: Dictionary = src.get("config")
+	var limit_s: float = float(cfg.get("time_limit_s", 0.0))
+	var fight_s: float = float(int(src.call("fight_ticks"))) / float(Engine.physics_ticks_per_second)
+	var text: String = clock_text(fight_s, limit_s)
+	if text == _clock_label.text:
+		return
+	var warn: bool = clock_counts_down(fight_s, limit_s)
+	_clock_label.text = text
+	_clock_label.add_theme_color_override("font_color", CLOCK_WARN if warn else CLOCK_TEXT)
+	_clock_box.border_color = CLOCK_WARN if warn else BloodMeter.BRONZE
+	if warn and is_inside_tree():
+		if _clock_tween != null and _clock_tween.is_valid():
+			_clock_tween.kill()
+		_clock.scale = Vector2(CLOCK_POP, CLOCK_POP)
+		_clock_tween = create_tween()
+		_clock_tween.tween_property(_clock, "scale", Vector2.ONE, CLOCK_POP_S)
 
 
 ## Shows the two fighters' blood meters. `health_a` is the player (bottom-left), `health_b` the opponent (bottom-right).
