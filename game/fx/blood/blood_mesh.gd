@@ -79,7 +79,7 @@ static func teardrop(radial: int = 12, tail_rings: int = TAIL_RINGS, head_rings:
 			var i1: int = ri * radial + k2
 			var i2: int = (ri + 1) * radial + k
 			var i3: int = (ri + 1) * radial + k2
-			idx.append_array(PackedInt32Array([i0, i1, i2, i1, i3, i2]))
+			idx.append_array(PackedInt32Array([i0, i2, i1, i1, i2, i3]))  # clockwise seen from outside: Godot's front face
 	var arrays: Array = []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts

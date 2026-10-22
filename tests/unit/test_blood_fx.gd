@@ -336,3 +336,35 @@ func test_gore_bursts_spread_over_frames_with_the_same_total() -> void:
 	assert_eq(fx.mist.count, 16, "mist total unchanged (n / 5, at most 16)")
 	assert_eq(fx._bursts.size(), 0)
 	fx.free()
+
+
+## Godot culls back faces by winding: the droplet must wind like Godot's own SphereMesh, or cull_back hides the near
+## half and the far half is lit with normals facing away (low-tier drops were darker, mean red 132 vs 146).
+func test_droplet_mesh_winds_like_godot_front_faces() -> void:
+	var ref: SphereMesh = SphereMesh.new()
+	var ra: Array = ref.surface_get_arrays(0)
+	var ref_sign: float = signf(_bf_winding(ra[Mesh.ARRAY_VERTEX], ra[Mesh.ARRAY_INDEX]))
+	assert_true(ref_sign != 0.0)
+	for q: int in 3:
+		var a: Array = BloodMesh.teardrop(int(BloodMesh.DETAIL[q][0]), int(BloodMesh.DETAIL[q][1]), int(BloodMesh.DETAIL[q][2])).surface_get_arrays(0)
+		var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+		var wrong: int = 0
+		for t: int in idx.size() / 3:
+			var s: float = _bf_winding(v, idx.slice(t * 3, t * 3 + 3))
+			if s != 0.0 and signf(s) != ref_sign:
+				wrong += 1
+		assert_eq(wrong, 0, "back-wound triangles at detail %d" % q)
+
+
+## Sum over triangles of (b - a) x (c - a) . centroid: its sign says which way the faces wind seen from outside.
+func _bf_winding(v: PackedVector3Array, idx: PackedInt32Array) -> float:
+	var s: float = 0.0
+	for t: int in idx.size() / 3:
+		var a: Vector3 = v[idx[t * 3]]
+		var b: Vector3 = v[idx[t * 3 + 1]]
+		var c: Vector3 = v[idx[t * 3 + 2]]
+		var n: Vector3 = (b - a).cross(c - a)
+		if n.length_squared() > 1e-12:
+			s += n.dot((a + b + c) / 3.0)
+	return s

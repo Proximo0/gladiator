@@ -5,6 +5,7 @@ extends Node
 ## Prints `BLOODCAP q=<level> mean_r=.. mean_g=.. px=..` per shot (mean colour of the blood pixels). Never part of the
 ## check suite; writes only the PNGs it is told to.
 
+const LAST: int = 3  ## shots 0..2 are the quality levels; 3 is the high-detail teardrop mesh with the mesh shader
 var _out: String = "/tmp/blood_capture/"
 var _match: Match = null
 var _cam: Camera3D = null
@@ -45,13 +46,13 @@ func _process(_d: float) -> void:
 		_cam.look_at(Vector3(-0.5, 0.95, 0.0) if _view == "close" else Vector3(0.0, 1.0, 0.0))
 		_cam.fov = 40.0
 		_cam.make_current()
-	if _frame >= 30 and (_frame - 30) % 12 == 0 and _q <= 2:
+	if _frame >= 30 and (_frame - 30) % 12 == 0 and _q <= LAST:
 		if _frame > 30:
 			_save(_q)
-			_q = 3 if _only >= 0 else _q + 1
-		if _q <= 2:
+			_q = LAST + 1 if _only >= 0 else _q + 1
+		if _q <= LAST:
 			_place(_q)
-	if _q > 2:
+	if _q > LAST:
 		print("BLOODCAP done")
 		get_tree().quit()
 
@@ -59,7 +60,13 @@ func _process(_d: float) -> void:
 ## The same grid of drops at every quality: still round ones in the left half, fast streaks in the right half.
 func _place(q: int) -> void:
 	var b: BloodFx = _match.presenter.blood
-	b.set_quality(q)
+	b.set_quality(mini(q, 2))
+	if q == 3:
+		var mat: ShaderMaterial = b.get("_drop_mat")
+		mat.shader = load(BloodMesh.SHADER_MESH)
+		for slot: int in 2:
+			b.call("_apply_palette", slot)
+		(b.get("_mm_drops") as MultiMeshInstance3D).multimesh.mesh = BloodMesh.teardrop()
 	b.sim.resize(b.sim.capacity)
 	for iy: int in 8:
 		for ix: int in 16:
@@ -71,7 +78,7 @@ func _place(q: int) -> void:
 
 func _save(q: int) -> void:
 	var img: Image = get_viewport().get_texture().get_image()
-	img.save_png("%sdrops_%s_%s%s.png" % [_out, _view, GfxQuality.name_of(q), "_tier" if _only >= 0 else ""])
+	img.save_png("%sdrops_%s_%s%s.png" % [_out, _view, _shot_name(q), "_tier" if _only >= 0 else ""])
 	var sr: float = 0.0
 	var sg: float = 0.0
 	var n: int = 0
@@ -82,4 +89,8 @@ func _save(q: int) -> void:
 				sr += c.r8
 				sg += c.g8
 				n += 1
-	print("BLOODCAP view=%s q=%s mean_r=%.0f mean_g=%.0f px=%d" % [_view, GfxQuality.name_of(q), sr / maxf(n, 1), sg / maxf(n, 1), n])
+	print("BLOODCAP view=%s q=%s mean_r=%.0f mean_g=%.0f px=%d" % [_view, _shot_name(q), sr / maxf(n, 1), sg / maxf(n, 1), n])
+
+
+func _shot_name(q: int) -> String:
+	return "mesh12" if q == 3 else GfxQuality.name_of(q)
