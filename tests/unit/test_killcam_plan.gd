@@ -127,3 +127,16 @@ func test_skip_events_and_hint() -> void:
 	assert_true(KillCam.is_skip_event(t))
 	assert_false(KillCam.is_skip_event(InputEventMouseMotion.new()))
 	assert_eq(KillcamOverlay.hint_text(true), "Tap to skip")
+
+
+func test_orbit_starts_side_on_and_turns_toward_the_attackers_back() -> void:
+	var att := Vector3(0, 0.9, 1.0)
+	var pt := Vector3(0, 1.2, 0)
+	var o: Array = KillcamPlan.orbit_start(att, pt, 11.0)
+	var a0: float = float(o[0])
+	var turn: float = float(o[1])
+	var side_a: float = a0 + turn * deg_to_rad(KillcamPlan.ORBIT_LEAD_DEG)
+	assert_near(absf(cos(side_a)), 1.0, 0.001, "side-on to a blow along z is along x")
+	var behind: float = KillcamPlan.angle_of(pt, att)
+	var later: float = side_a + turn * deg_to_rad(45.0)
+	assert_true(absf(angle_difference(later, behind)) < absf(angle_difference(side_a, behind)), "turning brings it behind the attacker")

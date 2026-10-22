@@ -51,6 +51,7 @@ var _shot: int = -1
 var _shot_t: float = 0.0
 var _hero_side: float = 1.0
 var _orbit_a0: float = 0.0
+var _orbit_turn: float = 1.0
 var _close_dir: Vector3 = Vector3.BACK
 var _cam_pos: Vector3 = Vector3.ZERO
 var _cam_look: Vector3 = Vector3.ZERO
@@ -546,8 +547,9 @@ func _update_camera(real_dt: float, hz: float) -> void:
 		_shot = shot
 		_shot_t = 0.0
 		if shot == KillcamPlan.ORBIT:
-			var from: Vector3 = _cam_pos if _cam_pos != Vector3.ZERO else _live_pos(int(plan["attacker"]), "pelvis")
-			_orbit_a0 = KillcamPlan.angle_of(plan["point"] as Vector3, from) + deg_to_rad(40.0)
+			var o: Array = KillcamPlan.orbit_start(_live_pos(int(plan["attacker"]), "pelvis"), plan["point"] as Vector3, arena_radius)
+			_orbit_a0 = float(o[0])
+			_orbit_turn = float(o[1])
 		elif shot == KillcamPlan.CLOSE:
 			_close_dir = _cam_pos - _close_target()
 	else:
@@ -558,7 +560,7 @@ func _update_camera(real_dt: float, hz: float) -> void:
 			v = KillcamPlan.hero_view(_live_pos(int(plan["attacker"]), "pelvis"), _live_pos(int(plan["victim"]), "pelvis"),
 					_hero_side, _shot_t, arena_radius)
 		KillcamPlan.ORBIT:
-			v = KillcamPlan.orbit_view(plan["point"] as Vector3, _orbit_a0, _shot_t, arena_radius)
+			v = KillcamPlan.orbit_view(plan["point"] as Vector3, _orbit_a0, _shot_t, arena_radius, _orbit_turn)
 		_:
 			v = KillcamPlan.close_view(_close_target(), _close_dir, _shot_t, arena_radius)
 	var want_pos: Vector3 = v[0]

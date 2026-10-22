@@ -18,7 +18,8 @@ const HERO_DOLLY_S: float = 4.0
 const CHEST_Y: float = 1.15
 const ORBIT_RADIUS: float = 2.1
 const ORBIT_HEIGHT: float = 1.0
-const ORBIT_DEG_S: float = 32.0
+const ORBIT_DEG_S: float = 24.0
+const ORBIT_LEAD_DEG: float = 20.0  ## the orbit starts this far short of side-on
 const CLOSE_DIST0: float = 2.3
 const CLOSE_DIST1: float = 1.7
 const CLOSE_RISE: float = 0.55
@@ -182,11 +183,20 @@ static func angle_of(center: Vector3, from: Vector3) -> float:
 	return atan2(d.z, d.x) if d.length() > 0.001 else 0.0
 
 
-## [camera position, look point]: circling the impact point at bullet-time pace (real seconds).
-static func orbit_view(center: Vector3, a0: float, t_real: float, arena_r: float) -> Array:
-	var a: float = a0 + deg_to_rad(ORBIT_DEG_S) * t_real
+## [start angle, turn sign] of the orbit: it starts just short of side-on to the blow (the side with room inside the
+## wall) and turns toward the attacker's back, so the wound comes round to face the camera over his shoulder.
+static func orbit_start(attacker: Vector3, point: Vector3, arena_r: float) -> Array:
+	var side: Vector3 = FinaleShot.choose_view(attacker, point, ORBIT_RADIUS, arena_r, WALL_MARGIN)["dir"]
+	var a_side: float = atan2(side.z, side.x)
+	var turn: float = 1.0 if angle_difference(a_side, angle_of(point, attacker)) >= 0.0 else -1.0
+	return [a_side - turn * deg_to_rad(ORBIT_LEAD_DEG), turn]
+
+
+## [camera position, look point]: circling the impact point at bullet-time pace (real seconds), `turn` +1 or -1.
+static func orbit_view(center: Vector3, a0: float, t_real: float, arena_r: float, turn: float = 1.0) -> Array:
+	var a: float = a0 + turn * deg_to_rad(ORBIT_DEG_S) * t_real
 	var look: Vector3 = Vector3(center.x, clampf(center.y, 0.4, 1.6), center.z)
-	var pos: Vector3 = Vector3(center.x + cos(a) * ORBIT_RADIUS, look.y + ORBIT_HEIGHT * 0.45, center.z + sin(a) * ORBIT_RADIUS)
+	var pos: Vector3 = Vector3(center.x + cos(a) * ORBIT_RADIUS, look.y + ORBIT_HEIGHT * 0.6, center.z + sin(a) * ORBIT_RADIUS)
 	return [clamp_cam(pos, arena_r), look]
 
 
