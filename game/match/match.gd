@@ -263,7 +263,7 @@ func _physics_process(delta: float) -> void:
 	for i: int in 2:
 		frames[i]["blood"] = (fighters[i] as Fighter).health.blood
 		frames[i]["hp"] = (fighters[i] as Fighter).health.hp_total_frac()
-	stats.on_frames(frames, delta)
+	stats.on_frames(frames, delta, fight_clock_running())
 	if presenter != null:
 		presenter.tick(frames, delta)
 	var verdict: Dictionary = {} if is_practice() else _judge.update(frames, fight_ticks(), delta)
@@ -282,6 +282,11 @@ func _physics_process(delta: float) -> void:
 ## Ticks of fighting so far: from `fight_start_tick`, 0 before it and while the clock is held.
 func fight_ticks() -> int:
 	return 0 if _clock_held else maxi(tick - fight_start_tick, 0)
+
+
+## True once the fight clock runs: not held and at or past `fight_start_tick` (MatchStats counts only these ticks).
+func fight_clock_running() -> bool:
+	return not _clock_held and tick >= fight_start_tick
 
 
 ## Offline intro: the fight clock waits (fight_ticks() stays 0) until `start_fight_clock`.
@@ -378,7 +383,7 @@ func _restart() -> void:
 # --- events ------------------------------------------------------------------------------------------------------
 
 func _on_hit(ev: Dictionary) -> void:
-	stats.on_hit(ev, float(tick) / float(Engine.physics_ticks_per_second))
+	stats.on_hit(ev, float(fight_ticks()) / float(Engine.physics_ticks_per_second))
 	var fin: String = str(ev.get("finisher", ""))
 	var tgt: int = int(ev.get("target", -1))
 	if tgt >= 0 and tgt < 2 and fighters.size() == 2:

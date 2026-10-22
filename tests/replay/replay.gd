@@ -66,10 +66,7 @@ func _start() -> void:
 		_world.render_target_update_mode = SubViewport.UPDATE_DISABLED
 		add_child(_world)
 		_world.add_child(_match)
-	_match.call("setup", {
-		"mode": "bot_vs_bot", "seed": _rec["seed"], "loadouts": _rec["loadouts"], "personalities": _rec["personalities"],
-		"presentation": _render, "loop": false, "time_limit_s": _limit_s(),
-	})
+	_match.call("setup", FlightRecorder.replay_config(_rec, _render, _limit_s()))
 	_match.call("force_inputs", _rec["inputs"])
 	_recorder = FlightRecorder.new()
 	add_child(_recorder)

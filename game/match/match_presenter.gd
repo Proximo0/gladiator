@@ -83,6 +83,7 @@ func build(camera_mode: String) -> void:
 	wounds = WoundFx.new()
 	wounds.name = "WoundFx"
 	add_child(wounds)
+	blood.body_marks = wounds
 	blood.set_quality(GfxQuality.blood_level())
 	sfx = SfxDirector.new()
 	sfx.name = "SfxDirector"
@@ -197,6 +198,7 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 	_player_side = human
 	hud.track((fighters[human] as Fighter).health, (fighters[1 - human] as Fighter).health,
 			str(names[human]), str(names[1 - human]))
+	hud.bind_clock(get_parent())  # the Match: fight clock and time limit
 	aim.bind(fighters[human] as Fighter, camera)
 	feel.begin(fighters, human)
 	camera.target = (fighters[human] as Fighter).parts["pelvis"]

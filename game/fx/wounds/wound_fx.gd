@@ -2,8 +2,10 @@ class_name WoundFx
 extends Node
 ## Visible accumulated damage: wound marks on the fighters' bodies (WoundMarks: gashes, punctures, bruises, blood
 ## smears, also on the attacker who gets splashed) and blood coating their weapons and fists (WeaponCoat). Driven only
-## by the fighters' `hit` signals, which an online client already replays from the host's events, so both screens draw
-## the same marks. Presentation only: never part of the fight state.
+## by the fighters' `hit` and `gore` signals, which an online client already replays from the host's events, so both
+## screens draw the same marks. BloodFx also routes its body stains here (`add_stain`: the soak of a bleeding blow,
+## `add_drop`: blood drops landing on a fighter), so every mark on skin or armor wraps the real surface. A severed limb
+## or neck gets a blood collar on both cut ends. Presentation only: never part of the fight state.
 ## Drawing: each marked body part (or bloodied weapon) gets a "shell": a second MeshInstance3D per visible mesh, with
 ## the same mesh and a wound shader that is transparent except where the marks are. Shells live in their own node
 ## (not under Look / ArmorSlot, so HitFx flashes and armor code never see them) and follow their source's visibility.
@@ -33,6 +35,7 @@ var _coats: Dictionary = {}  ## Weapon node -> WeaponCoat
 var _body_shader: Shader = null
 var _coat_shader: Shader = null
 var _push_acc: float = 0.0
+var _drop_budget: Dictionary = {}  ## side -> drop smears it may still take (refills at Tuning wound_drop_rate per s)
 var stat_shells: int = 0  ## live shell meshes (extra draws), for perf checks
 
 
@@ -61,14 +64,21 @@ func track(f: Node) -> void:
 	var side: int = int(sv) if sv != null else _by_side.size()
 	_by_side[side] = f
 	_marks[side] = WoundMarks.new(quality)
+	_drop_budget[side] = _tn().wound_drop_rate
 	if f.has_signal("hit") and not f.is_connected("hit", on_hit):
 		f.connect("hit", on_hit)
+	if f.has_signal("gore") and not f.is_connected("gore", on_gore):
+		f.connect("gore", on_gore.bind(side))
 
 
 func clear() -> void:
 	for f: Variant in _by_side.values():
 		if is_instance_valid(f) and (f as Node).is_connected("hit", on_hit):
 			(f as Node).disconnect("hit", on_hit)
+		if is_instance_valid(f) and (f as Node).has_signal("gore"):
+			for c: Dictionary in (f as Node).get_signal_connection_list("gore"):
+				if (c["callable"] as Callable).get_object() == self:
+					(f as Node).disconnect("gore", c["callable"] as Callable)
 	for host: Variant in _shells:
 		if is_instance_valid(host):
 			var n: Node = (host as Node).get_node_or_null(SHELL_NODE)
@@ -78,6 +88,7 @@ func clear() -> void:
 	_marks.clear()
 	_shells.clear()
 	_coats.clear()
+	_drop_budget.clear()
 	stat_shells = 0
 
 
@@ -127,10 +138,10 @@ func on_hit(ev: Dictionary) -> void:
 
 
 func _mark(side: int, body: Node3D, part: String, kind: int, point: Vector3, rel: Vector3, sev: float,
-		slot: int) -> void:
+		slot: int, stretch: float = 1.0, push: bool = true) -> bool:
 	var wm: WoundMarks = _marks.get(side) as WoundMarks
 	if wm == null:
-		return
+		return false
 	var shape: Array = _shape_of(part)
 	var inv: Basis = body.global_transform.basis.inverse()
 	var local: Vector3 = WoundMarks.snap_to_surface(str(shape[0]), shape[1] as Vector3, body.to_local(point))
@@ -140,9 +151,84 @@ func _mark(side: int, body: Node3D, part: String, kind: int, point: Vector3, rel
 	if not hit.is_empty():
 		local = hit[0]
 		nrm = hit[1]
-	if wm.add(part, kind, local, nrm, inv * rel, inv * Vector3.DOWN, sev, slot) == null:
+	if wm.add(part, kind, local, nrm, inv * rel, inv * Vector3.DOWN, sev, slot, stretch) == null:
+		return false
+	if push:
+		_push_part(wm, part, body)
+	return true
+
+
+## Blood soaked into part `part` of fighter `f` at world `point`: a smear streaked along `along` (world), strength
+## `sev` 0..1, of palette `slot`. Returns false when `f` or the part is not tracked.
+func add_stain(f: Node, part: String, point: Vector3, along: Vector3, sev: float, slot: int,
+		stretch: float = 1.0) -> bool:
+	var side: int = _side_of(f)
+	var body: Node3D = _part(f, part)
+	if side < 0 or body == null:
+		return false
+	return _mark(side, body, part, WoundMarks.Kind.SMEAR, point, along, sev, clampi(slot, 0, 1), stretch)
+
+
+## A blood drop of radius `radius` (m) landing on part `part` of fighter `f` at `point` with velocity `vel`: a small
+## smear streaked along the landing speed, or a deeper one where drops already landed. At most Tuning
+## wound_drop_rate per fighter per second; the shells pick it up at the next refresh. False when it left no mark.
+func add_drop(f: Node, part: String, point: Vector3, vel: Vector3, radius: float, slot: int) -> bool:
+	var side: int = _side_of(f)
+	if side < 0 or float(_drop_budget.get(side, 0.0)) < 1.0:
+		return false
+	var body: Node3D = _part(f, part)
+	if body == null:
+		return false
+	_drop_budget[side] = float(_drop_budget[side]) - 1.0
+	var sev: float = WoundMarks.smear_sev_for(radius * _tn().wound_drop_size)
+	return _mark(side, body, part, WoundMarks.Kind.SMEAR, point, vel, sev, clampi(slot, 0, 1), drop_stretch(vel),
+			false)
+
+
+## Streak of a landed drop: longer the faster it hit (1 at rest, WoundMarks.STRETCH_MAX at 18 m/s and up).
+static func drop_stretch(vel: Vector3) -> float:
+	return clampf(1.0 + vel.length() * 0.12, 1.0, WoundMarks.STRETCH_MAX)
+
+
+## A severed limb or head: a blood collar on the stump (the parent part, at the joint) and on the cut end of the part
+## that came off, so the skin round both cap faces reads as cut, not clean.
+func on_gore(ev: Dictionary, side: int) -> void:
+	var kind: String = str(ev.get("kind", ""))
+	if kind != "sever" and kind != "behead":
 		return
-	_push_part(wm, part, body)
+	var sev: float = _tn().wound_stump_sev
+	var f: Node = _by_side.get(side)
+	if sev <= 0.0 or f == null or not is_instance_valid(f):
+		return
+	var part: String = str(ev.get("part", "head" if kind == "behead" else ""))
+	var ends: Array = stump_ends(part)
+	if ends.is_empty():
+		return
+	var slot: int = clampi(side, 0, 1)
+	for e: Array in ends:
+		var body: Node3D = _part(f, str(e[0]))
+		if body != null:
+			var at: Vector3 = body.to_global(e[1] as Vector3)
+			_mark(side, body, str(e[0]), WoundMarks.Kind.SMEAR, at, body.global_transform.basis * Vector3.UP, sev, slot)
+
+
+## [[part, joint point in that part's frame], ...] for the two cut ends of severing `part` from its parent (the
+## stump first); empty for a part with no parent. Rig parts sit unrotated in the rest pose, so frame offsets are
+## differences of rest positions.
+static func stump_ends(part: String) -> Array:
+	var pd: Dictionary = {}
+	for d: Dictionary in FighterRig.PARTS:
+		if str(d["name"]) == part:
+			pd = d
+	if pd.is_empty() or str(pd["parent"]) == "":
+		return []
+	var parent: String = str(pd["parent"])
+	var pivot: Vector3 = pd["pivot"]
+	var pcenter: Vector3 = Vector3.ZERO
+	for d: Dictionary in FighterRig.PARTS:
+		if str(d["name"]) == parent:
+			pcenter = d["center"]
+	return [[parent, pivot - pcenter], [part, pivot - (pd["center"] as Vector3)]]
 
 
 ## The point where a ray from outside along -`nrm` through `local` (part frame) meets the part's drawn meshes (skin,
@@ -234,8 +320,10 @@ func _process(delta: float) -> void:
 
 
 func step(dt: float) -> void:
+	var rate: float = _tn().wound_drop_rate
 	for side: int in _marks:
 		(_marks[side] as WoundMarks).step(dt)
+		_drop_budget[side] = minf(float(_drop_budget.get(side, 0.0)) + rate * dt, maxf(rate, 1.0))
 	for w: Variant in _coats:
 		(_coats[w] as WeaponCoat).step(dt)
 	_push_acc += dt
@@ -364,10 +452,15 @@ func _push_part(wm: WoundMarks, part: String, body: Node3D) -> void:
 		return
 	var pk: Dictionary = wm.pack(part)
 	wm.dirty.erase(part)
+	var tn: Tuning = _tn()
+	var glow_dry: float = WoundMarks.dryness(tn.wound_rim_glow_s)
 	for pair: Array in pairs:
 		if not is_instance_valid(pair[0]):
 			continue
 		var mat: ShaderMaterial = (pair[0] as MeshInstance3D).material_override as ShaderMaterial
+		mat.set_shader_parameter("core_scale", tn.wound_core_scale)
+		mat.set_shader_parameter("rim_glow", tn.wound_rim_glow)
+		mat.set_shader_parameter("rim_glow_dry", glow_dry)
 		mat.set_shader_parameter("count", int(pk["count"]))
 		mat.set_shader_parameter("wa", pk["a"])
 		mat.set_shader_parameter("wb", pk["b"])
@@ -426,6 +519,20 @@ func _push_coat(w: Node3D, coat: WeaponCoat) -> void:
 
 
 # --- helpers -----------------------------------------------------------------------------------------------------
+
+static func _tn() -> Tuning:
+	return Tuning.shared()
+
+
+## Side of tracked fighter `f`, or -1.
+func _side_of(f: Node) -> int:
+	if f == null:
+		return -1
+	for side: int in _by_side:
+		if _by_side[side] == f:
+			return side
+	return -1
+
 
 func _part(f: Node, part: String) -> Node3D:
 	if f == null or part == "":

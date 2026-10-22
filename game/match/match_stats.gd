@@ -21,6 +21,11 @@ extends RefCounted
 ## between the fighters over `_dist_ticks` ticks (`mean_dist()`); a "strike tick" is one where the fighters are within
 ## STRIKE_MARGIN times the longer reach of the two weapons (`strike_share()`); `travel` is each side's summed pelvis
 ## step length in metres; `cells` is the set of Vector2i(floori(x), floori(z)) cells either pelvis stood in.
+## Fight clock: every duration and movement number (`ticks`, `time_down_s`, `stuck_s`, `stamina0_max_s`, distance,
+## strike ticks, `travel`, `cells`) only counts frames fed with `clock_on` true, so the pre-fight intro (fighters held
+## at their spawns, the Match's fight clock not yet running) never pads them; `ticks` is then the fight-clock tick
+## count. Held frames still update the per-side history (states, rolls, logs, last positions), so the release frame
+## counts no false knockdown, roll or travel jump; explosions count on every frame. Hit times passed to `on_hit` are fight-clock seconds too.
 
 const SWING_SPEED: float = 2.5
 const STUCK_SPEED: float = 0.2
@@ -133,10 +138,15 @@ func on_gore(ev: Dictionary) -> void:
 		finisher = kind
 
 
-## Both fighters' debug_frame() dictionaries (side order), once per physics tick.
-func on_frames(frames: Array, dt: float) -> void:
-	ticks += 1
-	_on_arena(frames)
+## Both fighters' debug_frame() dictionaries (side order), once per physics tick. `clock_on` false (the intro, the
+## fight clock held) keeps the history current but adds no time, distance or travel.
+func on_frames(frames: Array, dt: float, clock_on: bool = true) -> void:
+	if clock_on:
+		ticks += 1
+	else:
+		_stuck_run = 0.0
+		_stamina0_run = [0.0, 0.0]
+	_on_arena(frames, clock_on)
 	var still: bool = true
 	for fr: Dictionary in frames:
 		var side: int = int(fr.get("side", 0))
@@ -147,7 +157,7 @@ func on_frames(frames: Array, dt: float) -> void:
 				_swing_sum += tip
 				_swing_ticks += 1
 		var state: String = str(fr.get("state", "standing"))
-		if DOWN_STATES.has(state):
+		if DOWN_STATES.has(state) and clock_on:
 			time_down_s += dt
 		if side >= 0 and side < 2:
 			var prev: String = _prev_state[side]
@@ -167,7 +177,7 @@ func on_frames(frames: Array, dt: float) -> void:
 			if cl is Dictionary:
 				_close_log[side] = (cl as Dictionary).duplicate()
 			var dead: bool = state == "dead"
-			if float(fr.get("stamina", 1.0)) <= STAMINA_ZERO and not dead:
+			if float(fr.get("stamina", 1.0)) <= STAMINA_ZERO and not dead and clock_on:
 				_stamina0_run[side] = float(_stamina0_run[side]) + dt
 				stamina0_max_s = maxf(stamina0_max_s, float(_stamina0_run[side]))
 			else:
@@ -177,7 +187,7 @@ func on_frames(frames: Array, dt: float) -> void:
 			still = false
 		if _check_explosion(fr, dt):
 			explosions += 1
-	if still and frames.size() >= 2:
+	if still and frames.size() >= 2 and clock_on:
 		_stuck_run += dt
 		if _stuck_run > STUCK_GRACE_S:
 			stuck_s += dt
@@ -186,8 +196,8 @@ func on_frames(frames: Array, dt: float) -> void:
 
 
 ## Distance, strike ticks, pelvis travel and visited cells from the two frames (side order). Skips a tick whose
-## pelvis position is not finite, so one NaN never poisons the sums.
-func _on_arena(frames: Array) -> void:
+## pelvis position is not finite, so one NaN never poisons the sums. With `clock_on` false only the last positions move.
+func _on_arena(frames: Array, clock_on: bool = true) -> void:
 	if frames.size() < 2:
 		return
 	var xz: Array = [Vector2.ZERO, Vector2.ZERO]
@@ -200,6 +210,9 @@ func _on_arena(frames: Array) -> void:
 		xz[i] = Vector2(p.x, p.z)
 		var w: Dictionary = CombatData.weapon(str(fr.get("weapon_id", "fists")))
 		reach[i] = REACH_BASE + REACH_PER_LENGTH * float(w.get("length", DEFAULT_LENGTH))
+	if not clock_on:
+		_prev_xz = [xz[0], xz[1]]
+		return
 	var d: float = (xz[0] as Vector2).distance_to(xz[1] as Vector2)
 	dist_sum += d
 	_dist_ticks += 1

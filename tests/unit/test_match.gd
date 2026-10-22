@@ -41,3 +41,20 @@ func test_time_limit_counts_from_the_release() -> void:
 	m.tick = 10800 + 138
 	assert_eq(str(judge.update(frames, m.fight_ticks(), dt).get("reason", "")), "time")
 	m.free()
+
+
+## MatchStats counts only ticks with the clock running: not held, and at or past fight_start_tick.
+func test_fight_clock_running() -> void:
+	var m := _match({"mode": "bot_vs_bot", "seed": 3, "presentation": false, "fight_start_tick": 138})
+	m.tick = 137
+	assert_false(m.fight_clock_running(), "online intro: before START's fight tick")
+	m.tick = 138
+	assert_true(m.fight_clock_running())
+	var o := _match({"mode": "player_vs_cpu", "seed": 3, "presentation": false})
+	o.hold_fight_clock()
+	o.tick = 90
+	assert_false(o.fight_clock_running(), "offline intro: held")
+	o.start_fight_clock()
+	assert_true(o.fight_clock_running(), "the release tick itself counts")
+	m.free()
+	o.free()

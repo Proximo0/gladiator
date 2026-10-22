@@ -3,6 +3,7 @@ extends Node
 ## then the victim (side 1) is run through or gutted and the camera saves the gush and the settled guts. Run in a
 ## real (xvfb) window:
 ## godot --path . --resolution 1280x720 res://tests/render/gore_capture.tscn -- --out=DIR --name=run [--kind=gut] [--alien]
+## --kind=sever cuts the victim's right forearm off at the elbow instead and frames the stump and the fallen arm.
 ## Never part of the check suite; writes only the PNGs it is told to.
 
 var _out: String = "/tmp/gore_capture/"
@@ -36,6 +37,8 @@ func _ready() -> void:
 	_match.setup({"mode": "bot_vs_bot", "seed": 7, "loop": false, "time_limit_s": 600.0,
 			"loadouts": [{"weapon": "gladius", "offhand": "", "armor": {}}, victim]})
 	_shots = [[18, "gush", "close"], [60, "spill", "close"], [420, "settled", "low"]]
+	if _kind == "sever":
+		_shots = [[18, "cut", "arm"], [120, "stump", "arm"]]
 
 
 func _process(_d: float) -> void:
@@ -86,6 +89,14 @@ func _gore(v: Fighter) -> void:
 	var torso: Node3D = v.parts["torso"]
 	var pelvis: Node3D = v.parts["pelvis"]
 	var at: Vector3 = pelvis.global_position.lerp(torso.global_position, 0.6) + fwd * 0.13
+	if _kind == "sever":
+		var arm: RigidBody3D = v.parts["forearm_r"]
+		var elbow: Vector3 = arm.to_global(Vector3(0, 0.17, 0))
+		var up: Vector3 = (v.parts["upper_arm_r"] as Node3D).global_position
+		v.call("_sever", "forearm_r")
+		arm.freeze = false  # the cut arm drops; the stump stays frozen in the stance
+		v.gore.emit({"kind": "sever", "part": "forearm_r", "point": elbow, "normal": (elbow - up).normalized(), "amount": 1.0})
+		return
 	v.gore.emit({"kind": _kind, "part": "torso", "point": at, "normal": fwd, "amount": 60.0})
 
 
@@ -98,7 +109,16 @@ func _aim(v: Fighter, mode: String) -> void:
 	var fwd: Vector3 = _facing(v)
 	var side: Vector3 = fwd.cross(Vector3.UP).normalized()
 	var c: Vector3 = (v.parts["pelvis"] as Node3D).global_position
-	if mode == "low":
+	if mode == "arm":
+		var look3: Vector3 = (v.parts["upper_arm_r"] as Node3D).global_position + Vector3(0, -0.2, 0)
+		var out: Vector3 = look3 - (v.parts["torso"] as Node3D).global_position  # from the body out past the stump
+		out.y = 0.0
+		out = out.normalized() if out.length() > 0.01 else side
+		_cam.global_position = look3 + out * 0.5 + fwd * 0.25 + Vector3(0, -0.2, 0)
+		if _match.presenter != null and _match.presenter.hud != null:
+			_match.presenter.hud.visible = false
+		_cam.look_at(look3, Vector3.UP)
+	elif mode == "low":
 		var look: Vector3 = Vector3(c.x, 0.15, c.z) + fwd * 0.45
 		var g: GutSim = _match.presenter.blood.guts if _match.presenter != null else null
 		if g != null and g.organ_count() > 0:  # frame the organs on the sand and the victim's feet

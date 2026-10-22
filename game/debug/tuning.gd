@@ -367,6 +367,13 @@ const FIELDS: Array = [
 	["gut_organ_eject", 1.5, 0.0, 6.0, 0.1, "Blood", "Gut spill: speed an organ slides out of the wound, m/s."],
 	["gut_organ_friction", 0.92, 0.5, 1.0, 0.01, "Blood", "Gut spill: an organ's grip on the sand per 60th of a second (higher slides further)."],
 	["gut_organ_smear_step", 0.12, 0.03, 1.0, 0.01, "Blood", "Gut spill: an organ sliding on the sand leaves a smear every this many metres."],
+	["wound_core_scale", 1.6, 1.0, 3.0, 0.05, "Blood", "Wound marks: width multiplier on a gash's open slit and a puncture's hole, so fresh cuts read at fight-camera distance."],
+	["wound_rim_glow", 0.9, 0.0, 3.0, 0.05, "Blood", "Wound marks: emission of a fresh gash's or puncture's wet rim (0 = none)."],
+	["wound_rim_glow_s", 4.0, 0.0, 20.0, 0.5, "Blood", "Wound marks: seconds the rim glow takes to fade as the wound dries."],
+	["wound_drop_rate", 12.0, 0.0, 60.0, 1.0, "Blood", "Body stains: blood drops landing on one fighter that leave a smear, per second (the rest merge or are lost)."],
+	["wound_drop_size", 6.0, 2.0, 14.0, 0.5, "Blood", "Body stains: radius of a landed drop's smear per metre of drop radius."],
+	["wound_soak_min", 2.0, 0.0, 20.0, 0.5, "Blood", "Body stains: blood points (cut + pierce + 0.3 blunt) of a bleeding hit with no gash or hole that soak a smear in."],
+	["wound_stump_sev", 1.0, 0.0, 1.0, 0.05, "Blood", "Body stains: strength of the blood collar on both sides of a severed limb or neck (0 = none)."],
 	["sand_depth_scale", 2.2, 0.5, 6.0, 0.1, "Sand", "Visual sand: multiplier on every footprint, furrow and body press depth (the collider stays flat)."],
 	["sand_deep_from", 0.03, 0.0, 0.2, 0.005, "Sand", "Requested depth (m) beyond which a press counts as a fall and gains sand_deep_gain extra."],
 	["sand_deep_gain", 1.0, 0.0, 4.0, 0.1, "Sand", "Extra depth multiplier on the part of a press beyond sand_deep_from (fall craters)."],
@@ -780,6 +787,13 @@ var gut_max_organs: float
 var gut_organ_eject: float
 var gut_organ_friction: float
 var gut_organ_smear_step: float
+var wound_core_scale: float
+var wound_rim_glow: float
+var wound_rim_glow_s: float
+var wound_drop_rate: float
+var wound_drop_size: float
+var wound_soak_min: float
+var wound_stump_sev: float
 
 
 func _init() -> void:

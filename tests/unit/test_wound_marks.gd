@@ -123,3 +123,19 @@ func test_open_wounds_draw_over_smears_and_bruises() -> void:
 	assert_near(c[0].w, float(WoundMarks.Kind.SMEAR))
 	assert_near(c[1].w, float(WoundMarks.Kind.BRUISE))
 	assert_near(c[2].w, float(WoundMarks.Kind.GASH))
+
+
+func test_smears_streak_without_growing_and_size_inverts() -> void:
+	var wm: WoundMarks = WoundMarks.new(2)
+	var round: WoundMarks.Mark = wm.add("torso", WoundMarks.Kind.SMEAR, Vector3(0, 0, 0.1), Vector3.BACK, Vector3.RIGHT,
+			Vector3.DOWN, 0.5, 0)
+	var streak: WoundMarks.Mark = wm.add("torso", WoundMarks.Kind.SMEAR, Vector3(0, 0.2, 0.1), Vector3.BACK,
+			Vector3.RIGHT, Vector3.DOWN, 0.5, 0, 2.0)
+	assert_near(round.width, round.size, 0.0001)
+	assert_near(streak.size / streak.width, 2.0, 0.001)
+	assert_near(streak.size * streak.width, round.size * round.width, 0.0001, "same area")
+	var gash: WoundMarks.Mark = wm.add("torso", WoundMarks.Kind.GASH, Vector3(0, -0.2, 0.1), Vector3.BACK,
+			Vector3.RIGHT, Vector3.DOWN, 0.5, 0, 2.0)
+	assert_eq(gash.stretch, 1.0, "only smears streak")
+	assert_near(WoundMarks.smear_sev_for(lerpf(WoundMarks.SMEAR_MIN, WoundMarks.SMEAR_MAX, 0.4)), 0.4, 0.0001)
+	assert_eq(WoundMarks.smear_sev_for(0.001), 0.0)

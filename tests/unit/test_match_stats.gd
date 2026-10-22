@@ -293,3 +293,56 @@ func test_close_moves_sum_both_fighters_latest_logs() -> void:
 	assert_eq(int(d["grabs"]), 2)
 	assert_eq(int(d["holds"]), 1)
 	assert_eq(int(d["hold_breaks"]), 1)
+
+
+## The intro (fight clock not running) adds no ticks, time, distance, travel or cells; the clock's frames do.
+func test_held_frames_add_no_durations_or_movement() -> void:
+	var s := MatchStats.new()
+	var dt: float = 0.5
+	var down: Dictionary = _at(0, 0.0, 0.0)
+	down["state"] = "down"
+	down["stamina"] = 0.0
+	for i: int in 10:  # 5 s held: down, out of stamina, both still (would be 2 s stuck), drifting 1 m a frame
+		var other: Dictionary = _at(1, 3.0 + float(i), 4.0)
+		s.on_frames([down, other], dt, false)
+	var d: Dictionary = s.to_dict()
+	assert_eq(d["ticks"], 0)
+	for key: String in ["time_down_s", "stuck_s", "stamina0_max_s", "mean_dist", "strike_share", "travel0", "travel1"]:
+		assert_near(float(d[key]), 0.0, 0.0001, key)
+	assert_eq(d["cells"], 0)
+	assert_eq(d["knockdowns"], 0, "already down when the clock is off is not a knockdown")
+
+
+func test_release_frame_has_no_travel_jump_and_counts_from_zero() -> void:
+	var s := MatchStats.new()
+	var dt: float = 0.5
+	s.on_frames([_at(0, 0.0, 0.0), _at(1, 5.0, 0.0)], dt, false)
+	s.on_frames([_at(0, 3.0, 4.0), _at(1, 5.0, 0.0)], dt, false)  # moved 5 m while held
+	s.on_frames([_at(0, 3.0, 4.0), _at(1, 5.0, 0.0)], dt, true)  # release: no step since the last held frame
+	s.on_frames([_at(0, 3.0, 5.0), _at(1, 5.0, 0.0)], dt, true)  # 1 m on the clock
+	var d: Dictionary = s.to_dict()
+	assert_eq(d["ticks"], 2)
+	assert_near(float(d["travel0"]), 1.0, 0.0001, "only the clock's 1 m, not the held 5 m")
+	assert_near(float(d["travel1"]), 0.0, 0.0001)
+
+
+func test_stuck_and_stamina_runs_start_at_the_release() -> void:
+	var s := MatchStats.new()
+	var dt: float = 0.5
+	var a: Dictionary = _frame(0)
+	a["stamina"] = 0.0
+	for i: int in 20:  # 10 s held, still and empty
+		s.on_frames([a, _frame(1)], dt, false)
+	for i: int in 8:  # 4 s on the clock: 1 s past the 3 s grace
+		s.on_frames([a, _frame(1)], dt, true)
+	var d: Dictionary = s.to_dict()
+	assert_near(float(d["stuck_s"]), 1.0, 0.0001, "the grace starts at the release")
+	assert_near(float(d["stamina0_max_s"]), 4.0, 0.0001, "the zero-stamina run starts at the release")
+	assert_eq(d["ticks"], 8)
+
+
+func test_explosions_count_while_held() -> void:
+	var s := MatchStats.new()
+	s.on_frames([_frame(0), _frame(1)], 1.0 / 60.0, false)
+	s.on_frames([_frame(0, "standing", 0.0, Vector3.ZERO, 3.0), _frame(1)], 1.0 / 60.0, false)
+	assert_eq(s.to_dict()["explosions"], 1, "a physics blow-up is a defect whatever the clock")

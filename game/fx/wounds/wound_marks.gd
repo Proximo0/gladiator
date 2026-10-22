@@ -27,6 +27,7 @@ const BRUISE_MIN: float = 0.04
 const BRUISE_MAX: float = 0.1
 const SMEAR_MIN: float = 0.025
 const SMEAR_MAX: float = 0.08
+const STRETCH_MAX: float = 3.0  ## longest streak of a smear, as length over width
 ## Damage at which a mark reaches full size and strength.
 const FULL_CUT: float = 20.0
 const FULL_PIERCE: float = 18.0
@@ -44,7 +45,8 @@ class Mark extends RefCounted:
 	var dir: Vector3 = Vector3.RIGHT  ## along the cut (tangent), part frame
 	var down: Vector3 = Vector3.DOWN  ## world down at the time of the hit, in the part frame (tangent)
 	var size: float = 0.05  ## half length of a gash, radius of the others
-	var width: float = 0.01  ## half width of a gash
+	var width: float = 0.01  ## half width of a gash (a smear: its radius across `dir`)
+	var stretch: float = 1.0  ## a smear's length over its width (a drop that landed fast streaks along `dir`)
 	var sev: float = 0.5  ## 0..1 strength
 	var age: float = 0.0
 	var seed: float = 0.0  ## 0..1 shape variety
@@ -154,8 +156,9 @@ static func dryness(age: float) -> float:
 
 ## Adds a mark on `part`. `pos`, `nrm`, `motion` (the weapon's motion, for a gash's direction) and `down` are in
 ## the part frame. Returns the mark (a merged one when it deepened an old mark), or null for a bad kind.
+## `stretch` (smears only, 1..3) streaks the smear along `motion`.
 func add(part: String, kind: int, pos: Vector3, nrm: Vector3, motion: Vector3, down: Vector3, sev: float,
-		slot: int) -> Mark:
+		slot: int, stretch: float = 1.0) -> Mark:
 	if kind < Kind.GASH or kind > Kind.SMEAR:
 		return null
 	var list: Array = marks.get(part, [])
@@ -176,6 +179,7 @@ func add(part: String, kind: int, pos: Vector3, nrm: Vector3, motion: Vector3, d
 	mk.slot = slot
 	mk.sev = sev
 	mk.bleeds = kind == Kind.GASH or kind == Kind.PUNCTURE
+	mk.stretch = clampf(stretch, 1.0, STRETCH_MAX) if kind == Kind.SMEAR else 1.0
 	_size(mk)
 	list.append(mk)
 	while list.size() > cap:
@@ -204,8 +208,13 @@ func _size(m: Mark) -> void:
 			m.size = lerpf(BRUISE_MIN, BRUISE_MAX, s)
 			m.width = m.size
 		_:
-			m.size = lerpf(SMEAR_MIN, SMEAR_MAX, s)
-			m.width = m.size
+			m.size = lerpf(SMEAR_MIN, SMEAR_MAX, s) * sqrt(m.stretch)
+			m.width = m.size / m.stretch
+
+
+## Severity of a smear whose radius is `radius` m (the inverse of its sizing; 0 at SMEAR_MIN and below).
+static func smear_sev_for(radius: float) -> float:
+	return clampf(inverse_lerp(SMEAR_MIN, SMEAR_MAX, radius), 0.0, 1.0)
 
 
 ## Which mark to drop when a part is full: the oldest smear, else the oldest bruise, else the oldest mark.
