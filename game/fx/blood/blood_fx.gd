@@ -87,6 +87,21 @@ class _BfJet extends RefCounted:
 	var blood_cb: Callable = Callable()
 	var slot: int = 0
 
+## A gore burst or ground splash still emitting: its droplets (and mist) go out over a few frames, not in one.
+class _BfBurst extends RefCounted:
+	var point: Vector3 = Vector3.ZERO
+	var dir: Vector3 = Vector3.UP
+	var splash: bool = false  ## a ground splash (falls from the wound) instead of a spray burst
+	var left: int = 0
+	var per: int = 0
+	var mist_left: int = 0
+	var mist_per: int = 0
+	var v_min: float = 0.0
+	var v_max: float = 0.0
+	var spread: float = 0.0
+	var r_max: float = 0.0
+	var slot: int = 0
+
 class _BfTracked extends RefCounted:
 	var fighter: Node = null
 	var side: int = 0
@@ -137,6 +152,7 @@ var _by_side: Dictionary = {}
 var _spurts: Array = []
 var _wounds: Array = []
 var _jets: Array = []
+var _bursts: Array = []  ## _BfBurst still emitting
 var _splat: Dictionary = {}
 var _blood_cb: Callable = Callable()
 var _ray_query: PhysicsRayQueryParameters3D = null
@@ -395,6 +411,7 @@ func untrack(f: Node) -> void:
 
 
 func clear() -> void:
+	_bursts.clear()
 	_spurts.clear()
 	_wounds.clear()
 	_jets.clear()
@@ -691,6 +708,7 @@ func step(dt_in: float) -> void:
 	var before: int = sim.count
 	var t0: int = _mark(0)
 	_update_tracked(dt)
+	_update_bursts()
 	_update_jets(dt)
 	_update_spurts(dt)
 	_update_wounds(dt)
@@ -1100,11 +1118,49 @@ func _ground_y(p: Vector3) -> float:
 
 
 func _ground_splash(point: Vector3, count: int, slot: int = 0) -> void:
-	var n: int = roundi(count * BloodMath.rate_mult(quality))
-	for i: int in n:
-		var d: Vector3 = BloodMath.cone_dir(Vector3.DOWN, 1.15, rng.randf(), rng.randf())
-		sim.emit(point + _jit(0.03), d * rng.randf_range(1.2, 5.0), BloodMath.drop_radius(rng.randf(), 0.003, 0.010),
-				3.0, 4.0, rng.randf(), slot)
+	var b: _BfBurst = _queue_burst(point, Vector3.DOWN, roundi(count * BloodMath.rate_mult(quality)), 0, slot)
+	b.splash = true
+
+
+## Queues `n` droplets and `mist_n` mist puffs at a wound; _update_bursts sends them out over gore_spawn_frames steps.
+func _queue_burst(point: Vector3, dir: Vector3, n: int, mist_n: int, slot: int) -> _BfBurst:
+	var frames: int = maxi(roundi(Tuning.shared().gore_spawn_frames), 1)
+	var b: _BfBurst = _BfBurst.new()
+	b.point = point
+	b.dir = dir
+	b.left = n
+	b.per = ceili(float(n) / float(frames))
+	b.mist_left = mist_n
+	b.mist_per = ceili(float(mist_n) / float(frames))
+	b.slot = slot
+	_bursts.append(b)
+	return b
+
+
+func _update_bursts() -> void:
+	for b: _BfBurst in _bursts:
+		var k: int = mini(b.per, b.left)
+		b.left -= k
+		for i: int in k:
+			if b.splash:
+				var sd: Vector3 = BloodMath.cone_dir(Vector3.DOWN, 1.15, rng.randf(), rng.randf())
+				sim.emit(b.point + _jit(0.03), sd * rng.randf_range(1.2, 5.0), BloodMath.drop_radius(rng.randf(), 0.003, 0.010),
+						3.0, 4.0, rng.randf(), b.slot)
+			else:
+				var d: Vector3 = BloodMath.cone_dir(b.dir, b.spread, rng.randf(), rng.randf())
+				sim.emit(b.point + _jit(0.02), d * rng.randf_range(b.v_min, b.v_max), BloodMath.drop_radius(rng.randf(), 0.002, b.r_max),
+						2.0, 5.0, rng.randf(), b.slot)
+		var m: int = mini(b.mist_per, b.mist_left)
+		b.mist_left -= m
+		for i: int in m:
+			mist.emit(b.point + _jit(0.04), b.dir * rng.randf_range(0.5, 2.5) + _jit(0.4), 0.07,
+					rng.randf_range(0.25, 0.5), rng.randf_range(0.5, 1.1), 0.5, rng.randf() * TAU, b.slot)
+	var i2: int = _bursts.size() - 1
+	while i2 >= 0:
+		var b2: _BfBurst = _bursts[i2]
+		if b2.left <= 0 and b2.mist_left <= 0:
+			_bursts.remove_at(i2)
+		i2 -= 1
 
 
 func _update_jets(dt: float) -> void:
@@ -1354,13 +1410,11 @@ func _flush_splats() -> void:
 func _burst(point: Vector3, dir: Vector3, count: int, v_min: float, v_max: float, spread: float,
 		r_max: float, slot: int = 0) -> void:
 	var n: int = roundi(count * BloodMath.rate_mult(quality))
-	for i: int in n:
-		var d: Vector3 = BloodMath.cone_dir(dir, spread, rng.randf(), rng.randf())
-		var v: Vector3 = d * rng.randf_range(v_min, v_max)
-		sim.emit(point + _jit(0.02), v, BloodMath.drop_radius(rng.randf(), 0.002, r_max), 2.0, 5.0, rng.randf(), slot)
-	for i: int in clampi(n / 5, 3, 16):
-		mist.emit(point + _jit(0.04), dir * rng.randf_range(0.5, 2.5) + _jit(0.4), 0.07,
-				rng.randf_range(0.25, 0.5), rng.randf_range(0.5, 1.1), 0.5, rng.randf() * TAU, slot)
+	var b: _BfBurst = _queue_burst(point, dir, n, clampi(n / 5, 3, 16), slot)
+	b.v_min = v_min
+	b.v_max = v_max
+	b.spread = spread
+	b.r_max = r_max
 
 
 func _jit(amount: float) -> Vector3:
