@@ -597,30 +597,19 @@ func _brawler_rush(me: Dictionary, obs: Dictionary) -> bool:
 	return foe_len > float(mine.get("length", 0.3)) * BRAWLER_LEN_RATIO
 
 
-## Closing plan footwork for a shorter weapon in the longer one's reach (ThrustPlan.close_step): rush straight in
-## when the foe has just swung, otherwise slip in on a slant with the guard hand up, now and then rolling in under
-## his point. Returns with the move set; the attack choice that follows may start a lunge from here.
-func _closing_plan(me: Dictionary, out: FighterInput) -> void:
+## Closing plan rush for a shorter weapon whose longer foe has just swung (ThrustPlan.CLOSE_RUSH): run straight in,
+## now and then rolling in under the point while still far out. The attack choice that follows lunges from here.
+func _closing_rush(me: Dictionary, out: FighterInput) -> void:
 	var stamina: float = float(me.get("stamina", 1.0))
-	if _close_step == ThrustPlan.CLOSE_RUSH:
-		out.move_y = 1000
-		if stamina > 0.3:
-			out.buttons |= FighterInput.SPRINT
-		_wait = 0
-		return
-	_circle_t -= 1
-	if _circle_t <= 0:
-		_circle_t = _rng.randi_range(40, 110)
-		_circle_dir = _pick_side()
-	_steer(_dir * 0.7 + _tangent() * 0.6, 0.8, out)
-	out.buttons |= FighterInput.OFFHAND
-	if _roll_cd <= 0 and stamina >= ROLL_MIN_STAMINA and not bool(me.get("rolling", false)) \
+	out.move_y = 1000
+	if stamina > 0.3:
+		out.buttons |= FighterInput.SPRINT
+	_wait = 0
+	if _dist > _reach * 1.3 and _roll_cd <= 0 and stamina >= ROLL_MIN_STAMINA and not bool(me.get("rolling", false)) \
 			and _roll_rng.randf() < Tuning.shared().ai_close_roll_chance:
 		out.move_x = 0
-		out.move_y = 1000
-		out.buttons |= FighterInput.ROLL  # in under the point: the roll carries the body past the reach in a moment
+		out.buttons |= FighterInput.ROLL  # the roll carries the body past his reach in a moment
 		_roll_cd = ROLL_COOLDOWN_TICKS
-	_wait = maxi(_wait - 1, 0)
 
 
 ## A spear foe walking onto the levelled point: he closes faster than ai_stop_thrust_closing inside the drive range.
@@ -650,9 +639,12 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var committed: bool = _idle_ticks > int(_pf("commit_ticks")) or _desperation() > 0.0 or _burst_t > 0
 	if _brawler_rush(me, obs):
 		committed = true  # bare fists against a longer weapon: waiting outside its reach only gets cut, so close in
-	var outreached: bool = _close_step != ThrustPlan.CLOSE_NONE and not finishing
-	if outreached:
-		committed = true  # a shorter weapon waiting at the longer one's range only gets hit: work inside
+	var waiting: bool = _close_step == ThrustPlan.CLOSE_WAIT and not finishing and _desperation() <= 0.0 and _burst_t <= 0
+	var rushing: bool = _close_step == ThrustPlan.CLOSE_RUSH and not finishing
+	if waiting:
+		committed = false  # a shorter weapon walking in under a longer blade only gets cut: wait for his swing
+	if rushing:
+		committed = true
 	if committed:
 		hold = minf(hold, _reach * 0.85)  # waited long enough: step into striking range
 	if finishing:
@@ -681,12 +673,14 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	if _range_t <= 0:  # range work: drift the standing distance in and out
 		_range_t = _rng.randi_range(50, 140)
 		_range_off = _rng.randf_range(-0.1, 1.0) * _reach * (1.0 - _pf("aggression") * 0.5)
-	if not finishing and not outreached:
+	if waiting:
+		hold = _foe_reach + Tuning.shared().ai_close_wait_gap
+	elif not finishing:
 		hold += _range_off
 	if _spear:
 		hold = clampf(hold, Tuning.shared().ai_spear_hold_min, Tuning.shared().ai_spear_hold_max)
-	if outreached and _close_step != ThrustPlan.CLOSE_INSIDE:
-		_closing_plan(me, out)
+	if rushing:
+		_closing_rush(me, out)
 	elif _dist > hold + 0.25:
 		if not _pin_target(hold, out):
 			out.move_y = 1000 if _dist > hold + 1.0 else 600
@@ -722,6 +716,8 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	p *= float(_d["p_scale"])
 	var in_reach: bool = _dist <= _reach * 1.05
 	var lunge: bool = _dist <= _reach * (1.3 if finishing else 1.9) and (_pf("aggression") > 0.5 or opp or finishing or committed)
+	if waiting and not opp:
+		lunge = false  # outreached: only his whiff opens the way in
 	if _spear:  # the point lands only from a run-up: start a thrust from the stance band, never from close in
 		in_reach = _dist <= Tuning.shared().ai_spear_drive_max and _dist >= SPEAR_THRUST_MIN
 		lunge = false
@@ -999,8 +995,6 @@ func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	_shield_up(me, out)
 	if _spear and not _want_finish(obs):
 		_spear_footwork(out)
-	elif _close_step == ThrustPlan.CLOSE_INSIDE or _close_step == ThrustPlan.CLOSE_RUSH:
-		_steer(_tangent() * 0.6 + _dir * 0.3, 0.4, out)  # inside a longer weapon's reach: stay in, never back off into it
 	elif _want_finish(obs):
 		out.move_y = roundi(-300.0 * (1.0 - _pf("aggression")))
 	else:
@@ -1028,10 +1022,7 @@ func _do_guard(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	out.buttons |= FighterInput.SWING | FighterInput.OFFHAND
 	# Guard on the move: slip back and to the side rather than standing in the foe's swing. A long weapon swung round
 	# by footwork hits the own body (spear self hits), so it only gives ground.
-	if _close_step == ThrustPlan.CLOSE_SLIP or _close_step == ThrustPlan.CLOSE_RUSH:
-		# A parry step: under a longer weapon's blow, guard while stepping in on a slant, past its reach.
-		_steer(_dir * 0.6 + _tangent() * 0.8, 0.8, out)
-	elif _dist < _reach * 1.4:
+	if _dist < _reach * 1.4:
 		if _reach > LONG_REACH:
 			out.move_y = -SPEAR_BACKSTEP if _spear and _dist < SPEAR_MIN_RANGE else -250
 		else:
@@ -1223,8 +1214,6 @@ func _kind_weights(def: Dictionary) -> Dictionary:
 			w = {"diag": 2.0, "horizontal": 1.6, "overhead": 1.0, "thrust": stab, "low": 0.5}
 		"axe", "club", "bat":
 			w = {"diag": 2.0, "horizontal": 1.5, "overhead": 1.5, "low": 0.6}
-			if bool(def.get("point", false)) and float(def.get("length", 0.0)) >= POLE_ARM_LEN:
-				w["thrust"] = 1.5  # a pole arm's spike: a quick thrust between the heavy swings
 		"fist":
 			w = {"thrust": 2.0, "horizontal": 1.5, "overhead": 0.5}
 		_:

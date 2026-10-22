@@ -20,7 +20,8 @@ const ROWS_AI: Array = [
 	["ai_square_thrust_mult", 2.5, 1.0, 8.0, 0.1, "AI", "CPU sword thrust: thrust weight multiplier against a square-on foe."],
 	["ai_close_margin", 0.25, 0.0, 2.0, 0.05, "AI", "CPU closing plan: the foe's reach must beat mine by this much before a short weapon plans its way in, m."],
 	["ai_close_band", 0.5, 0.0, 2.0, 0.05, "AI", "CPU closing plan: distance past the foe's reach that still counts as at his range, m."],
-	["ai_close_roll_chance", 0.004, 0.0, 0.05, 0.001, "AI", "CPU closing plan: chance per tick of a forward roll in under a longer weapon (with stamina to spare)."],
+	["ai_close_wait_gap", 0.35, 0.0, 1.5, 0.05, "AI", "CPU closing plan: how far outside the longer weapon's reach a shorter one stands off while it waits, m."],
+	["ai_close_roll_chance", 0.02, 0.0, 0.05, 0.001, "AI", "CPU closing plan: chance per tick of a forward roll in under a longer weapon (with stamina to spare)."],
 ]
 
 var ai_thrust_lead: float
@@ -39,4 +40,5 @@ var ai_square_cos: float
 var ai_square_thrust_mult: float
 var ai_close_margin: float
 var ai_close_band: float
+var ai_close_wait_gap: float
 var ai_close_roll_chance: float

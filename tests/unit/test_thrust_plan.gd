@@ -46,6 +46,6 @@ func test_close_step() -> void:
 	assert_eq(ThrustPlan.close_step(2.0, l, g, false, 0.25, 0.5), ThrustPlan.CLOSE_NONE, "the longer weapon has no plan")
 	assert_eq(ThrustPlan.close_step(2.0, g, g, false, 0.25, 0.5), ThrustPlan.CLOSE_NONE, "same reach")
 	assert_eq(ThrustPlan.close_step(5.0, g, l, false, 0.25, 0.5), ThrustPlan.CLOSE_NONE, "far out: walk up")
-	assert_eq(ThrustPlan.close_step(1.9, g, l, false, 0.25, 0.5), ThrustPlan.CLOSE_SLIP)
+	assert_eq(ThrustPlan.close_step(1.9, g, l, false, 0.25, 0.5), ThrustPlan.CLOSE_WAIT)
 	assert_eq(ThrustPlan.close_step(1.9, g, l, true, 0.25, 0.5), ThrustPlan.CLOSE_RUSH, "he just swung")
 	assert_eq(ThrustPlan.close_step(1.4, g, l, false, 0.25, 0.5), ThrustPlan.CLOSE_INSIDE)

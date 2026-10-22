@@ -4,14 +4,14 @@ extends RefCounted
 ## A committed thrust: set (the point held on the target, the body still), drive (the body steps or runs in with the
 ## arms at swing reach, THRUST punched out only in the last moment so the arms' speed adds to the body's), recover.
 ## A point contact needs the blade's motion along its own axis, so the drive is straight in, never swept across.
-## Closing plan: a fighter whose reach is well short of the foe's waits just outside the foe's reach, rushes inside
-## when the foe has just swung or slips in on a slant, and stays inside once there.
+## Closing plan: a fighter whose reach is well short of the foe's stands off just outside the foe's reach (walking in
+## under a longer blade only gets cut) and rushes inside when the foe has just swung or is off balance.
 ## No Nodes, no clock.
 
 const CLOSE_NONE: int = 0  ## not outreached (or already inside): fight as usual
-const CLOSE_SLIP: int = 1  ## in the foe's reach but outside mine: step in on a slant, guard up
-const CLOSE_RUSH: int = 2  ## the foe just swung or is slow: run straight in and strike
-const CLOSE_INSIDE: int = 3  ## inside the foe's point: keep the distance short, never back off into his reach
+const CLOSE_WAIT: int = 1  ## at the foe's range but outside mine: stand off just outside his reach, wait for an opening
+const CLOSE_RUSH: int = 2  ## the foe just swung or is off balance: run straight in and strike
+const CLOSE_INSIDE: int = 3  ## inside my own reach: fight as usual
 
 
 ## True when THRUST should be pressed now: the point reaches the target within `lead_s` at the closing speed, or it is
@@ -61,4 +61,4 @@ static func close_step(dist: float, mine: float, foe: float, opening: bool, marg
 		return CLOSE_INSIDE
 	if dist > foe + out_band:
 		return CLOSE_NONE  # out of both reaches: walk up as usual
-	return CLOSE_RUSH if opening else CLOSE_SLIP
+	return CLOSE_RUSH if opening else CLOSE_WAIT
