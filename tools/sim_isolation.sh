@@ -2,8 +2,9 @@
 # Sim isolation check: runs every sim file of tests/sim/sim_suite.gd alone (one process each), then the whole suite in
 # one process, and compares each file's SIM rows. Usage: tools/sim_isolation.sh [sim_name ...]
 # Prints the rows that differ, then "ISOLATION same=N differ=M files=T". Exit 1 if any file differs.
-# Rows that measure wall-clock network timing (net sims over real sockets) can differ between any two runs; run twice
-# before blaming isolation. SUITE_ARGS=--no-reset measures the suite without the per-file reset.
+# Wall-clock numbers are masked before comparing (ms_per_tick, rtt, us/tick and us/frame costs, the audio voice-steal
+# counts and pool use, which follow the audio clock). Physics results also shift when the box is busy (Jolt's contact order follows
+# thread timing), so run it on an idle machine. SUITE_ARGS=--no-reset measures the suite without the per-file reset.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-godot}"
@@ -13,9 +14,14 @@ trap 'rm -rf "$dir"' EXIT
 if [[ $# -gt 0 ]]; then files=("$@"); else
   mapfile -t files < <(sed -n '/^const SIM_FILES/,/^]/p' tests/sim/sim_suite.gd | grep -o '"sim_[a-z0-9_]*"' | tr -d '"')
 fi
+mask() {
+  sed -E -e 's/ms_per_tick=[0-9.]+/ms_per_tick=#/g; s/rtt=[0-9]+ms/rtt=#ms/g; s/(stolen|mean_players)=[0-9.]+/\1=#/g' \
+    -e 's/peak_use=\{[^}]*\}/peak_use=#/g' \
+    -e '/us\/(tick|frame)/s/[0-9]+/#/g'
+}
 run() {  # run <out> <sim names...>
   local out=$1; shift
-  timeout 900 "$GODOT" --headless --fixed-fps 60 --path . res://tests/sim/sim_suite.tscn -- "$@" ${SUITE_ARGS:-} 2>&1 | grep -E '^(SIM|SIMFILE) ' > "$out"
+  timeout 900 "$GODOT" --headless --fixed-fps 60 --path . res://tests/sim/sim_suite.tscn -- "$@" ${SUITE_ARGS:-} 2>&1 | grep -E '^(SIM|SIMFILE) ' | mask > "$out"
 }
 for f in "${files[@]}"; do run "$dir/alone_$f" "$f"; done
 run "$dir/suite" "${files[@]}"

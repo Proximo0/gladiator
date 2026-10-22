@@ -218,8 +218,14 @@ static func _restorable(o: Object) -> bool:
 	return is_instance_valid(o) and o.has_method("to_dict") and (o.has_method("apply_dict") or o.has_method("from_dict"))
 
 
+## Field by field where the object has apply_dict (Tuning): its set_value clamps, and a test may have set a field outside
+## the panel range before the baseline.
 static func _put_dict(o: Object, d: Dictionary) -> void:
-	o.call("apply_dict" if o.has_method("apply_dict") else "from_dict", d.duplicate(true))
+	if o.has_method("apply_dict"):
+		for k: Variant in d:
+			o.set(k, d[k])
+	else:
+		o.call("from_dict", d.duplicate(true))
 
 
 static func _short(scr: GDScript) -> String:
