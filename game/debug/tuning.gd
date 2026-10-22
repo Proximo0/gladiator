@@ -316,6 +316,13 @@ const FIELDS: Array = [
 	["gut_exit_depth", 0.3, 0.1, 0.6, 0.02, "Blood", "Run-through: how far behind the entry wound the exit wound is, m."],
 	["gut_exit_streams", 3.0, 0.0, 8.0, 1.0, "Blood", "Run-through: jets from the exit wound at normal quality."],
 	["gut_exit_v_scale", 1.3, 0.2, 3.0, 0.05, "Blood", "Run-through: exit-wound gush speed relative to the entry gush."],
+	["gut_cluster_size", 0.13, 0.0, 0.4, 0.01, "Blood", "Gut spill: half width of the tangle of guts bulging out of the wound, m."],
+	["gut_organ_points", 40.0, 0.0, 200.0, 1.0, "Blood", "Gut spill: cut or pierce points of a gutting at which whole organs fall out (a run-through always)."],
+	["gut_organs", 2.0, 0.0, 3.0, 1.0, "Blood", "Gut spill: organs (liver, stomach) that fall out of a big gut wound at normal quality."],
+	["gut_max_organs", 6.0, 0.0, 20.0, 1.0, "Blood", "Gut spill: most organs on the sand at normal quality (low is half, high is double)."],
+	["gut_organ_eject", 2.2, 0.0, 6.0, 0.1, "Blood", "Gut spill: speed an organ slides out of the wound, m/s."],
+	["gut_organ_friction", 0.94, 0.5, 1.0, 0.01, "Blood", "Gut spill: an organ's grip on the sand per 60th of a second (higher slides further)."],
+	["gut_organ_smear_step", 0.12, 0.03, 1.0, 0.01, "Blood", "Gut spill: an organ sliding on the sand leaves a smear every this many metres."],
 	["sand_depth_scale", 2.2, 0.5, 6.0, 0.1, "Sand", "Visual sand: multiplier on every footprint, furrow and body press depth (the collider stays flat)."],
 	["sand_deep_from", 0.03, 0.0, 0.2, 0.005, "Sand", "Requested depth (m) beyond which a press counts as a fall and gains sand_deep_gain extra."],
 	["sand_deep_gain", 1.0, 0.0, 4.0, 0.1, "Sand", "Extra depth multiplier on the part of a press beyond sand_deep_from (fall craters)."],
@@ -662,6 +669,13 @@ var gut_pool: float
 var gut_exit_depth: float
 var gut_exit_streams: float
 var gut_exit_v_scale: float
+var gut_cluster_size: float
+var gut_organ_points: float
+var gut_organs: float
+var gut_max_organs: float
+var gut_organ_eject: float
+var gut_organ_friction: float
+var gut_organ_smear_step: float
 
 
 func _init() -> void:

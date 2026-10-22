@@ -11,8 +11,14 @@ extends RefCounted
 ## has arrived for `stale_ticks` pops the last input stops being repeated: movement and buttons go neutral (the aim
 ## stays), so a client that stalls or vanishes does not keep charging and swinging on its last input. Pure; counters for the debug line and the tests.
 
-const EDGE_BUTTONS: int = FighterInput.ROLL | FighterInput.GRAB  ## press-once buttons: a skipped tick must not swallow one
+const EDGE_BUTTONS: int = FighterInput.ROLL | FighterInput.GRAB | FighterInput.SHOVE | FighterInput.KICK | FighterInput.CLINCH  ## press-once buttons: a skipped tick must not swallow one
 const SHRINK_WINDOW: int = 90  ## pops (1.5 s) the buffer must stay deeper than `target` before it gives one tick back
+## Bounds against a modded client (docs/net_security.md): a tick may jump at most MAX_AHEAD past the newest one held
+## (10 s; the session drops the link after 5 s of silence anyway), at most MAX_HELD ticks wait at once, and
+## skipping walks the held ticks, never the gap, so a tick near 2^32 cannot stall the host in a 4-billion-step loop.
+const MAX_AHEAD: int = 600
+const MAX_HELD: int = 256
+const PLAYED_MEMORY: int = 64  ## played ticks remembered to tell redundant copies from late arrivals
 
 var target: int = NetConfig.INPUT_BUFFER_TARGET
 var max_depth: int = NetConfig.INPUT_BUFFER_MAX
@@ -25,6 +31,7 @@ var skipped: int = 0  ## ticks jumped over (lost for good, or dropped to shrink 
 var carried: int = 0  ## press-once buttons moved from a skipped or late tick onto the next one played
 var stale_ticks: int = NetConfig.INPUT_STALE_TICKS  ## consecutive underruns after which the repeated input goes neutral
 var stale_pops: int = 0  ## pops played neutral because the stream had gone quiet
+var rejected: int = 0  ## pushes refused: too far ahead of the stream, or the buffer was full
 
 var _inputs: Dictionary = {}  ## client tick -> FighterInput
 var _next: int = -1
@@ -45,6 +52,9 @@ func _init(p_target: int = NetConfig.INPUT_BUFFER_TARGET, p_max: int = NetConfig
 func push(tick: int, inp: FighterInput) -> void:
 	if _inputs.has(tick):
 		duplicates += 1
+		return
+	if tick < 0 or (_newest >= 0 and tick > _newest + MAX_AHEAD) or _inputs.size() >= MAX_HELD:
+		rejected += 1
 		return
 	if _next >= 0 and tick < _next:
 		if _played.has(tick):
@@ -72,18 +82,20 @@ func pop() -> FighterInput:
 	_shrink_check()
 	if depth() > max_depth:
 		var to: int = _newest - target
-		for t: int in range(_next, to):
-			if _inputs.has(t):
+		for t: int in _inputs.keys():
+			if t < to:
 				_keep_edges(_inputs[t])
 				_inputs.erase(t)
-			skipped += 1
+		skipped += to - _next
 		_next = to
 	if _inputs.has(_next):
 		_last = _inputs[_next]
 		_inputs.erase(_next)
 		last_applied_tick = _next
 		_played[_next] = true
-		_played.erase(_next - 64)
+		_played.erase(_next - PLAYED_MEMORY)
+		if _played.size() > PLAYED_MEMORY * 2:
+			_forget_played()
 		_next += 1
 		_run = 0
 		if _carry != 0:
@@ -123,6 +135,13 @@ func _shrink_check() -> void:
 		skipped += 1
 	_window = 0
 	_min_lead = 1 << 20
+
+
+## After a skip the exact-key erase above misses the ticks before the jump: drop everything older than the memory.
+func _forget_played() -> void:
+	for t: int in _played.keys():
+		if t < _next - PLAYED_MEMORY:
+			_played.erase(t)
 
 
 func _keep_edges(inp: FighterInput) -> void:

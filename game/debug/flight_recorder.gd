@@ -16,7 +16,7 @@ signal saved(path: String)
 const VERSION: int = 1
 const TRACE_EVERY: int = 10
 const AXIS_MAX: int = 1000
-const BUTTON_MASK: int = 255
+const BUTTON_MASK: int = 0xffff  ## the 16 FighterInput button bits (ROLL 256 and SHOVE, KICK, CLINCH up to 2048 were cut off at 8)
 const DIR: String = "user://recordings"
 
 var last_path: String = ""
@@ -152,7 +152,7 @@ func _on_match_over(result: Dictionary) -> void:
 
 # ---------------------------------------------------------------- pure helpers (static, unit-tested)
 
-## One fighter's input as 5 ints: axes rounded and clamped to -1000..1000, buttons masked to 8 bits.
+## One fighter's input as 5 ints: axes rounded and clamped to -1000..1000, buttons masked to 16 bits.
 static func quantize_input(a: Array) -> Array:
 	var out: Array = []
 	for i: int in range(5):

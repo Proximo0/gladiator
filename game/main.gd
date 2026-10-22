@@ -21,8 +21,19 @@ func _ready() -> void:
 		var mode: String = Flags.get_arg("mode", "bot_vs_bot")
 		_match = Match.new()
 		add_child(_match)
-		_match.setup({"mode": mode, "seed": Flags.seed_value()})
+		var cfg: Dictionary = {"mode": mode, "seed": Flags.seed_value()}
+		if mode == "player_vs_cpu" or mode == "local_2p":
+			# Human sides start with the menu's default loadout, not a random (possibly locked or fists) one.
+			var loadouts: Array = [LoadoutRules.default_loadout()]
+			if mode == "local_2p":
+				loadouts.append(LoadoutRules.default_loadout())
+			cfg["loadouts"] = loadouts
+		_match.setup(cfg)
 		_rec.attach(_match)
+		if Flags.args.has("android_ci"):
+			var ci := AndroidCi.new()
+			add_child(ci)
+			ci.watch(_match)
 		if mode != "bot_vs_bot" and not Flags.is_scripted_run():
 			# Keep Esc pause and the end-of-match menu for command-line player matches.
 			_flow = _new_flow()

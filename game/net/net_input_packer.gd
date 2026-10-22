@@ -8,6 +8,7 @@ extends RefCounted
 const HEADER_BYTES: int = 6
 const ENTRY_BYTES: int = 10
 const HISTORY: int = 128
+const MAX_ROWS: int = 16  ## unpack refuses more rows than this (a packet carries INPUT_REDUNDANCY = 4; the u8 count could say 255)
 
 var redundancy: int = NetConfig.INPUT_REDUNDANCY
 var _history: Dictionary = {}  ## tick -> [5 ints]
@@ -49,7 +50,7 @@ func pack() -> PackedByteArray:
 	return buf.data_array
 
 
-## [[tick, FighterInput], ...] oldest first; [] when malformed.
+## [[tick, FighterInput], ...] oldest first; [] when malformed. Axes come back clamped by FighterInput.from_array.
 static func unpack(bytes: PackedByteArray) -> Array:
 	if bytes.size() < HEADER_BYTES or int(bytes[0]) != NetConfig.MSG_INPUT:
 		return []
@@ -58,7 +59,8 @@ static func unpack(bytes: PackedByteArray) -> Array:
 	buf.seek(1)
 	var newest: int = buf.get_u32()
 	var n: int = buf.get_u8()
-	if bytes.size() < HEADER_BYTES + n * ENTRY_BYTES:
+	# Exact size, a sane row count and no tick below 0: anything else is a modded or broken sender.
+	if n < 1 or n > MAX_ROWS or bytes.size() != HEADER_BYTES + n * ENTRY_BYTES or newest < n - 1:
 		return []
 	var out: Array = []
 	for k: int in range(n):

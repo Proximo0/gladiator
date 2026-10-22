@@ -229,6 +229,30 @@ func test_run_through_gushes_from_both_sides_and_spills_guts() -> void:
 	fx.free()
 
 
+func test_organs_fall_out_of_a_run_through_and_a_big_gutting_only() -> void:
+	var pair: Array = _gutted("run_through", 1)
+	var fx: BloodFx = pair[0]
+	assert_eq(fx.guts.organ_count(), roundi(Tuning.shared().gut_organs) + 1, "liver and stomach in front, the heart out of the back")
+	assert_true(fx.guts.blob_kind.has(GutSim.K_HEART))
+	for i: int in 60 * 6:
+		fx.step(1.0 / 60.0)
+	for j: int in fx.guts.blob_pos.size():
+		assert_true(fx.guts.blob_pos[j].y < 0.3, "every organ ends on the sand")
+	assert_true(fx.guts.counts[GutSim.K_CLUSTER] >= 1, "a tangle at the wound")
+	assert_eq(fx._mm_guts[GutSim.K_LIVER].multimesh.visible_instance_count, 1)
+	assert_eq(fx._mm_guts[GutSim.K_TORN].multimesh.visible_instance_count, fx.guts.rope_count())
+	(pair[1] as Node).free()
+	fx.free()
+	var small: Array = _gutted("gut", 1)
+	assert_eq((small[0] as BloodFx).guts.organ_count(), 0, "a small gutting (1 point) keeps the organs in")
+	var fx2: BloodFx = small[0]
+	fx2.on_gore({"kind": "gut", "part": "torso", "point": Vector3(0, 1.2, 0.2), "normal": Vector3(0, 0, 1),
+			"amount": Tuning.shared().gut_organ_points + 1.0}, small[1])
+	assert_eq(fx2.guts.organ_count(), roundi(Tuning.shared().gut_organs))
+	(small[1] as Node).free()
+	fx2.free()
+
+
 func test_gut_spill_scales_with_quality_and_respects_caps() -> void:
 	var ropes: Array[int] = []
 	for q: int in 3:
@@ -239,6 +263,9 @@ func test_gut_spill_scales_with_quality_and_respects_caps() -> void:
 			fx.on_gore({"kind": "gut", "part": "torso", "point": Vector3(0, 1.2, 0.2), "normal": Vector3(0, 0, 1), "amount": 1.0}, pair[1])
 		assert_true(fx.guts.rope_count() <= fx.guts.rope_cap)
 		assert_true(fx.guts.blob_count() <= fx.guts.blob_cap)
+		assert_true(fx.guts.organ_count() <= fx.guts.organ_cap)
+		for k: int in GutSim.KINDS:
+			assert_true(fx._mm_guts[k].multimesh.instance_count >= fx.guts.max_instances_of(k, fx.segs_cap_for(Tuning.shared())))
 		for i: int in 30:
 			fx.step(1.0 / 60.0)
 		(pair[1] as Node).free()

@@ -7,6 +7,7 @@ extends RefCounted
 const MAX_NAME: int = 24
 const MAX_BYTES: int = 4096
 const CONTENT_HASH_CHARS: int = 16
+const MAX_TIME_LIMIT_S: float = 3600.0  ## a START asking for a longer fight is capped here
 
 
 static func encode(msg_type: int, body: Dictionary) -> PackedByteArray:
@@ -29,6 +30,30 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 	var d: Dictionary = (v as Dictionary).duplicate(true)
 	d["_type"] = t
 	return d
+
+
+## Typed reads of a decoded message: the other side may be a modded build, so a field can hold any Variant.
+## `v` when it is a Dictionary, else {}.
+static func dict_of(v: Variant) -> Dictionary:
+	return v as Dictionary if v is Dictionary else {}
+
+
+## `v` as an int when it is a finite number, else `fallback`.
+static func int_of(v: Variant, fallback: int) -> int:
+	if v is int:
+		return v as int
+	if v is float and is_finite(v as float) and absf(v as float) < 9.0e18:
+		return int(v as float)
+	return fallback
+
+
+## `v` when it is a finite number, else `fallback`.
+static func float_of(v: Variant, fallback: float) -> float:
+	if v is int:
+		return float(v as int)
+	if v is float and is_finite(v as float):
+		return v as float
+	return fallback
 
 
 static func clean_name(n: String) -> String:
@@ -73,7 +98,7 @@ static func lobby(host_name: String, host_loadout: Dictionary, accepted: bool, r
 
 ## "" when a HELLO is acceptable, else why not. `own_hash` is this build's content_hash ("" skips that check).
 static func check_hello(d: Dictionary, own_hash: String = "") -> String:
-	if int(d.get("_type", 0)) != NetConfig.MSG_HELLO:
+	if int_of(d.get("_type"), 0) != NetConfig.MSG_HELLO:
 		return "not a hello"
 	return check_peer(d, own_hash, false)
 
@@ -81,7 +106,7 @@ static func check_hello(d: Dictionary, own_hash: String = "") -> String:
 ## "" when the other side's HELLO or LOBBY (`d`) has our protocol version and content digest, else a "version mismatch"
 ## line naming the difference. `from_host`: d came from the host (so "yours" is the client).
 static func check_peer(d: Dictionary, own_hash: String, from_host: bool) -> String:
-	var theirs: int = int(d.get("v", -1))
+	var theirs: int = int_of(d.get("v"), -1)
 	if theirs != NetConfig.PROTOCOL_VERSION:
 		return "version mismatch: different protocol (%s %d, %s %d)" % [
 			"host" if from_host else "client", theirs, "client" if from_host else "host", NetConfig.PROTOCOL_VERSION]
@@ -103,12 +128,13 @@ static func start(seed_value: int, loadouts: Array, time_limit_s: float, names: 
 ## side 0 and a brain slot on side 1 (NetSession swaps in a NetRemoteBrain); the client uses the same build and
 ## then switches the simulation off.
 static func match_config(start_msg: Dictionary, presentation: bool) -> Dictionary:
-	var lo: Array = start_msg.get("loadouts", [])
-	var cfg: Dictionary = {"mode": "player_vs_cpu", "seed": int(start_msg.get("seed", 1)), "presentation": presentation,
+	var lo: Array = start_msg.get("loadouts") as Array if start_msg.get("loadouts") is Array else []
+	var cfg: Dictionary = {"mode": "player_vs_cpu", "seed": int_of(start_msg.get("seed"), 1), "presentation": presentation,
 		"loop": false,
-		"loadouts": [LoadoutRules.sanitize(lo[0] if lo.size() > 0 else {}), LoadoutRules.sanitize(lo[1] if lo.size() > 1 else {})]}
-	if start_msg.has("time_limit_s") and float(start_msg["time_limit_s"]) > 0.0:
-		cfg["time_limit_s"] = float(start_msg["time_limit_s"])
+		"loadouts": [LoadoutRules.sanitize(dict_of(lo[0] if lo.size() > 0 else {})), LoadoutRules.sanitize(dict_of(lo[1] if lo.size() > 1 else {}))]}
+	var limit: float = float_of(start_msg.get("time_limit_s"), 0.0)
+	if limit > 0.0:
+		cfg["time_limit_s"] = minf(limit, MAX_TIME_LIMIT_S)
 	return cfg
 
 

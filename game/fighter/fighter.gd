@@ -524,7 +524,14 @@ func _armor_mesh(b: RigidBody3D, pn: String, ad: Dictionary) -> MeshInstance3D:
 		cm.radius = size.x + 0.012
 		cm.height = size.y * 0.8
 		mi.mesh = cm
-	mi.material_override = mat
+	# Houdini art for this part (armor def "art": {part: asset id}) replaces the placeholder and keeps its own materials.
+	var art_ids: Variant = ad.get("art", {})
+	var art: Mesh = FighterArt.armor_art(str((art_ids as Dictionary).get(pn, ""))) if art_ids is Dictionary else null
+	if art != null:
+		mi.mesh = art
+		mi.position = Vector3.ZERO
+	else:
+		mi.material_override = mat
 	mi.name = "Armor_" + pn
 	_slot(b, "ArmorSlot").add_child(mi)
 	FighterArt.apply_shadow(mi, pn)

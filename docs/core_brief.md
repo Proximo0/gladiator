@@ -184,7 +184,7 @@ material (the arena builds only the flat collider at y = 0 and calls `SandSurfac
 - The lower the blood, the less force a finisher needs (scaled from the normal sever/gut thresholds down to about a
   third near `blood_death`).
 - DamageModel input gains the optional key `blood_frac` (0..1, default 1, from `health.blood_frac()`). Output gains `finisher` (String:
-  "", "run_through", "gut", "behead", "skull_crush"). `FighterHealth.apply` emits a gore event with that kind and sets
+  "", "run_through", "gut", "behead", "skull_crush", "pummel"). `FighterHealth.apply` emits a gore event with that kind and sets
   `dead`. Presentation (slow motion, camera, crowd roar, HUD announce) keys on `finisher != ""`.
 
 ## Sound (Curtis, 2026-10-21; music later)
@@ -220,7 +220,7 @@ mid-fight restore diverges. So recordings are seed + loadouts + inputs from tick
   `InputReader`s for human sides. Every physics tick, in this order: collect one `FighterInput` per side, emit
   `inputs_applied(tick: int, inputs: Array)` with their `to_array()`s, then `apply_input` on each fighter.
 - `var tick: int`, `var fighters: Array`, `var seed: int`, `signal match_over(result: Dictionary)`.
-  result = `{winner: 0|1|-1, reason: "blood_loss"|"behead"|"gut"|"run_through"|"skull_crush"|"ko"|"time",
+  result = `{winner: 0|1|-1, reason: "blood_loss"|"behead"|"gut"|"run_through"|"skull_crush"|"pummel"|"ko"|"time",
   ticks, seed, loadouts, personalities, stats: MatchStats.to_dict()}`.
 - `func force_inputs(tick_inputs: Array) -> void`: replay mode, the next ticks use these recorded inputs
   (Array of per-tick [[5 ints], [5 ints]]) instead of brains/readers.
