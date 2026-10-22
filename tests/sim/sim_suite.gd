@@ -34,6 +34,7 @@ const SIM_FILES: Array = [
 	"sim_sandbox_isolation",
 	"sim_decor_clip",
 	"sim_match_show",  # last: the audio bot sim before it is sensitive to what ran earlier in the process
+	"sim_armor_weight",
 ]
 
 

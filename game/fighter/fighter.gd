@@ -1965,6 +1965,7 @@ func _resolve_hit(w: Weapon, target: Fighter, body: RigidBody3D, part: String, p
 		"edge_alignment": cls["edge_alignment"],
 		"effective_mass": FighterMath.effective_mass(wdef_mass, w.inertia_com, r, arm_mass) * target.roll_guard(),
 		"armor_ids": target.armor_on(part), "armor_wear": target._armor_wear.duplicate(),
+		"armor_gap": ArmorGaps.bypass(part, body.global_transform.affine_inverse() * p, _tun),
 		"part_hp_frac": target._hp(part), "blood_frac": target._finish_frac(),
 		"hit_on_weapon": on_weapon,
 		"target_down": target._state == "down" or target._state == "ko", "attacker_limp": _is_limp(), "attacker_conscious": _is_conscious(),
