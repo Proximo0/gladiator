@@ -1,0 +1,16 @@
+[gd_resource type="ORMMaterial3D" load_steps=4 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/organic_albedo.png" id="1"]
+[ext_resource type="Texture2D" path="res://assets/textures/organic_orm.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/textures/organic_normal.png" id="3"]
+
+[resource]
+resource_name = "fat"
+albedo_color = Color(1, 0.9355, 0.715, 1)
+albedo_texture = ExtResource("1")
+orm_texture = ExtResource("2")
+metallic = 0
+roughness = 0.3532
+normal_enabled = true
+normal_texture = ExtResource("3")
+ao_enabled = true

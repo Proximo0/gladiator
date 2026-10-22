@@ -428,14 +428,14 @@ const ARMOR_ART_DIR: String = "res://assets/armor/"
 static var _armor_art: Dictionary = {}  ## id -> opaque Mesh (or null when the asset is missing)
 
 
-## Houdini armor piece `id` (res://assets/armor/<id>.glb, built in its body part's frame by
+## Houdini armor piece `id` (res://assets/armor/<id>.glb or its textured copy, built in its body part's frame by
 ## tools/houdini/build_props.py, so it sits at the part's origin) as one opaque mesh with its own materials, or null.
 ## Loaded once per id; every caller gets its own duplicate of the mesh (the materials are shared and never changed).
 static func armor_art(id: String) -> Mesh:
 	if id == "":
 		return null
 	if not _armor_art.has(id):
-		_armor_art[id] = _load_armor_art(ARMOR_ART_DIR + id + ".glb")
+		_armor_art[id] = _load_armor_art(TexturedArt.path(ARMOR_ART_DIR + id + ".glb"))
 	var m: Mesh = _armor_art[id]
 	return m.duplicate() as Mesh if m != null else null
 

@@ -133,9 +133,10 @@ func build(d: Dictionary, physical_mass: float = -1.0) -> void:
 
 
 ## Art slot: res://assets/weapons/<id>.glb, or the def's "art" path (built in Houdini by tools/houdini/build_weapons.py: +Y along the weapon,
-## origin at the grip, edges toward +-X) replaces the primitive meshes. Visual only: the collision shapes stay.
+## origin at the grip, edges toward +-X) replaces the primitive meshes; its textured copy when there is one (TexturedArt).
+## Visual only: the collision shapes stay.
 func _use_art_mesh() -> void:
-	var path: String = str(def.get("art", "res://assets/weapons/%s.glb" % weapon_id))
+	var path: String = TexturedArt.path(str(def.get("art", "res://assets/weapons/%s.glb" % weapon_id)))
 	if not ResourceLoader.exists(path):
 		return
 	var scene: PackedScene = load(path) as PackedScene
