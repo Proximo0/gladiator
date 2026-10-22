@@ -95,11 +95,13 @@ blood spray, bleeding, severed limbs, gutting and beheading, all driven by the d
   minus point/normal, which the fighter adds). `func tick(delta: float, exertion: float) -> void` bleeds, recovers
   stamina and consciousness. `func to_dict()/from_dict(d)` for snapshots.
 
-## Tuning (lead-owned file `game/debug/tuning.gd`)
-Workers do not edit it. Report the rows you need, in the `FIELDS` format
-`[field, default, min, max, step, group, doc]`, in your final report; the lead adds them. Until then read with
-`Tuning.shared().get("field")` guarded by a local fallback constant, or add rows the lead has already listed here:
-`arena_radius 11`, `gravity 9.8`, `arm_force`, `damage_min_speed 3.0`, `blood_death 2.5` (see the file).
+## Tuning (`game/debug/tuning.gd` plus one file per group in `game/debug/tuning/`)
+Each group's rows (`ROWS_<GROUP>`, format `[field, default, min, max, step, group, doc]`) and their `var`s live in
+`game/debug/tuning/tuning_<group>.gd`. Workers own their group's file for NEW rows: add the row at the end of
+`ROWS_<GROUP>` and its `var <field>: float` after the group's last var. Changing an existing row (its default, range or
+group) still goes through the lead: report it in your final report. A new group (a new chain link) and
+`game/debug/tuning.gd` itself are lead-only. A branch that still edits the old single file is moved over with
+`tools/tuning_migrate.py` (see its header). Read fields with `Tuning.shared().<field>`.
 
 ## Input keys already taken
 F1 overlay, F2 slow-mo, F3 freeze, `.` single-step, F4 hide UI, F5 reserved, F6-F9 render toggles, F10 frame stamp,
@@ -125,7 +127,8 @@ All three schemes (mouse, stick, touch) produce the same FighterInput, so nothin
 | input | Haiku | `game/logic/fighter_input.gd`, `game/autoload/controls.gd`, `game/input/*`, `tests/unit/test_fighter_input.gd`, `tests/unit/test_input_reader.gd` |
 | arena | Sonnet | `game/arena/*`, `game/camera/*`, `tests/unit/test_arena.gd` |
 | tuning-panel | Haiku | `game/debug/tuning_panel.gd`, `tests/unit/test_tuning_panel.gd` |
-Lead: `game/main.gd`, `game/main.tscn`, `project.godot`, `game/debug/tuning.gd`, `tests/sim/sim_suite.gd`, docs, git.
+Lead: `game/main.gd`, `game/main.tscn`, `project.godot`, `game/debug/tuning.gd` (new rows: the group file, see Tuning),
+`tests/sim/sim_suite.gd`, docs, git.
 Report lines for lead-owned files (for example a new `Tuning` field) in your final message.
 
 ## Sand and blood (the title is Sandblood: these are headline features)

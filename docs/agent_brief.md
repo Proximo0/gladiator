@@ -36,4 +36,6 @@ The current contracts are in `docs/core_brief.md`.
 - `FrameStamp` (F10 or `--stamp`): frame, state hash and a 112-bit code strip on screen; decode a screenshot with
   `python3 tools/frame_code.py decode <png>`.
 - `RenderToggles` (F4 hide, F6 particles, F7 MSAA, F8 shadows, F9 3D text): for GPU glitch hunting.
-- `Tuning.shared()` (`game/debug/tuning.gd`): live-tunable numbers. Read `Tuning.shared().<field>` each tick.
+- `Tuning.shared()` (`game/debug/tuning.gd`): live-tunable numbers. Read `Tuning.shared().<field>` each tick. New fields go
+  in their group's file, `game/debug/tuning/tuning_<group>.gd` (a row at the end of `ROWS_<GROUP>` plus a `var`); you own
+  that file for new rows. Changing an existing row's default goes through the lead (put it in your final report).
