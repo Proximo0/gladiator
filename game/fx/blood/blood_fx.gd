@@ -13,6 +13,7 @@ const STAIN_VARIANTS: int = 4
 const MAX_WOUNDS: int = 40
 const MAX_SPURTS: int = 14
 const MAX_SPURT_EMIT: int = 40
+const GUT_WARM_FRAMES: int = 3
 const SPLAT_CELL: float = 0.07
 const STUMP_PARENT: Dictionary = {
 	"head": "torso", "upper_arm_l": "torso", "upper_arm_r": "torso",
@@ -149,9 +150,10 @@ var _height_fn: Callable = Callable()
 var _reach: PackedVector3Array = PackedVector3Array()
 var _free_this_step: int = 0
 var guts: GutSim = null
-var _mm_guts: MultiMeshInstance3D = null
+var _mm_guts: Array[MultiMeshInstance3D] = []  ## one per GutSim kind (rope link, torn end, tangle, coil, organs)
 var _gut_rope_cols: Array = []  ## [slot][variant] -> Color
-var _gut_blob_cols: Array = []
+var _gut_blob_cols: Array = []  ## [slot][organ] -> Color (liver, stomach, heart)
+var _gut_warm: int = 0  ## frames left drawing one hidden instance of each gut mesh, so no shader compiles mid-fight
 var stat_gut_ms: float = 0.0
 
 
@@ -220,23 +222,21 @@ func _build() -> void:
 	gut_mat.vertex_color_is_srgb = true
 	gut_mat.roughness = 0.3
 	gut_mat.metallic_specular = 0.35
-	var gut_mesh: SphereMesh = SphereMesh.new()
-	gut_mesh.radius = 1.0
-	gut_mesh.height = 2.0
-	gut_mesh.radial_segments = 10
-	gut_mesh.rings = 6
-	_mm_guts = MultiMeshInstance3D.new()
-	_mm_guts.name = "Guts"
-	_mm_guts.material_override = gut_mat
-	_mm_guts.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var gmm: MultiMesh = MultiMesh.new()
-	gmm.transform_format = MultiMesh.TRANSFORM_3D
-	gmm.use_colors = true
-	gmm.mesh = gut_mesh
-	gmm.custom_aabb = AABB(Vector3(-40, -2, -40), Vector3(80, 30, 80))
-	_mm_guts.multimesh = gmm
-	add_child(_mm_guts)
 	guts = GutSim.new()
+	for k: int in GutSim.KINDS:
+		var gmi: MultiMeshInstance3D = MultiMeshInstance3D.new()
+		gmi.name = "Guts_" + GutArt.FILES[k]
+		gmi.material_override = gut_mat
+		gmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var gmm: MultiMesh = MultiMesh.new()
+		gmm.transform_format = MultiMesh.TRANSFORM_3D
+		gmm.use_colors = true
+		gmm.mesh = GutArt.mesh(k)
+		gmm.custom_aabb = AABB(Vector3(-40, -2, -40), Vector3(80, 30, 80))
+		gmi.multimesh = gmm
+		add_child(gmi)
+		_mm_guts.append(gmi)
+		guts.kind_floor[k] = GutArt.floor_share(k)
 	sim = BloodSim.new(BloodMath.budget(quality))
 	mist = BloodMist.new(BloodMath.mist_budget(quality))
 	decals = BloodDecals.new(BloodMath.decal_budget(quality))
@@ -287,7 +287,8 @@ func _apply_gut_colors(slot: int, pal: BloodPalette) -> void:
 	var blobs_c: Array = []
 	for i: int in 5:
 		ropes_c.append(pal.gut_color(float(i) / 4.0))
-		blobs_c.append(pal.organ_color(float(i) / 4.0))
+	for i: int in BloodPalette.ORGAN_TONES.size():
+		blobs_c.append(pal.organ_tone(i))
 	_gut_rope_cols[slot] = ropes_c
 	_gut_blob_cols[slot] = blobs_c
 	if guts != null:
@@ -331,11 +332,18 @@ func _apply_sizes() -> void:
 	var tn: Tuning = Tuning.shared()
 	var segs: int = BloodMath.gut_segs(tn.gut_segs, quality)
 	guts.clear()
-	guts.set_caps(BloodMath.gut_cap(tn.gut_max_ropes, quality), BloodMath.gut_cap(tn.gut_max_blobs, quality))
-	_mm_guts.multimesh.instance_count = 0
-	_mm_guts.multimesh.instance_count = guts.max_instances(segs_cap_for(tn))
-	_mm_guts.multimesh.visible_instance_count = 0
-	guts.reserve(_mm_guts.multimesh.instance_count)
+	guts.set_caps(BloodMath.gut_cap(tn.gut_max_ropes, quality), BloodMath.gut_cap(tn.gut_max_blobs, quality),
+			BloodMath.gut_cap(tn.gut_max_organs, quality))
+	guts.organ_friction = tn.gut_organ_friction
+	guts.smear_step = tn.gut_organ_smear_step
+	guts.cluster_size = tn.gut_cluster_size
+	for k: int in GutSim.KINDS:
+		var gmm: MultiMesh = _mm_guts[k].multimesh
+		gmm.instance_count = 0
+		gmm.instance_count = maxi(guts.max_instances_of(k, segs_cap_for(tn)), 1)
+		gmm.visible_instance_count = 0
+	guts.reserve(segs_cap_for(tn))
+	_gut_warm = GUT_WARM_FRAMES
 
 
 ## Longest rope any gut spill may use (points per string), for sizing the instance buffer.
@@ -538,7 +546,7 @@ func on_gore(event: Dictionary, f: Object = null) -> void:
 				_wound_owner_tag(f)
 		"gut":
 			start_spurt(anchor, point, nrm, strength, "gut", cb, gslot)
-			_spill_guts(anchor, point, nrm, gslot, 1.0)
+			_spill_guts(anchor, point, nrm, gslot, 1.0, _organs_for(amount, 0))
 			_burst(point, nrm, 170, 0.8, 5.5, 0.9, 0.0095, gslot)
 			_ground_splash(point, 48, gslot)
 			if anchor != null:
@@ -549,8 +557,8 @@ func on_gore(event: Dictionary, f: Object = null) -> void:
 			start_spurt(anchor, point, nrm, strength, "gut", cb, gslot)
 			if Tuning.shared().gut_exit_streams > 0.0:
 				start_spurt(anchor, exit_pt, -nrm, strength, "gut_exit", cb, gslot)
-			_spill_guts(anchor, point, nrm, gslot, 1.0)
-			_spill_guts(anchor, exit_pt, -nrm, gslot, 0.0)  ## a few chunks fly out of the back as well
+			_spill_guts(anchor, point, nrm, gslot, 1.0, _organs_for(INF, 0))
+			_spill_guts(anchor, exit_pt, -nrm, gslot, 0.0, _organs_for(INF, 1), 2)  ## chunks and the heart out of the back
 			_burst(point, nrm, 150, 1.0, 6.0, 0.7, 0.012, gslot)
 			_burst(exit_pt, -nrm, 150, 1.5, 8.0, 0.5, 0.012, gslot)
 			_ground_splash(point, 40, gslot)
@@ -731,11 +739,33 @@ func _upload() -> void:
 	var mm3: MultiMesh = _mm_decals.multimesh
 	mm3.buffer = decals.buf
 	mm3.visible_instance_count = decals.count
-	if guts.dirty:
-		var gn: int = guts.write(_gut_rope_cols, _gut_blob_cols)
-		var mm4: MultiMesh = _mm_guts.multimesh
-		mm4.buffer = guts.buf
-		mm4.visible_instance_count = gn
+	if _gut_warm > 0:
+		_warm_guts()
+	elif guts.dirty:
+		guts.write(_gut_rope_cols, _gut_blob_cols)
+		for k: int in GutSim.KINDS:
+			var mm4: MultiMesh = _mm_guts[k].multimesh
+			mm4.buffer = guts.kind_buffer(k, mm4.instance_count)
+			mm4.visible_instance_count = mini(guts.counts[k], mm4.instance_count)
+
+
+## Pre-warm: for the first frames after the pools are sized, each gut MultiMesh draws one speck in front of the
+## camera, so the gut material's shaders compile before the fight, not on the first gutting.
+func _warm_guts() -> void:
+	_gut_warm -= 1
+	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	var at: Transform3D = Transform3D(Basis.from_scale(Vector3.ONE * 0.002), Vector3(0, -50, 0))
+	if cam != null:
+		at.origin = cam.global_position - cam.global_basis.z * 1.0
+	for k: int in GutSim.KINDS:
+		var mm: MultiMesh = _mm_guts[k].multimesh
+		if _gut_warm > 0:
+			mm.set_instance_transform(0, at)
+			mm.set_instance_color(0, Color(0.5, 0.1, 0.1))
+			mm.visible_instance_count = 1
+		else:
+			mm.visible_instance_count = 0
+	guts.dirty = true
 
 
 func _refresh_reach() -> void:
@@ -872,7 +902,18 @@ func _emit_fountain(s: _BfSpurt, origin: Vector3, axis: Vector3, dt: float) -> v
 
 ## Spills guts from a wound: `rope_share` of the normal number of intestine strings (0 for chunks only) plus organ
 ## chunks. Presentation only; they hang from the anchor part at the wound and then lie on the sand.
-func _spill_guts(anchor: Node3D, point: Vector3, nrm: Vector3, slot: int, rope_share: float) -> void:
+## Organs that fall out of a gut wound of `amount` damage points: none below gut_organ_points, else gut_organs
+## (or `fixed` when it is above 0) scaled by quality. A run-through passes INF.
+func _organs_for(amount: float, fixed: int) -> int:
+	var tn: Tuning = Tuning.shared()
+	if amount < tn.gut_organ_points:
+		return 0
+	var n: float = float(fixed) if fixed > 0 else tn.gut_organs * BloodMath.gut_mult(quality)
+	return maxi(roundi(n), 0)
+
+
+func _spill_guts(anchor: Node3D, point: Vector3, nrm: Vector3, slot: int, rope_share: float, organs: int = 0,
+		first_organ: int = 0) -> void:
 	var tn: Tuning = Tuning.shared()
 	var n_ropes: int = roundi(tn.gut_ropes * rope_share * BloodMath.gut_mult(quality))
 	var segs: int = BloodMath.gut_segs(tn.gut_segs, quality)
@@ -886,6 +927,7 @@ func _spill_guts(anchor: Node3D, point: Vector3, nrm: Vector3, slot: int, rope_s
 		r.setup(segs, tn.gut_seg_len * rng.randf_range(0.7, 1.3), tn.gut_radius * rng.randf_range(0.85, 1.15),
 				tn.gut_pay_time * rng.randf_range(0.8, 1.2), point + off, dir, tn.gut_eject * rng.randf_range(0.7, 1.2),
 				tn.gut_push, slot, rng.randf(), side * (lean * tn.gut_sway))
+		r.cluster = i == 0
 		if anchor != null:
 			r.set_meta("node", anchor)
 			r.set_meta("lpos", anchor.to_local(point + off))
@@ -895,6 +937,13 @@ func _spill_guts(anchor: Node3D, point: Vector3, nrm: Vector3, slot: int, rope_s
 		var v: Vector3 = nrm * tn.gut_eject * rng.randf_range(0.5, 1.6) + Vector3(0, rng.randf_range(0.6, 2.2), 0) \
 				+ side * rng.randf_range(-1.0, 1.0)
 		guts.add_blob(point + _jit(0.04), v, tn.gut_blob_radius * rng.randf_range(0.7, 1.3), rng.randf() * TAU, slot, rng.randf())
+	# A big wound lets whole organs fall out; they slide on the sand.
+	for j: int in organs:
+		var kind: int = GutSim.ORGAN_KINDS[(first_organ + j) % GutSim.ORGAN_KINDS.size()]
+		var v2: Vector3 = (nrm * rng.randf_range(0.8, 1.2) + side * rng.randf_range(-0.5, 0.5)) * tn.gut_organ_eject \
+				+ Vector3(0, rng.randf_range(0.3, 1.2), 0)
+		guts.add_blob(point + _jit(0.03), v2, GutArt.authored_size(kind) * rng.randf_range(0.9, 1.1), rng.randf() * TAU,
+				slot, rng.randf(), kind)
 
 
 func _update_guts(dt: float) -> void:
