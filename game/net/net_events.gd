@@ -107,7 +107,9 @@ static func _write_event(buf: StreamPeerBuffer, ev: Dictionary) -> void:
 					NetQuant.put_str(buf, str(arr[i]))
 
 
-## [[tick, side, kind, ev], ...], or [] when the packet is malformed.
+## [[tick, side, kind, ev], ...], or [] when the packet is malformed: short anywhere (every read is checked first,
+## so a truncated packet never reads past the end), more records than MAX_PER_PACKET, or a mask bit outside KEYS.
+## Halves that are not finite (a hostile host can send NaN bit patterns) read as 0; sides are -1..1.
 static func decode(bytes: PackedByteArray) -> Array:
 	if bytes.size() < 2 or int(bytes[0]) != NetConfig.MSG_EVENTS:
 		return []
@@ -115,6 +117,8 @@ static func decode(bytes: PackedByteArray) -> Array:
 	buf.data_array = bytes
 	buf.seek(1)
 	var n: int = buf.get_u8()
+	if n > MAX_PER_PACKET:
+		return []
 	var out: Array = []
 	for _i: int in range(n):
 		if buf.get_available_bytes() < 10:
@@ -123,32 +127,68 @@ static func decode(bytes: PackedByteArray) -> Array:
 		var side: int = buf.get_u8()
 		var kind: int = buf.get_u8()
 		var mask: int = buf.get_u32()
+		if (mask >> KEYS.size()) != 0:
+			return []
 		var ev: Dictionary = {}
 		for k: int in range(KEYS.size()):
 			if (mask & (1 << k)) == 0:
 				continue
 			var key: Array = KEYS[k]
-			match int(key[1]):
-				T_BOOL:
-					ev[key[0]] = true
-				T_HALF:
-					ev[key[0]] = buf.get_half()
-				T_STR:
-					ev[key[0]] = NetQuant.get_str(buf)
-				T_POS:
-					ev[key[0]] = NetQuant.get_vec_i16(buf, NetQuant.POS_SCALE)
-				T_DIR:
-					ev[key[0]] = NetQuant.get_dir(buf)
-				T_VEL:
-					ev[key[0]] = NetQuant.get_vec_i16(buf, NetQuant.VEL_SCALE)
-				T_SIDE:
-					ev[key[0]] = buf.get_u8() - 1
-				T_STRS:
-					var arr: Array = []
-					for _j: int in range(buf.get_u8()):
-						arr.append(NetQuant.get_str(buf))
-					ev[key[0]] = arr
-		if buf.get_position() > bytes.size():
-			return []
+			var v: Variant = _read_value(buf, int(key[1]))
+			if v == null:
+				return []
+			ev[key[0]] = v
 		out.append([tick, side, KINDS[clampi(kind, 0, KINDS.size() - 1)], ev])
 	return out
+
+
+## One value of type `kind`, or null when the buffer is too short for it.
+static func _read_value(buf: StreamPeerBuffer, kind: int) -> Variant:
+	match kind:
+		T_BOOL:
+			return true
+		T_HALF:
+			if buf.get_available_bytes() < 2:
+				return null
+			var h: float = buf.get_half()
+			return h if is_finite(h) else 0.0
+		T_STR:
+			return _read_str(buf)
+		T_POS, T_VEL:
+			if buf.get_available_bytes() < 6:
+				return null
+			return NetQuant.get_vec_i16(buf, NetQuant.POS_SCALE if kind == T_POS else NetQuant.VEL_SCALE)
+		T_DIR:
+			if buf.get_available_bytes() < 3:
+				return null
+			return NetQuant.get_dir(buf)
+		T_SIDE:
+			if buf.get_available_bytes() < 1:
+				return null
+			return clampi(buf.get_u8() - 1, -1, 1)
+		T_STRS:
+			if buf.get_available_bytes() < 1:
+				return null
+			var count: int = buf.get_u8()
+			if count > 8:
+				return null
+			var arr: Array = []
+			for _j: int in range(count):
+				var one: Variant = _read_str(buf)
+				if one == null:
+					return null
+				arr.append(one)
+			return arr
+	return null
+
+
+static func _read_str(buf: StreamPeerBuffer) -> Variant:
+	if buf.get_available_bytes() < 1:
+		return null
+	var size: int = buf.get_u8()
+	if buf.get_available_bytes() < size:
+		return null
+	if size == 0:
+		return ""
+	var r: Array = buf.get_data(size)
+	return (r[1] as PackedByteArray).get_string_from_utf8()

@@ -51,6 +51,8 @@ func test_default_loadout_is_valid_and_stable() -> void:
 	var l: Dictionary = LoadoutRules.default_loadout()
 	assert_eq(LoadoutRules.sanitize(l), l)
 	assert_eq(str(l["weapon"]), "gladius")
+	# A new player owns nothing: the default must be a real starter, not fists and not a locked weapon.
+	assert_eq(str(LoadoutRules.sanitize(l, [])["weapon"]), "gladius")
 
 
 func test_stats() -> void:

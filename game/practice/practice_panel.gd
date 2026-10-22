@@ -6,10 +6,11 @@ extends PanelContainer
 
 signal action(id: String)  ## "skip", "skip_all", "reset", "weapon", "quick", "menu"
 
-const BODY_PX: float = 17.0  ## on-screen text height of the instruction
-const HEAD_PX: float = 26.0
-const BAR_H: float = 16.0
-const MARGIN: float = 14.0
+const BODY_PX: float = 14.0  ## on-screen text height of the instruction (compact: the card must not hide the fight)
+const HEAD_PX: float = 17.0
+const BAR_H: float = 10.0
+const BTN_PX: float = 38.0  ## on-screen height of a skip button (a thumb target)
+const MARGIN: float = 10.0
 const MAX_W: float = 1000.0
 
 var _head: Label
@@ -26,23 +27,25 @@ var _progress: float = 0.0
 var _show_bar: bool = false
 var _free: bool = false
 var _flash: float = 0.0
+var _btn_h: float = 52.0
+var _btn_f: int = 22
 
 
 func _init() -> void:
 	theme = MenuTheme.theme()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_theme_stylebox_override("panel", MenuTheme.box(Color(0.09, 0.07, 0.05, 0.86), MenuTheme.BRONZE, 3, 12.0))
+	add_theme_stylebox_override("panel", MenuTheme.box(Color(0.09, 0.07, 0.05, 0.8), MenuTheme.BRONZE, 2, 8.0))
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 4)
+	v.add_theme_constant_override("separation", 2)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(v)
 	var top := HBoxContainer.new()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(top)
-	_head = MenuTheme.label("", 36, MenuTheme.OCHRE)
+	_head = MenuTheme.label("", 28, MenuTheme.OCHRE)
 	_head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(_head)
-	_count = MenuTheme.label("", 30, MenuTheme.PARCHMENT)
+	_count = MenuTheme.label("", 24, MenuTheme.PARCHMENT)
 	top.add_child(_count)
 	_body = MenuTheme.label("", 28, MenuTheme.PARCHMENT)
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -78,6 +81,7 @@ func show_step(heading: Array, step_line: String, counter: String, body: String,
 	_count.text = ("%s    %s" % [step_line, counter]) if counter != "" else step_line
 	_body.text = body
 	_hint.text = hint
+	_hint.visible = not touch_buttons  # the Skip buttons say it already
 	_show_bar = bar
 	_bar.visible = bar
 	_bar_label.visible = bar
@@ -93,6 +97,7 @@ func show_free(heading: Array, body: String, hint: String, weapon_name: String, 
 	_count.text = ""
 	_body.text = body
 	_hint.text = hint
+	_hint.visible = true
 	_show_bar = true
 	_bar.visible = true
 	_bar_label.visible = true
@@ -129,7 +134,8 @@ func _set_buttons(entries: Array) -> void:
 		c.queue_free()
 	for e: Array in entries:
 		var b: Button = MenuTheme.button(str(e[1]))
-		b.custom_minimum_size.y = 52.0
+		b.custom_minimum_size.y = _btn_h
+		b.add_theme_font_size_override("font_size", _btn_f)
 		b.focus_mode = Control.FOCUS_NONE  # Space (thrust) must never press a focused button
 		b.pressed.connect(func() -> void: action.emit(str(e[0])))
 		b.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -140,9 +146,14 @@ func _set_buttons(entries: Array) -> void:
 ## Sizes the fonts to ~BODY_PX on screen and the card to the layout width; places it at (centre x, y).
 func fit(root_w: float, y: float, ppu: float) -> void:
 	var p: float = maxf(ppu, 0.01)
-	var body_f: int = clampi(int(ceilf(BODY_PX / p)), 22, 52)
-	var head_f: int = clampi(int(ceilf(HEAD_PX / p)), 28, 64)
-	var small_f: int = clampi(int(ceilf(13.0 / p)), 18, 40)
+	var body_f: int = clampi(int(ceilf(BODY_PX / p)), 18, 52)
+	var head_f: int = clampi(int(ceilf(HEAD_PX / p)), 22, 64)
+	var small_f: int = clampi(int(ceilf(11.0 / p)), 16, 40)
+	_btn_f = clampi(int(ceilf(13.0 / p)), 18, 44)
+	_btn_h = BTN_PX / p
+	for b: Node in _buttons.get_children():
+		(b as Button).custom_minimum_size.y = _btn_h
+		b.add_theme_font_size_override("font_size", _btn_f)
 	_head.add_theme_font_size_override("font_size", head_f)
 	_count.add_theme_font_size_override("font_size", body_f)
 	_body.add_theme_font_size_override("font_size", body_f)
@@ -153,8 +164,8 @@ func fit(root_w: float, y: float, ppu: float) -> void:
 	_body.custom_minimum_size.x = w - 40.0
 	_hint.custom_minimum_size.x = w - 40.0
 	custom_minimum_size.x = w
-	_bar.custom_minimum_size.y = maxf(BAR_H, 12.0 / p)
-	_prog.custom_minimum_size.y = maxf(8.0, 6.0 / p)
+	_bar.custom_minimum_size.y = maxf(BAR_H, 8.0 / p)
+	_prog.custom_minimum_size.y = maxf(6.0, 4.0 / p)
 	_relayout_size()
 	position = Vector2((root_w - size.x) * 0.5, y)
 

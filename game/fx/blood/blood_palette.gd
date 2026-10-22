@@ -13,6 +13,7 @@ const K_DECAL_FRESH: float = 0.6
 const K_DECAL_DRIED: float = 0.71
 const K_SAND_FRESH: float = 0.5625
 const K_SAND_DRIED: float = 0.83
+const ORGAN_TONES: Array[Color] = [Color(0.32, 0.05, 0.05), Color(0.7, 0.36, 0.34), Color(0.55, 0.06, 0.07)]
 
 var fresh: Color = Color8(204, 3, 7)
 var dried: Color = Color8(61, 9, 8)
@@ -99,6 +100,16 @@ func inner(kind: String) -> Color:
 ## Intestine colour: the flesh tone washed out toward pink-white, `t` 0..1 picks a variant. Alien flesh keeps its hue.
 func gut_color(t: float) -> Color:
 	return flesh.lerp(Color(1.0, 0.62, 0.6), 0.28 + 0.2 * t).lerp(fat, 0.1 * (1.0 - t))
+
+
+## Organ colour of ORGAN_TONES[i] (liver, stomach, heart: the Houdini base colours, for red blood) turned to this
+## blood's hue: the red palette gives the authored colours, ichor gives organs of its own hue at the same depth.
+func organ_tone(i: int) -> Color:
+	var base: Color = ORGAN_TONES[clampi(i, 0, ORGAN_TONES.size() - 1)]
+	var red_h: float = Color8(191, 10, 10).h
+	var h: float = fposmod(base.h + flesh.h - red_h, 1.0)
+	var sat: float = base.s * clampf(flesh.s / maxf(Color8(191, 10, 10).s, 0.01), 0.0, 1.0)
+	return Color.from_hsv(h, sat, base.v)
 
 
 ## Organ chunk colour (liver, kidney): the flesh tone darkened with a purple lean.
