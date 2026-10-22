@@ -17,8 +17,8 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        # Git for Windows bash: plain `bash` resolves to the WSL stub on Windows hosts.
-        shell: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc -eo pipefail {0}'
+        # Git for Windows bash via the 8.3 path (plain `bash` is the WSL stub; a quoted path with spaces is not parsed).
+        shell: C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}
     env:
       GODOT: ${{ vars.GPU_GODOT || 'C:/Users/crp27/Downloads/Godot_4.7.2/Godot_v4.7.2-stable_win64_console.exe' }}
     steps:
