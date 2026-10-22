@@ -32,9 +32,7 @@ jobs:
           # rows don't, new ones included.
           # When a sim moves to a named row, add its -name to the `sims` row so it runs once.
           - { name: sims, cmd: "tools/run_sims.sh -sim_net_quick -sim_camera_follow -sim_hit_feel -sim_match_smoke -sim_audio_bot -sim_killcam_net -sim_net_cheat -sim_net_presented -sim_match_show -sim_net_feel" }
-          - { name: sims-net, cmd: "tools/run_sims.sh sim_net_quick" }
-          # net_feel passes alone but fails after other net sims in the same process (state leak, 2026-10-22).
-          - { name: sims-net-feel, cmd: "tools/run_sims.sh sim_net_feel" }
+          - { name: sims-net, cmd: "tools/run_sims.sh sim_net_quick sim_net_feel" }
           - { name: sims-feel, cmd: "tools/run_sims.sh sim_camera_follow sim_hit_feel sim_match_smoke" }
           - { name: sims-match, cmd: "tools/run_sims.sh sim_audio_bot sim_killcam_net sim_net_cheat sim_net_presented sim_match_show" }
           # Play-bot shards: keep --nshards equal to the number of rows. Every row is a runner, and a free account
