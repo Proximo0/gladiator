@@ -5,6 +5,9 @@ extends Node3D
 ## The floor's visual is a SandSurface (game/sand/) when that script exists, else a flat placeholder disc.
 
 const SAND_SCRIPT: String = "res://game/sand/sand_surface.gd"
+## SandSurface.BASE_SEED and the disc margin of SandSurface.setup, for the SandTables prewarm (keys must match).
+const SAND_BASE_SEED: int = 7
+const SAND_DISC_MARGIN: float = 0.35
 const WALL_SIDES: int = 48
 const WALL_HEIGHT: float = 3.0
 const TIER_COUNT: int = 6
@@ -49,6 +52,8 @@ var _flames: Array[MeshInstance3D] = []
 var _flame_time: float = 0.0
 var _torch_positions: PackedVector3Array = PackedVector3Array()
 var _dressing: ArenaDressing = ArenaDressing.new()
+var build_ms: Dictionary = {}  ## step name -> ms of the last build (see build_profile)
+var _sand_load_ms: float = 0.0
 ## Flame height above the wall cap: a Houdini brazier's bowl, or the code torch's bowl.
 var _flame_y: float = 1.8
 
@@ -83,15 +88,32 @@ func _ready() -> void:
 	for k: int in 6:
 		var ta: float = deg_to_rad(30.0 + float(k) * 60.0)
 		_torch_positions.append(ring_point(radius + 0.3, ta, WALL_HEIGHT, WALL_SIDES) + Vector3(0, _flame_y - 0.2, 0))
-	_build_floor()
-	_build_wall_colliders()
-	_build_wall_visual()
-	_build_stands()
-	_build_crowd()
-	_build_props()
-	_build_velarium()
-	_build_dressing()
-	_build_environment()
+	if ResourceLoader.exists(SAND_SCRIPT):
+		var cell: float = GfxQuality.pick_f(GfxQuality.SAND_MESH_CELL)
+		SandTables.prewarm(radius, SandMap.map_extent(radius), SAND_BASE_SEED, radius + SAND_DISC_MARGIN, cell)
+	var steps: Array[Callable] = [_build_floor, _build_wall_colliders, _build_wall_visual, _build_stands, _build_crowd,
+			_build_props, _build_velarium, _build_dressing, _build_sand, _build_environment]
+	for step: Callable in steps:
+		var t0: int = Time.get_ticks_usec()
+		step.call()
+		build_ms[step.get_method().trim_prefix("_build_")] = float(Time.get_ticks_usec() - t0) / 1000.0
+	if Flags.args.has("arena_profile"):
+		ProfileLog.emit("ARENA_BUILD", build_profile())
+
+
+## Per-step build times (ms) of the last _ready, with the sand setup's own steps under "sand.<step>". Wall clock:
+## presentation profiling only (`-- --arena_profile` prints it), never gameplay.
+func build_profile() -> Dictionary:
+	var out: Dictionary = build_ms.duplicate()
+	var total: float = 0.0
+	for k: String in build_ms:
+		total += float(build_ms[k])
+	out["total"] = total
+	out["sand.load_script"] = _sand_load_ms
+	if sand != null and "setup_ms" in sand:
+		for k: String in (sand.get("setup_ms") as Dictionary):
+			out["sand." + k] = sand.get("setup_ms")[k]
+	return out
 
 
 func spawn_point(side: int) -> Transform3D:
@@ -124,9 +146,25 @@ func _build_floor() -> void:
 	cs.position = Vector3(0.0, -0.5, 0.0)
 	body.add_child(cs)
 	add_child(body)
+	# Dirt beyond the stands so the horizon is never empty. Lowered, never coplanar with the floor.
+	var ground := MeshInstance3D.new()
+	ground.mesh = _disc_mesh(140.0, 32)
+	var gm := StandardMaterial3D.new()
+	gm.albedo_color = Color(0.36, 0.28, 0.2)
+	gm.roughness = 1.0
+	ground.material_override = gm
+	ground.position = Vector3(0.0, -0.06, 0.0)
+	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ground)
 
+
+## The floor's visual: a SandSurface, or a flat placeholder disc without the sand script. Built late in _ready so the
+## SandTables prewarm started at its top has run on a worker while the walls, stands and crowd were built.
+func _build_sand() -> void:
 	if ResourceLoader.exists(SAND_SCRIPT):
+		var t0: int = Time.get_ticks_usec()
 		var script: GDScript = load(SAND_SCRIPT)
+		_sand_load_ms = float(Time.get_ticks_usec() - t0) / 1000.0
 		sand = script.new() as Node3D
 		sand.name = "Sand"
 		add_child(sand)
@@ -142,17 +180,6 @@ func _build_floor() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mi)
 		sand = mi
-
-	# Dirt beyond the stands so the horizon is never empty. Lowered, never coplanar with the floor.
-	var ground := MeshInstance3D.new()
-	ground.mesh = _disc_mesh(140.0, 32)
-	var gm := StandardMaterial3D.new()
-	gm.albedo_color = Color(0.36, 0.28, 0.2)
-	gm.roughness = 1.0
-	ground.material_override = gm
-	ground.position = Vector3(0.0, -0.06, 0.0)
-	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(ground)
 
 
 func _disc_mesh(r: float, segs: int) -> ArrayMesh:
