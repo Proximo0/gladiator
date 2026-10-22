@@ -180,7 +180,7 @@ func on_gore(ge: Dictionary, f: Object = null) -> void:
 		_gore_last[key] = _clock
 		_duck()
 		_queue(key, pos, 0.0, 1.0, 0.0, "SFX")
-	if kind == "skull_crush":
+	if kind == "skull_crush" or kind == "pummel":
 		_queue("impact/bone_crack", pos, 2.0, 0.9, 0.0, "SFX")
 	var t: Dictionary = _track_of(f)
 	if (kind == "behead" or kind == "gut") and not t.is_empty():

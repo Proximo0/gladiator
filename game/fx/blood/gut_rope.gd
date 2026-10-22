@@ -25,6 +25,7 @@ var calm_time: float = 0.0
 var slot: int = 0
 var seed_value: float = 0.0
 var order: int = 0  ## spawn number, for colour variation
+var cluster: bool = false  ## draws the tangle of guts bulging out of the wound at point 0
 var _sleep_anchor: Vector3 = Vector3.ZERO
 ## Points that first touched the sand during the last step (world positions); the caller turns them into smears.
 var touches: PackedVector3Array = PackedVector3Array()
