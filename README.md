@@ -22,7 +22,8 @@ minute one.
     tools/check_all.sh          # all of it in parallel (+ bot/lab if tests/bot/bot.tscn, tests/lab/lab.tscn exist)
     godot --path . -- --stamp   # run with the frame stamp visible
 
-Tuning pattern: add a row to `Tuning.FIELDS` plus a `var`, read `Tuning.shared().<field>` in game code.
+Tuning pattern: add a row to the group's `ROWS_<GROUP>` plus a `var` in `game/debug/tuning/tuning_<group>.gd`, read
+`Tuning.shared().<field>` in game code.
 Add a sim: write `tests/sim/sim_<name>.gd` (extends `sim_base.gd`, `run()` returns `[[name, ok, detail]]`); the suite
 finds it by folder scan (`## suite: skip` / `## suite: last` markers in `sim_suite.gd`). Add a unit test: `tests/unit/test_<module>.gd`, methods named `test_*`.
 
