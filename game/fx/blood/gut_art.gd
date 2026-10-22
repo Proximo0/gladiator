@@ -38,10 +38,12 @@ static func mesh(kind: int) -> Mesh:
 
 
 ## The spill's shared material: vertex colours (each piece's tints) times the instance colour (the blood palette), over
-## the organic library maps when the textured pieces loaded.
+## the organic library maps when the textured pieces loaded. A StandardMaterial3D, not an ORMMaterial3D: Godot's ORM
+## shader takes roughness and metallic straight from the map and ignores both factors (tools/textured_import.py), so
+## the ORM map feeds AO (R), roughness (G) and metallic (B) through channel selects and the factors multiply them.
 static func material() -> BaseMaterial3D:
 	_ensure()
-	var m: ORMMaterial3D = ORMMaterial3D.new()
+	var m: StandardMaterial3D = StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
 	m.vertex_color_is_srgb = true
 	m.roughness = ROUGHNESS
@@ -51,10 +53,15 @@ static func material() -> BaseMaterial3D:
 	var nrm: Texture2D = TexturedArt.library(LIB_NORMAL) if _textured else null
 	if alb != null and orm != null and nrm != null:
 		m.albedo_texture = alb
-		m.orm_texture = orm
 		m.roughness = ROUGHNESS_ORM
+		m.roughness_texture = orm
+		m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
 		m.metallic = 0.0
+		m.metallic_texture = orm
+		m.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_BLUE
 		m.ao_enabled = true
+		m.ao_texture = orm
+		m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
 		m.normal_enabled = true
 		m.normal_texture = nrm
 	return m
