@@ -1,0 +1,2 @@
+What happened: Fighters looked tiptoe and floating: the pelvis force carried and pushed the body while the legs were posed from a sine phase, so the PD-lagged legs trailed a stride behind with toes on the sand (planted foot pitch 48°, contact slip 1.9 m/s walking)
+Rule: Plan feet in world space (GaitLogic: planted feet hold, land where the foot really is), move feet with a PD force whose reaction goes on the pelvis, and measure gait with out/loco_probe.gd before tuning
