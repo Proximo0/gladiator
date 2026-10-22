@@ -54,7 +54,7 @@ func _panel_text(f: MenuFlow) -> String:
 ## The host ends the fight now with `winner` and a rated length; both sides reach their result panel.
 func _finish_fight(fh: MenuFlow, fc: MenuFlow, winner: int) -> int:
 	var mh: Match = fh.current_match
-	mh.tick = RATED_TICKS
+	mh.tick = RATED_TICKS + mh.fight_start_tick  # the fight clock (what a ranked report sends) runs from the intro's release
 	mh.call("_finish", {"winner": winner, "reason": "ko"}, [])
 	return await _wait_until(func() -> bool:
 		return int(fh.screen) == MenuFlow.Screen.RESULT and int(fc.screen) == MenuFlow.Screen.RESULT, 900)

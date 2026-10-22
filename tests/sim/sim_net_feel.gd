@@ -225,7 +225,7 @@ static func _max(v: Array) -> float:
 
 func run() -> Array:
 	_on_args()
-	await sandbox()
+	await sandbox(true)  # own physics space: the host path must not depend on the sims that ran before (see sim_practice)
 	var one_way: float = float(rtt_ms) / 2.0 * 60.0 / 1000.0
 	var jit: int = clampi(roundi(one_way * 0.3), 0, 4)
 	var lag: int = maxi(roundi(one_way - float(jit) / 2.0), 0)
