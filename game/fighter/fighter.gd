@@ -15,6 +15,9 @@ extends Node3D
 signal hit(event: Dictionary)
 signal gore(event: Dictionary)
 signal died
+## A shove, kick or grab: {"kind": "shove"|"kick"|"grab"|"hold"|"break"|"slip", "attacker": side, "target": side,
+## "point": Vector3, "landed": bool}. Kicks that connect also emit `hit` like any blow.
+signal close(event: Dictionary)
 
 const LAYER_BODIES: int = 2
 ## Quaternion grid for normalised poses (snapshot/restore).
@@ -57,6 +60,10 @@ const CROUCH: int = 32
 const GRAB: int = 64
 const TURN_LOCK: int = 128
 const ROLL: int = 256
+const SHOVE: int = 512
+const KICK: int = 1024
+const CLINCH: int = 2048
+const KICK_LEG: int = 0  ## the lead (left) leg kicks; gait index 0 is the left foot
 
 ## Weapon rest frames relative to the hand when the forearm hangs (columns X edge, Y blade, Z flat).
 ## A blade rests half way between square to the forearm and in line with it, so the wrist's range covers both an
@@ -91,6 +98,9 @@ var _state_t: float = 0.0
 var _yaw: float = 0.0
 var _gait: GaitLogic = GaitLogic.new()
 var _roll: RollLogic = RollLogic.new()
+var _close: CloseCombat = CloseCombat.new()
+var _hold_excl: Array[PhysicsBody3D] = []  ## foe bodies the holding hand has collision exceptions with
+var _hold_joint: Generic6DOFJoint3D = null  ## the hold: the holding forearm jointed to the held part
 var _leg_prev: Dictionary = {}  ## last leg joint targets (rate feed-forward)
 var _foot_prev: Array[Vector3] = [Vector3.INF, Vector3.INF]  ## last foot targets (their velocity)
 var _stagger: float = 0.0
@@ -263,6 +273,9 @@ func _make_part(pd: Dictionary, col: Color) -> void:
 			m3.height = size.y
 			_add_shape(b, s3, m3, Vector3.ZERO, mat)
 	if n.begins_with("shin"):
+		# The kicking foot's contacts are read like a weapon's (see _kick_contacts).
+		b.contact_monitor = true
+		b.max_contacts_reported = 8
 		var fs := BoxShape3D.new()
 		fs.size = FighterRig.FOOT_SIZE
 		var fm := BoxMesh.new()
@@ -556,6 +569,7 @@ func _physics_process(delta: float) -> void:
 		_skip_contacts -= 1
 	else:
 		_process_contacts()
+		_kick_contacts()
 	if health != null:
 		health.tick(delta, _exertion)
 	_update_state(delta)
@@ -730,6 +744,7 @@ func _control(delta: float) -> void:
 		_gait.replant([_foot_point("shin_l"), _foot_point("shin_r")])
 	if _roll.active() and not active:
 		_roll.t = -1.0
+	_close_moves(inp, active, delta)
 	var rolling: bool = _roll.active()
 	var ru: float = _roll.progress(_t("roll_time"))
 	var tk: float = RollLogic.tuck(ru) if rolling else 0.0
@@ -770,7 +785,13 @@ func _control(delta: float) -> void:
 	var v_des: Vector3 = (right * (move.x * _t("strafe_speed_scale")) + fwd * move.y) * speed
 	if _state != "standing":
 		v_des *= 0.3 if _state == "stumbling" else 0.0
+	if _close.kicking():
+		# On one leg: no walking through a kick, but the hips drive in behind the extending leg.
+		var ku: float = CloseCombat.progress(_close.kick_t, _t("kick_time"))
+		v_des = v_des * 0.2 + fwd * (_t("kick_lunge") * (1.0 if ku > CloseCombat.KICK_CHAMBER and ku < CloseCombat.KICK_HOLD else 0.0))
 	var v_move: Vector3 = v_des  # what the feet plan for (the sway below is the body's, not a step's)
+	if _close.shoving():
+		v_des += fwd * (_t("shove_lunge") * CloseCombat.shove_extend(CloseCombat.progress(_close.shove_t, _t("shove_time"))))
 	# Hip sway: the pelvis shifts over the planted foot while the other swings.
 	v_des += right * (_t("gait_sway") * _gait.sway_rate())
 	if rolling:
@@ -815,6 +836,8 @@ func _control(delta: float) -> void:
 	if bal_scale > 0.0:
 		var bf: float = _t("balance_freq")
 		var cap: float = _t("balance_torque") * bal_scale * s
+		if held_part() == "head":
+			cap *= _t("clinch_head_balance")
 		var p_want: Basis = yb * _reach_pitch(rk, false) * Basis(Vector3(0, 0, 1), _t("gait_hip_roll") * _gait.sway())
 		if rolling:
 			# One turn of the whole body about the axis across the roll, led by the pelvis.
@@ -845,7 +868,7 @@ func _control(delta: float) -> void:
 		var v_plan: Vector3 = v_move if not rolling else Vector3.ZERO  # landing a roll: feet stay where they open
 		if not _gait.ready:
 			_gait.replant([_foot_point("shin_l"), _foot_point("shin_r")])  # start from where the feet are
-		_gait.tick(delta, [_hip_point(0), _hip_point(1)], yb, v_plan, _gait_params(), _state != "getting_up",
+		_gait.tick(delta, [_hip_point(0), _hip_point(1)], yb, v_plan, _gait_params(), _state != "getting_up" and not _close.kicking(),
 			[_foot_point("shin_l"), _foot_point("shin_r")])
 
 	# Pose targets (child relative to parent).
@@ -870,6 +893,9 @@ func _control(delta: float) -> void:
 		for n: String in ["shin_l", "shin_r"]:
 			targets[n] = Basis(Vector3.RIGHT, -0.4)
 	var used: float = _arms(targets, yb, fwd, right, active, s, delta, rk)
+	if active:
+		_shove_contact(fwd, right, s)
+		_hold_tick(delta, s)
 
 	# Joint PD.
 	for pd: Dictionary in FighterRig.PARTS:
@@ -972,6 +998,8 @@ func _leg_targets(targets: Dictionary, yb: Basis, delta: float, h_target: float,
 		# let straight legs prop the body up out of its crouch).
 		var hip: Vector3 = _hip_point(i) + Vector3(0.0, (h_target - pelvis.global_position.y) * _t("leg_height_follow"), 0.0)
 		var foot_w: Vector3 = _gait.target(i) + yb * Vector3(0.0, 0.0, -foot_fwd)
+		if i == KICK_LEG and _close.kicking():
+			foot_w = _kick_foot_world(yb)
 		foot_w.y += FighterRig.ANKLE_HEIGHT + drop
 		var rel: Vector3 = pinv * (foot_w - hip)
 		if tk < 0.5:
@@ -993,7 +1021,8 @@ func _load_feet(fy: float, fh: Vector3) -> void:
 	var down: Array[String] = []
 	for i: int in range(2):
 		var n: String = "shin_l" if i == 0 else "shin_r"
-		if _gait.planted(i) and not _is_cut_off(n) and _foot_point(n).y < FighterRig.ANKLE_HEIGHT + _t("foot_contact"):
+		if _gait.planted(i) and not _is_cut_off(n) and _foot_point(n).y < FighterRig.ANKLE_HEIGHT + _t("foot_contact") \
+				and not (i == KICK_LEG and _close.kicking()):
 			down.append(n)
 	if down.is_empty():
 		return
@@ -1030,7 +1059,8 @@ func _roll_dip_pull(fy: float, weight: float) -> void:
 ## own velocity), with the full reaction on the pelvis at the hip: the joint drives alone lag a swing by a stride.
 func _foot_force(i: int, target: Vector3, hip: Vector3, delta: float) -> void:
 	var n: String = "shin_l" if i == 0 else "shin_r"
-	var cap: float = _t("foot_force_max") * FighterMath.limb_factor(minf(_hp(n), _hp("thigh" + n.substr(4))), _t("limb_floor"))
+	var kick: bool = i == KICK_LEG and _close.kicking()
+	var cap: float = _t("kick_force" if kick else "foot_force_max") * FighterMath.limb_factor(minf(_hp(n), _hp("thigh" + n.substr(4))), _t("limb_floor"))
 	if _is_cut_off(n) or cap <= 0.0 or delta <= 0.0:
 		_foot_prev[i] = target
 		return
@@ -1040,11 +1070,12 @@ func _foot_force(i: int, target: Vector3, hip: Vector3, delta: float) -> void:
 	var tv: Vector3 = (target - (_foot_prev[i] as Vector3)) / delta if _foot_prev[i] != Vector3.INF else Vector3.ZERO
 	_foot_prev[i] = target
 	var err: Vector3 = target - fp
-	if _gait.planted(i):
+	var planted: bool = _gait.planted(i) and not kick
+	if planted:
 		# A planted foot only resists slipping: a spring toward its spot would push the body through the sand's grip.
 		err = Vector3.ZERO
 	var f: Vector3 = FighterMath.pd_force(err, fv - tv.limit_length(12.0), _t("foot_drive_mass"), _t("foot_freq"), 1.0, cap)
-	if _gait.planted(i):
+	if planted:
 		f.y = 0.0  # its load comes from the support (_load_feet)
 	b.apply_force(f, fp - b.global_position)
 	var pelvis: RigidBody3D = parts["pelvis"]
@@ -1156,11 +1187,27 @@ func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active:
 			# Bowing down to pick something up, the free hand braces on the left knee.
 			var knee: Vector3 = (parts["thigh_l"] as RigidBody3D).global_transform * Vector3(0, -0.2, -0.06)
 			lt = lt.lerp(knee, rk)
+	# A shove drives the free hand (or shield) out; a grab reaches for the foe's arm or head, a hold draws it in.
+	var close_lt: bool = false
+	if _close.shoving() and _shove_hand():
+		var ext: float = CloseCombat.shove_extend(CloseCombat.progress(_close.shove_t, _t("shove_time")))
+		lt = chest + fwd * lerpf(0.3, _t("shove_reach"), ext) - right * lerpf(0.15, 0.02, ext) - up * lerpf(0.15, 0.05, ext)
+		close_lt = true
+	elif _close.reaching() and _grab_point() != Vector3.INF:
+		lt = _grab_point()
+		close_lt = true
+	elif _close.holding() and _hold_point() != Vector3.INF:
+		# The holding hand stays on the held point and draws it a little at a time toward the chest.
+		var hpt: Vector3 = _hold_point()
+		lt = hpt + (chest + fwd * _t("clinch_pull") - right * 0.05 - hpt).limit_length(0.12)
+		close_lt = true
 	var on_weapon: bool = (half or bool(main_w.def.get("two_handed", false))) if main_w != null else false
+	on_weapon = on_weapon and not close_lt
 	if on_weapon or not active:
 		_goal_l = (lt if active else _hand_pos("l")) - pp
 	else:
-		_goal_l = _goal_l.move_toward(lt - pp, _t("offhand_hand_speed") * _delta)
+		var fast: bool = close_lt and not _close.holding()
+		_goal_l = _goal_l.move_toward(lt - pp, _t("swing_hand_speed" if fast else "offhand_hand_speed") * _delta)
 		lt = pp + _goal_l
 	_hand_target_l = lt
 
@@ -1169,11 +1216,13 @@ func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active:
 		var arm_hp_r: float = minf(_hp("upper_arm_r"), _hp("forearm_r"))
 		var cap_r: float = _t("arm_force") * s * FighterMath.limb_factor(arm_hp_r, _t("limb_floor"))
 		cap_r *= 1.0 if inp.has(SWING) or inp.has(THRUST) else _t("guard_force_frac")
+		if held_part() == "forearm_r":
+			cap_r *= _t("clinch_pin")
 		if half and inp.has(THRUST):
 			cap_r *= _t("half_sword_thrust")
 		used = _hand_force("r", _hand_target, cap_r, shoulder_r)
 		var arm_hp_l: float = minf(_hp("upper_arm_l"), _hp("forearm_l"))
-		var cap_l: float = _t("arm_force") * _t("offhand_force_frac") * s * FighterMath.limb_factor(arm_hp_l, _t("limb_floor"))
+		var cap_l: float = _t("arm_force") * _t("shove_force_frac" if close_lt and not _close.holding() else "offhand_force_frac") * s * FighterMath.limb_factor(arm_hp_l, _t("limb_floor"))
 		_hand_force("l", lt, cap_l, shoulder_l)
 	for h: String in ["r", "l"]:
 		var shoulder: Vector3 = shoulder_r if h == "r" else shoulder_l
@@ -1365,6 +1414,355 @@ func drop_weapon() -> void:
 		_release(weapon)
 
 
+# --- close range: shove, kick, grab ------------------------------------------------------------------------------
+
+## CloseCombat timing parameters from Tuning.
+func _close_params() -> Dictionary:
+	return {
+		"shove_time": _t("shove_time"), "shove_cooldown": _t("shove_cooldown"), "kick_time": _t("kick_time"),
+		"kick_cooldown": _t("kick_cooldown"), "clinch_time": _t("clinch_time"), "clinch_max": _t("clinch_max"),
+		"clinch_cooldown": _t("clinch_cooldown"),
+	}
+
+
+## Starts a shove, kick or grab on the press of its button, keeps a hold only while CLINCH is held, and advances
+## their timers. Nothing starts mid roll or while reaching down; a fighter that goes down stops them all.
+func _close_moves(inp: FighterInput, active: bool, delta: float) -> void:
+	var pressed: int = _close.edges(inp.buttons)
+	var stamina: float = health.stamina if health != null else 1.0
+	var free: bool = not _roll.active() and _reach <= 0.01 and opponent != null and is_instance_valid(opponent) and opponent._built
+	var able: bool = free and (_state == "standing" or _state == "stumbling")
+	if (pressed & SHOVE) != 0 and _close.can_shove(able, stamina, _t("shove_stamina")):
+		if _close.holding() or _close.reaching():
+			_close_release(false)  # the holding hand lets go to push
+		_close.start_shove()
+		_pay_stamina(_t("shove_stamina"))
+	if (pressed & KICK) != 0 and _close.can_kick(free and _state == "standing", _legs_ok(), stamina, _t("kick_stamina")):
+		_close.start_kick()
+		_pay_stamina(_t("kick_stamina"))
+	if (pressed & CLINCH) != 0 and _close.can_grab(able, _left_free()):
+		_close.start_grab(inp.aim().y > 0.35)
+	if (_close.holding() or _close.reaching()) and (not inp.has(CLINCH) or not _left_free()):
+		_close_release(false)
+	var was_kicking: bool = _close.kicking()
+	if not active:
+		_close.shove_t = -1.0
+		_close.kick_t = -1.0
+		if _close.holding() or _close.reaching():
+			_close_release(false)
+	_close.tick(delta, _close_params())
+	if _close.holding() and health != null:
+		health.stamina = maxf(health.stamina - _t("clinch_stamina") * delta, 0.0)
+	if was_kicking and not _close.kicking() and active:
+		_gait.replant([_foot_point("shin_l"), _foot_point("shin_r")])
+
+
+func _pay_stamina(cost: float) -> void:
+	if health != null:
+		health.stamina = maxf(health.stamina - cost, 0.0)
+
+
+## Lets go of a hold (or a reach). `broken`: the foe broke free (counted, and announced as a break).
+func _close_release(broken: bool) -> void:
+	var was: bool = _close.holding()
+	for o: PhysicsBody3D in _hold_excl:
+		if is_instance_valid(o):
+			fist_l.remove_collision_exception_with(o)
+			o.remove_collision_exception_with(fist_l)
+	_hold_excl.clear()
+	if _hold_joint != null:
+		_hold_joint.node_a = NodePath("")
+		_hold_joint.node_b = NodePath("")
+		remove_child(_hold_joint)
+		_hold_joint.free()
+		_hold_joint = null
+	_close.release(_close_params(), broken)
+	if was:
+		_emit_close("break" if broken else "slip", _hand_pos("l"), false)
+
+
+## The left hand can grab: no shield in it, not cut off or too hurt to hold.
+func _left_free() -> bool:
+	return offhand == null and _hand_can_hold("l")
+
+
+## True when a shove drives the left hand (or shield) out; with both hands on the weapon it is a shoulder charge.
+func _shove_hand() -> bool:
+	if _is_cut_off("forearm_l"):
+		return false
+	if weapon != null and (bool(weapon.def.get("two_handed", false)) or grip() == "half"):
+		return false
+	return true
+
+
+## The foe part a hold has or a reach goes for: the head when aiming high, else the weapon (right) forearm.
+func _grab_part() -> String:
+	if _close.holding():
+		return _close.hold_part
+	return "head" if _close.grab_head else "forearm_r"
+
+
+## World point the reaching hand goes for on the foe (its near surface), or INF when that part is gone.
+func _grab_point() -> Vector3:
+	if opponent == null or not is_instance_valid(opponent) or not opponent._built:
+		return Vector3.INF
+	var part: String = _grab_part()
+	if opponent._is_cut_off(part):
+		return Vector3.INF
+	var b: RigidBody3D = opponent.parts[part]
+	var c: Vector3 = b.global_position if part == "head" else b.global_transform * (FighterRig.HAND_LOCAL * 0.7)
+	var to_me: Vector3 = (parts["torso"] as RigidBody3D).global_position - c
+	to_me.y = 0.0
+	var skin: float = 0.12 if part == "head" else 0.06
+	return c + (to_me.normalized() * skin if to_me.length_squared() > 0.0001 else Vector3.ZERO)
+
+
+## The foe's bodies the holding hand wraps round: the held part, and for the weapon arm the fist and hilt in it.
+func _hold_bodies() -> Array[PhysicsBody3D]:
+	var out: Array[PhysicsBody3D] = [opponent.parts[_close.hold_part] as PhysicsBody3D]
+	if _close.hold_part == "forearm_r":
+		for w: Weapon in [opponent.fist_r, opponent.weapon]:
+			if w != null and w.holder == opponent and w.hand == "r":
+				out.append(w)
+	return out
+
+
+## The grip: a joint between the holding forearm and the held part at point `p`, free to turn, its points kept within
+## clinch_slack of each other. The hand's own capped drive pulls through it; the struggle or a slip breaks it.
+func _make_hold_joint(body: RigidBody3D, p: Vector3) -> void:
+	var j := Generic6DOFJoint3D.new()
+	j.name = "Hold"
+	add_child(j)
+	j.top_level = true
+	j.global_transform = Transform3D(Basis(), p)
+	var slack: float = _t("clinch_slack")
+	for ax: String in ["x", "y", "z"]:
+		j.set("linear_limit_%s/enabled" % ax, true)
+		j.set("linear_limit_%s/lower_distance" % ax, -slack)
+		j.set("linear_limit_%s/upper_distance" % ax, slack)
+		j.set("angular_limit_%s/enabled" % ax, false)
+	j.node_a = j.get_path_to(parts["forearm_l"])
+	j.node_b = j.get_path_to(body)
+	_hold_joint = j
+
+
+## World point of the foe part this fighter holds, or INF.
+func _hold_point() -> Vector3:
+	if not _close.holding() or opponent == null or not is_instance_valid(opponent) or opponent._is_cut_off(_close.hold_part):
+		return Vector3.INF
+	return (opponent.parts[_close.hold_part] as RigidBody3D).global_transform * _close.hold_local
+
+
+## The foe part this fighter is held by ("" when free).
+func held_part() -> String:
+	if opponent == null or not is_instance_valid(opponent) or not opponent._built:
+		return ""
+	return opponent._close.hold_part
+
+
+## A shove in its window lands when the pushing hand (or the shoulder) reaches the foe's torso or pelvis: an impulse
+## on the foe (more when the shover is strong), a little back on the shover, and stagger that floors a foe already
+## off balance. A held foe that shoves breaks the hold.
+func _shove_contact(fwd: Vector3, right: Vector3, s: float) -> void:
+	if not _close.shoving() or _close.shove_landed or opponent == null or not opponent._built:
+		return
+	if not CloseCombat.shove_window(CloseCombat.progress(_close.shove_t, _t("shove_time"))):
+		return
+	var torso: RigidBody3D = parts["torso"]
+	var hand: bool = _shove_hand()
+	var pt: Vector3 = _hand_pos("l") + fwd * 0.05 if hand else torso.global_position + fwd * 0.2 - right * 0.08
+	var ft: RigidBody3D = opponent.parts["torso"]
+	var fp: RigidBody3D = opponent.parts["pelvis"]
+	var reach: float = _t("shove_contact")
+	var touching: bool = pt.distance_to(ft.global_position) <= reach or pt.distance_to(fp.global_position) <= reach
+	if not touching and hand:
+		# The palm (or shield) meeting any part of the foe, or the guard in front of it, pushes the whole foe.
+		var pusher: Weapon = offhand if offhand != null else fist_l
+		var cp: Vector3 = _touching_foe(pusher)
+		if cp != Vector3.INF:
+			touching = true
+			pt = cp
+	if not touching:
+		return
+	_close.landed_shove()
+	var dir: Vector3 = ft.global_position - torso.global_position
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length_squared() > 0.0001 else fwd
+	var limb: float = FighterMath.limb_factor(minf(_hp("upper_arm_l"), _hp("forearm_l")), _t("limb_floor")) if hand else 1.0
+	var j: float = CloseCombat.shove_impulse(_t("shove_impulse"), s, limb)
+	ft.apply_central_impulse(dir * (j * 0.6))
+	fp.apply_central_impulse(dir * (j * 0.4))
+	torso.apply_central_impulse(-dir * (j * _t("shove_recoil")))
+	var off: bool = opponent._state == "stumbling" or opponent._close.kicking() or opponent.balance() < 0.6
+	var st: float = CloseCombat.shove_stagger(_t("shove_stagger"), _t("shove_stagger_off"), off)
+	opponent._stagger = minf(opponent._stagger + st * (_t("kick_stagger_take") if opponent._close.kicking() else 1.0), 1.5)
+	if opponent._close.holding():
+		opponent._close_release(true)
+	_emit_close("shove", pt, true)
+
+
+## First contact point of `w` with the foe's body or a weapon the foe holds, or INF.
+func _touching_foe(w: Weapon) -> Vector3:
+	if w == null:
+		return Vector3.INF
+	var st: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(w.get_rid())
+	if st == null:
+		return Vector3.INF
+	var best: Vector3 = Vector3.INF
+	var best_key: String = ""
+	for i: int in range(st.get_contact_count()):
+		var o: Object = st.get_contact_collider_object(i)
+		var foe_body: bool = o is Node and (o as Node).has_meta("fighter") and (o as Node).get_meta("fighter") == opponent
+		var foe_weapon: bool = o is Weapon and (o as Weapon).holder == opponent
+		if not foe_body and not foe_weapon:
+			continue
+		var p: Vector3 = st.get_contact_local_position(i)
+		var key: String = "%s|%.4f|%.4f|%.4f" % [(o as Node).name, p.x, p.y, p.z]  # stable pick whatever the engine's order
+		if best_key == "" or key < best_key:
+			best_key = key
+			best = p
+	return best
+
+
+## A reaching hand that closes on its point latches; a hold pulls the held point toward the hand with a capped
+## spring (equal and opposite on the holding forearm), slips when pulled too far apart, and the held foe's struggle
+## (its input effort and strength against the holder's) breaks it.
+func _hold_tick(delta: float, s: float) -> void:
+	if _close.reaching():
+		var gp: Vector3 = _grab_point()
+		if gp == Vector3.INF:
+			_close_release(false)
+			return
+		if _hand_pos("l").distance_to(gp) <= _t("clinch_latch"):
+			var b: RigidBody3D = opponent.parts[_grab_part()]
+			_close.latch(_grab_part(), b.global_transform.affine_inverse() * _hand_pos("l"))
+			_emit_close("hold", gp, true)
+		return
+	if not _close.holding():
+		return
+	if opponent._is_cut_off(_close.hold_part):
+		_close_release(false)
+		return
+	var body: RigidBody3D = opponent.parts[_close.hold_part]
+	# The hand closes round the held part (and the hilt in that hand) instead of bouncing off it.
+	for o: PhysicsBody3D in _hold_bodies():
+		if not _hold_excl.has(o):
+			_exclude(fist_l, o)
+			_hold_excl.append(o)
+	var pf: Vector3 = body.global_transform * _close.hold_local
+	var ph: Vector3 = _hand_pos("l")
+	if CloseCombat.hold_slips(pf.distance_to(ph), _t("clinch_break_dist")):
+		_close_release(false)
+		return
+	if _hold_joint == null:
+		_make_hold_joint(body, pf)
+	var fi: FighterInput = opponent._input
+	var busy: bool = fi.has(SWING | THRUST | SHOVE | KICK | CLINCH | GRAB | ROLL)
+	var rate: float = CloseCombat.struggle_rate(_t("clinch_struggle"), CloseCombat.struggle_effort(fi.move().y, busy),
+		opponent._strength(), _strength())
+	if opponent._is_limp():
+		rate = 0.0
+	if _close.add_struggle(rate, delta):
+		_close_release(true)
+
+
+## World target of the kicking foot (ground point plus height) for the kick's progress.
+func _kick_foot_world(yb: Basis) -> Vector3:
+	var hip: Vector3 = _hip_point(KICK_LEG)
+	hip.y = 0.0
+	var sl: Vector3 = _gait_params()["stance_l" if KICK_LEG == 0 else "stance_r"]
+	var u: float = CloseCombat.progress(_close.kick_t, _t("kick_time"))
+	var k: Vector3 = CloseCombat.kick_foot(u, Vector3(sl.x, 0.0, -sl.z), _t("kick_chamber"), _t("kick_reach"), _t("kick_height"))
+	return hip + yb * Vector3(k.x, k.y, -k.z)
+
+
+## The kicking foot's contacts in the kick's window: the first foe body part it meets takes a blunt blow (the foot's
+## real speed and the kick's mass through DamageModel) and a push; a shield or weapon in the way blocks it. A kick
+## that meets nothing leaves the kicker over-extended on one leg (stagger).
+func _kick_contacts() -> void:
+	if not _close.kicking() or _close.kick_landed:
+		return
+	var u: float = CloseCombat.progress(_close.kick_t, _t("kick_time"))
+	if u > CloseCombat.KICK_HIT1:
+		if not _close.kick_missed:
+			_close.kick_missed = true
+			_stagger = minf(_stagger + _t("kick_miss_stagger"), 1.5)
+			_emit_close("kick", _foot_point(_kick_shin()), false)
+		return
+	if not CloseCombat.kick_window(u) or _is_cut_off(_kick_shin()):
+		return
+	var shin: RigidBody3D = parts[_kick_shin()]
+	var st: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(shin.get_rid())
+	if st == null:
+		return
+	var order: Array = []
+	for i: int in range(st.get_contact_count()):
+		var o: Object = st.get_contact_collider_object(i)
+		var lp: Vector3 = st.get_contact_local_position(i)
+		order.append([str((o as Node).name) if o is Node else "", lp.x, lp.y, lp.z, i])
+	order.sort()
+	for entry: Array in order:
+		var i: int = int(entry[4])
+		var obj: Object = st.get_contact_collider_object(i)
+		if obj is Weapon:
+			var ow: Weapon = obj as Weapon
+			if ow.holder != null and ow.holder != self:
+				_close.kick_landed = true  # blocked: no miss, no blow
+				_emit_close("kick", st.get_contact_local_position(i), false)
+				return
+			continue
+		if not obj is RigidBody3D or not (obj as Node).has_meta("fighter"):
+			continue
+		var target: Fighter = (obj as Node).get_meta("fighter") as Fighter
+		var body: RigidBody3D = obj as RigidBody3D
+		var part: String = str(body.get_meta("part"))
+		if target == self or target._is_cut_off(part):
+			continue
+		var p: Vector3 = st.get_contact_local_position(i)
+		var rel: Vector3 = pre_step_velocity(shin.name, shin, p) - target.pre_step_velocity(body.name, body, p)
+		_close.landed_kick()
+		var dir: Vector3 = (target.parts["pelvis"] as RigidBody3D).global_position - (parts["pelvis"] as RigidBody3D).global_position
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length_squared() > 0.0001 else -Basis(Vector3.UP, _yaw).z
+		var push: float = _t("kick_push") * _strength()
+		(target.parts["pelvis"] as RigidBody3D).apply_central_impulse(dir * (push * 0.6))
+		(target.parts["torso"] as RigidBody3D).apply_central_impulse(dir * (push * 0.4))
+		if rel.length() >= _t("damage_min_speed"):
+			var nrm: Vector3 = rel.normalized()
+			var hit_in: Dictionary = {
+				"part": part, "weapon_id": "fists", "contact": "blunt", "rel_vel": rel, "normal": nrm, "edge_alignment": 0.0,
+				"effective_mass": _t("kick_mass") * _strength() * target.roll_guard(),
+				"armor_ids": target.armor_on(part), "armor_wear": target._armor_wear.duplicate(),
+				"part_hp_frac": target._hp(part), "blood_frac": target._finish_frac(), "hit_on_weapon": false,
+				"target_down": target._state == "down" or target._state == "ko", "attacker_limp": _is_limp(),
+				"attacker_conscious": _is_conscious(),
+			}
+			var ev: Dictionary = hit_in.duplicate()
+			ev.merge(DamageModel.resolve(hit_in, _tun), true)
+			ev["finisher"] = ""  # a kick knocks down and hurts; it never finishes
+			ev["sever"] = false
+			ev["gut"] = false
+			ev["behead"] = false
+			ev["attacker"] = side
+			ev["target"] = target.side
+			ev["point"] = p
+			ev["kick"] = true
+			target._take_hit(ev, body, null, self)
+		else:
+			target._stagger = minf(target._stagger + _t("shove_stagger"), 1.5)
+		_emit_close("kick", p, true)
+		return
+
+
+func _kick_shin() -> String:
+	return "shin_l" if KICK_LEG == 0 else "shin_r"
+
+
+func _emit_close(kind: String, p: Vector3, landed: bool) -> void:
+	close.emit({"kind": kind, "attacker": side, "target": opponent.side if opponent != null else 1 - side, "point": p,
+		"landed": landed})
+
+
 # --- contacts and damage ----------------------------------------------------------------------------------------
 
 func _record_velocities() -> void:
@@ -1397,6 +1795,9 @@ func _process_contacts() -> void:
 	var tick_window: int = maxi(int(round(_t("hit_debounce") * 60.0)), 1)
 	for w: Weapon in [fist_r, fist_l, weapon, offhand]:
 		if w == null or w.holder != self:
+			continue
+		# A shoving palm or a grabbing hand is not a punch (a shield bash still is a blow).
+		if w == fist_l and (_close.shoving() or _close.reaching() or _close.holding()):
 			continue
 		var st: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(w.get_rid())
 		if st == null:
@@ -1584,7 +1985,9 @@ func _take_hit(ev: Dictionary, body: RigidBody3D, w: Weapon, attacker: Fighter) 
 			_unreplaced_disarms += 1
 		hit.emit(ev)
 		return
-	_stagger = minf(_stagger + float(ev.get("stagger", 0.0)), 1.5)
+	_stagger = minf(_stagger + float(ev.get("stagger", 0.0)) * (_t("kick_stagger_take") if _close.kicking() else 1.0), 1.5)
+	if _close.holding() and (part == "forearm_l" or part == "upper_arm_l") and float(ev.get("stagger", 0.0)) > 0.2:
+		_close_release(true)
 	if bool(ev.get("dislodge", false)):
 		_dislodge(str(ev.get("dislodged_id", "")), part, kb)
 	var gore_events: Array = health.apply(ev, part) if health != null else []
@@ -1709,7 +2112,7 @@ func snapshot() -> Dictionary:
 			hs = (w.holder as Fighter).side
 		ws.append([w.name, w.global_transform, w.linear_velocity, w.angular_velocity, hs, w.hand])
 	return {
-		"tick": _tick, "state": _state, "state_t": _state_t, "yaw": _yaw, "gait": _gait.to_array(), "roll": _roll.to_array(), "leg_prev": _leg_prev.duplicate(), "foot_prev": _foot_prev.duplicate(), "stagger": _stagger,
+		"tick": _tick, "state": _state, "state_t": _state_t, "yaw": _yaw, "gait": _gait.to_array(), "roll": _roll.to_array(), "close": _close.to_array(), "leg_prev": _leg_prev.duplicate(), "foot_prev": _foot_prev.duplicate(), "stagger": _stagger,
 		"severed": Array(_severed), "armor": _armor.duplicate(), "armor_wear": _armor_wear.duplicate(),
 		"debounce": _debounce.duplicate(), "died": _died_emitted, "exertion": _exertion, "grab_latch": _grab_latch,
 		"reach": _reach, "reach_hold": _reach_hold, "reach_point": _reach_point,
@@ -1727,6 +2130,7 @@ func restore(d: Dictionary) -> void:
 	_yaw = float(d.get("yaw", 0.0))
 	_gait.from_array(d.get("gait", []))
 	_roll.from_array(d.get("roll", []))
+	_close.from_array(d.get("close", []))
 	_leg_prev = (d.get("leg_prev", {}) as Dictionary).duplicate()
 	_foot_prev.assign(d.get("foot_prev", [Vector3.INF, Vector3.INF]))
 	_stagger = float(d.get("stagger", 0.0))
@@ -1829,6 +2233,9 @@ static func normalize_group(group: Array[Fighter]) -> void:
 	var held: Array = []
 	var bodies: Array[RigidBody3D] = []
 	for f: Fighter in group:
+		# A grab's joint ties two fighters' bodies together; it is not carried through a re-normalised engine state.
+		if f._close.holding() or f._close.reaching():
+			f._close_release(false)
 		for pd: Dictionary in FighterRig.PARTS:
 			f._disconnect_joint(str(pd["name"]))
 		for w: Weapon in [f.fist_r, f.fist_l, f.weapon, f.offhand]:
@@ -1940,6 +2347,9 @@ func debug_frame() -> Dictionary:
 		"blood_frac": health.blood_frac() if health != null else 1.0, "armor": worn_armor(),
 		"offhand_id": offhand.weapon_id if offhand != null else "", "props": props(), "weapon_log": _wlog.duplicate(),
 		"foot_contacts": {"l": _gait.planted(0), "r": _gait.planted(1)},  # gait index 0 is the left foot (see replant)
+		"close": {"shoving": _close.shoving(), "kicking": _close.kicking(), "reaching": _close.reaching(),
+			"holding": _close.hold_part, "held": held_part(), "struggle": _close.struggle},
+		"close_log": _close.counts.duplicate(),
 	}
 
 
