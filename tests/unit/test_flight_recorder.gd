@@ -65,7 +65,8 @@ func test_version_is_checked() -> void:
 
 func test_quantization_clamps_and_rounds() -> void:
 	assert_eq(FlightRecorder.quantize_input([2000, -5000, 12.6, -0.4, 5]), [1000, -1000, 13, 0, 5])
-	assert_eq(FlightRecorder.quantize_input([0, 0, 0, 0, 256 + 3]), [0, 0, 0, 0, 3], "buttons are 8 bits")
+	assert_eq(FlightRecorder.quantize_input([0, 0, 0, 0, 65536 + 3]), [0, 0, 0, 0, 3], "buttons are 16 bits")
+	assert_eq(FlightRecorder.quantize_input([0, 0, 0, 0, FighterInput.ROLL | FighterInput.CLINCH]), [0, 0, 0, 0, 2304], "roll and close-range bits are recorded")
 	assert_eq(FlightRecorder.quantize_input([1, 2]), [1, 2, 0, 0, 0], "missing entries are 0")
 	assert_eq(FlightRecorder.quantize_input([]), [0, 0, 0, 0, 0])
 

@@ -226,3 +226,20 @@ func test_stamina_zero_run_and_getup_fails() -> void:
 	a["state"] = "down"
 	s.on_frames([a, _frame(1)], dt)
 	assert_eq(s.to_dict()["getup_fails"], 1)
+
+
+func test_close_moves_sum_both_fighters_latest_logs() -> void:
+	var s := MatchStats.new()
+	var a: Dictionary = {"side": 0, "close_log": {"shoves": 1, "shoves_landed": 1, "kicks": 0, "kicks_landed": 0, "grabs": 1, "holds": 0, "breaks": 0}}
+	var b: Dictionary = {"side": 1, "close_log": {"shoves": 0, "shoves_landed": 0, "kicks": 2, "kicks_landed": 1, "grabs": 1, "holds": 1, "breaks": 1}}
+	s.on_frames([a, b], 1.0 / 60.0)
+	a["close_log"]["shoves"] = 2
+	s.on_frames([a, b], 1.0 / 60.0)
+	var d: Dictionary = s.to_dict()
+	assert_eq(int(d["shoves"]), 2)
+	assert_eq(int(d["shoves_landed"]), 1)
+	assert_eq(int(d["kicks"]), 2)
+	assert_eq(int(d["kicks_landed"]), 1)
+	assert_eq(int(d["grabs"]), 2)
+	assert_eq(int(d["holds"]), 1)
+	assert_eq(int(d["hold_breaks"]), 1)

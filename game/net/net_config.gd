@@ -3,7 +3,7 @@ extends RefCounted
 ## Online 1v1 constants: protocol version, port, rates, buffer depths, the byte budget and the message type ids.
 ## Not gameplay numbers (those stay in Tuning): these set how the wire behaves. See docs/online_brief.md.
 
-const PROTOCOL_VERSION: int = 2
+const PROTOCOL_VERSION: int = 3  ## 3: SHOVE, KICK and CLINCH buttons (bits 512..2048 of the u16 buttons)
 const DEFAULT_PORT: int = 7777
 const TICK_HZ: int = 60
 const SNAP_EVERY_TICKS: int = 2  ## host sends a snapshot every 2 physics ticks: 30 Hz at 60 Hz physics
