@@ -16,6 +16,7 @@ var _lock_name: Label
 var _lock_why: Label
 var _bar: Control
 var _frac: float = 0.0
+var _lock_id: String = ""
 var _dragging: bool = false
 
 
@@ -66,7 +67,7 @@ func set_lock(weapon_id: String, why: String, frac: float) -> void:
 	if weapon_id == "":
 		preview.left_clear = 0.0
 		return
-	_lock_name.text = "%s  -  LOCKED" % LoadoutRules.display_name(weapon_id).to_upper()
+	_lock_id = weapon_id
 	_lock_why.text = why
 	_frac = clampf(frac, 0.0, 1.0)
 	_bar.visible = frac >= 0.0
@@ -87,8 +88,8 @@ func _fit_banner() -> void:
 	var dock: bool = docked()
 	var w: float = clampf(size.x * DOCK_FRAC, 240.0, 420.0) if dock else minf(size.x - EDGE * 2.0, 620.0)
 	_lock_name.clip_text = not dock
-	_lock_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if dock else TextServer.AUTOWRAP_OFF
-	_lock_name.custom_minimum_size.x = w - 90.0 if dock else 0.0
+	if _lock_id != "":
+		_lock_name.text = ("%s\nLOCKED" if dock else "%s  -  LOCKED") % LoadoutRules.display_name(_lock_id).to_upper()
 	_lock_why.custom_minimum_size.x = maxf(w - 90.0, 60.0)  # wrap at the banner's width, not one word per line
 	_banner.reset_size()
 	_banner.size.x = w

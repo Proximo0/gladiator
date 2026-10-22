@@ -96,12 +96,12 @@ func _build_main() -> void:
 	v.add_child(MenuTheme.label("Feel", MenuTheme.FONT_SMALL, MenuTheme.OCHRE))
 	var motion := MenuPicker.new()
 	motion.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
-	motion.setup("Reduced motion", [["0", "Off"], ["1", "On"]], "1" if settings.reduced_motion else "0")
+	motion.setup("Motion", [["0", "Full"], ["1", "Reduced"]], "1" if settings.reduced_motion else "0")
 	motion.changed.connect(func(id: String) -> void:
 		settings.reduced_motion = id == "1"
 		settings.apply()
 		settings.save_file())
-	_add_row(v, motion, "No camera shake or zoom punch")
+	_add_row(v, motion, "Reduced: no camera shake or zoom punch")
 	var aim := MenuPicker.new()
 	aim.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
 	aim.setup("Aim aid", [["1", "On"], ["0", "Off"]], "1" if settings.aim_aid else "0")
