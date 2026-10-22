@@ -16,6 +16,7 @@ signal lobby_changed  ## the other side joined, left or changed its loadout
 signal match_requested(start: Dictionary)  ## build the match now (both sides; host: after start_match())
 signal match_result(result: Dictionary)  ## client: the host's result arrived
 signal closed(reason: String)  ## the connection is gone (left, refused, timed out, failed)
+signal note_received(note: Dictionary)  ## the other side sent a NOTE (ready, rematch: OnlineScreen's handshakes)
 
 const ROLE_HOST: String = "host"
 const ROLE_CLIENT: String = "client"
@@ -27,6 +28,9 @@ const RELAY_CLOSE_DELAY_S: float = 0.3  ## a relay peer sends on the SDK tick: g
 ## (legit traffic is 1-3; a 1 s hitch delivers about 30-60), the rest are drained and dropped.
 const MAX_PACKETS_PER_TICK: int = 64
 const MAX_PACKET_BYTES: int = 4096  ## nothing legit is larger (a worst-case snapshot is ~1.1 KB, lobby messages cap at 4 KB)
+## Lobby and control messages are rare (a handful per match); past this many per second they are dropped unread, which
+## also caps the engine errors bytes_to_var prints for a garbled body.
+const MAX_CONTROL_PER_S: int = 20
 
 var role: String = ""
 var local_name: String = "Gladiator"
@@ -57,6 +61,8 @@ var _last_heard: int = 0
 var _connect_started: int = 0
 var _closed: bool = false
 var _content_hash: String = ""
+var _control_window: int = -1000  ## local tick the current one-second control-message window began
+var _control_count: int = 0
 
 
 func _init() -> void:
@@ -192,6 +198,12 @@ func start_match(seed_value: int, time_limit_s: float = 0.0) -> bool:
 	return true
 
 
+## A small reliable note to the other side ({t: "ready"} ...); dropped when nobody is connected.
+func send_note(note: Dictionary) -> void:
+	if remote_joined:
+		send(NetLobby.encode(NetConfig.MSG_NOTE, note), true)
+
+
 ## Hang the host or client driver on a freshly set-up Match (call right after Match.setup()).
 func attach_match(m: Match) -> void:
 	detach_match()
@@ -314,6 +326,13 @@ func _route(bytes: PackedByteArray) -> void:
 			if client_driver != null and is_instance_valid(client_driver):
 				client_driver.on_events(bytes)
 		_:
+			if local_tick - _control_window >= NetConfig.TICK_HZ:
+				_control_window = local_tick
+				_control_count = 0
+			_control_count += 1
+			if _control_count > MAX_CONTROL_PER_S:
+				dropped_packets += 1
+				return
 			_on_control(NetLobby.decode(bytes))
 
 
@@ -368,6 +387,9 @@ func _on_control(d: Dictionary) -> void:
 				if client_driver != null and is_instance_valid(client_driver):
 					client_driver.on_over(d)
 				match_result.emit(d)
+		NetConfig.MSG_NOTE:
+			if remote_joined:
+				note_received.emit(d)
 		NetConfig.MSG_LEAVE:
 			var why_left: String = str(d.get("reason", ""))
 			if why_left.begins_with("version mismatch"):

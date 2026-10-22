@@ -15,7 +15,7 @@ func run() -> Array:
 	present = true
 	prefix = "killcam_net"
 	time_limit_s = 20.0
-	port = 17971
+	port = net_port(60)  # a per-process port (sim_base.net_port): slot 60 is the killcam net sim
 	lag_ticks = 0
 	jitter_ticks = 0
 	loss = 0.0

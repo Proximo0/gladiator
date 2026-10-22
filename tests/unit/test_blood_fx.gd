@@ -292,10 +292,24 @@ func test_droplet_mesh_detail_drops_with_quality() -> void:
 	for q: int in 3:
 		var m: ArrayMesh = BloodMesh.for_quality(q)
 		tris.append((m.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3)
-	assert_eq(tris[2], 336)
-	assert_true(tris[0] < tris[1] and tris[1] < tris[2])
 	assert_true(tris[0] <= 100)
+	assert_eq(tris[1], 2, "medium draws impostor quads")
+	assert_eq(tris[2], 2, "high draws impostor quads")
+	assert_eq(BloodMesh.shader_path(0), BloodMesh.SHADER_MESH)
+	assert_eq(BloodMesh.shader_path(2), BloodMesh.SHADER_QUAD)
 
 
-func test_splat_area_budget_follows_quality() -> void:
-	assert_true(BloodMath.splat_area(0) < BloodMath.splat_area(1) and BloodMath.splat_area(1) < BloodMath.splat_area(2))
+func test_set_quality_swaps_droplet_shader() -> void:
+	var fx: BloodFx = BloodFx.new()
+	fx.quality = 0
+	fx._build()
+	assert_eq(fx._drop_mat.shader.resource_path, BloodMesh.SHADER_MESH)
+	fx.set_quality(2)
+	assert_eq(fx._drop_mat.shader.resource_path, BloodMesh.SHADER_QUAD)
+	assert_eq(fx._mm_drops.multimesh.mesh.get_faces().size() / 3, 2)
+	fx.free()
+
+
+func test_splat_texel_budget_follows_quality() -> void:
+	assert_true(BloodMath.splat_texels(0) < BloodMath.splat_texels(1) and BloodMath.splat_texels(1) < BloodMath.splat_texels(2))
+	assert_true(BloodMath.splat_cost(0.3, 40.0) > 10.0 * BloodMath.splat_cost(0.02, 40.0), "a pool costs far more than a drop")

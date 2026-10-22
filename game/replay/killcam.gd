@@ -53,6 +53,8 @@ var _hero_side: float = 1.0
 var _orbit_a0: float = 0.0
 var _orbit_turn: float = 1.0
 var _close_dir: Vector3 = Vector3.BACK
+var _wound: Dictionary = {}  ## the close shot's wound: {"idx": body index of its part, "point", "out"} (part-local)
+var _wound_side: float = 1.0
 var _cam_pos: Vector3 = Vector3.ZERO
 var _cam_look: Vector3 = Vector3.ZERO
 var _real_t: float = 0.0
@@ -159,7 +161,7 @@ func _refresh_bodies() -> void:
 		for b: RigidBody3D in NetWorld.armor_props(f):
 			_register(b)
 		if (_part_idx[i] as Dictionary).is_empty():
-			for n: String in ["pelvis", "torso", "head"]:
+			for n: String in FighterRig.names():
 				_part_idx[i][n] = _index.get((f.parts[n] as Object).get_instance_id(), -1)
 
 
@@ -275,6 +277,7 @@ func play(result: Dictionary) -> bool:
 	var kill_f: PackedFloat32Array = ring.frame(int(plan["kill_tick"]))
 	_hero_side = KillcamPlan.hero_side(_part_pos(kill_f, int(plan["attacker"]), "pelvis"),
 			_part_pos(kill_f, int(plan["victim"]), "pelvis"), arena_radius)
+	_wound = _wound_of(kill_f)
 	_fire_until(_pos)
 	_apply_pose()
 	_update_camera(0.0, float(hz))
@@ -528,6 +531,41 @@ func _live_pos(side: int, part: String) -> Vector3:
 	return _bodies[i].global_position
 
 
+## The wound the close shot films, fixed to its body part at the killing blow: the gut or run-through wound on the
+## torso or pelvis, or the stump a cut left on the parent part; {} for a beheading, a crushed skull, a KO or a death
+## (those frame the head or the body).
+func _wound_of(kill_f: PackedFloat32Array) -> Dictionary:
+	var v: int = int(plan["victim"])
+	var part: String = str(plan.get("part", ""))
+	var kind: String = str(plan["kind"])
+	var anchor: String = ""
+	var wf: Dictionary = {}
+	if kind == "gut" or kind == "run_through":
+		anchor = part if part == "torso" or part == "pelvis" else "torso"
+		var i: int = int((_part_idx[v] as Dictionary).get(anchor, -1))
+		if not ReplayRing.has_pose(kill_f, i):
+			return {}
+		var att: Vector3 = _part_pos(kill_f, int(plan["attacker"]), "torso")
+		wf = KillcamPlan.wound_frame(ReplayRing.pose(kill_f, i), plan["point"] as Vector3, att)
+	elif kind == "sever" and part != "head":
+		anchor = str(FighterRig.part(part).get("parent", ""))
+		wf = KillcamPlan.stump_frame(part)
+	if wf.is_empty() or anchor == "":
+		return {}
+	var idx: int = int((_part_idx[v] as Dictionary).get(anchor, -1))
+	if idx < 0:
+		return {}
+	return {"idx": idx, "point": wf["point"], "out": wf["out"]}
+
+
+## The wound now, in world space: [point, facing direction].
+func _wound_now() -> Array:
+	var b: RigidBody3D = _bodies[int(_wound["idx"])]
+	var xf: Transform3D = b.global_transform if is_instance_valid(b) else Transform3D()
+	var basis: Basis = xf.basis.orthonormalized()
+	return [xf.origin + basis * (_wound["point"] as Vector3), basis * (_wound["out"] as Vector3)]
+
+
 ## The close shot's subject: the severed head, the gut wound, or the victim's head.
 func _close_target() -> Vector3:
 	var v: int = int(plan["victim"])
@@ -552,6 +590,9 @@ func _update_camera(real_dt: float, hz: float) -> void:
 			_orbit_turn = float(o[1])
 		elif shot == KillcamPlan.CLOSE:
 			_close_dir = _cam_pos - _close_target()
+			if not _wound.is_empty():
+				var w: Array = _wound_now()
+				_wound_side = KillcamPlan.wound_side(w[0] as Vector3, w[1] as Vector3, _live_pos(int(plan["attacker"]), "torso"))
 	else:
 		_shot_t += real_dt
 	var v: Array = []
@@ -562,7 +603,11 @@ func _update_camera(real_dt: float, hz: float) -> void:
 		KillcamPlan.ORBIT:
 			v = KillcamPlan.orbit_view(plan["point"] as Vector3, _orbit_a0, _shot_t, arena_radius, _orbit_turn)
 		_:
-			v = KillcamPlan.close_view(_close_target(), _close_dir, _shot_t, arena_radius)
+			if _wound.is_empty():
+				v = KillcamPlan.close_view(_close_target(), _close_dir, _shot_t, arena_radius)
+			else:
+				var w: Array = _wound_now()
+				v = KillcamPlan.close_wound_view(w[0] as Vector3, w[1] as Vector3, _wound_side, _shot_t, arena_radius)
 	var want_pos: Vector3 = v[0]
 	var want_look: Vector3 = v[1]
 	if cut:

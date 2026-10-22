@@ -79,6 +79,13 @@ func _process(_d: float) -> void:
 			var img: Image = get_viewport().get_texture().get_image()
 			img.save_png("%s%s_%s.png" % [_out, _name, _pending])
 			print("KCAP saved ", _pending)
+			var kc: KillCam = _m.presenter.killcam
+			if _pending == "close" and not (kc.get("_wound") as Dictionary).is_empty():
+				var w: Array = kc.call("_wound_now")
+				var cam: Vector3 = (kc.get("_cam") as Camera3D).global_position
+				var to_cam: Vector3 = (cam - (w[0] as Vector3)).normalized()
+				print("KCAP close wound: camera %.0f deg off the wound's facing, %.2f m away, %.2f m above it" % [
+					rad_to_deg(to_cam.angle_to(w[1] as Vector3)), cam.distance_to(w[0] as Vector3), cam.y - (w[0] as Vector3).y])
 			_saved[_pending] = true
 			_pending = ""
 			RenderingServer.render_loop_enabled = false

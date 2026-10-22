@@ -120,6 +120,14 @@ the budget can be cut in half with delta compression against the last acked snap
 - `--net-lag=<ms> --net-jitter=<ms> --net-loss=<0..1>` fake a bad link on what this machine sends (NetLinkSim).
 - 5 s without a packet during a match, or 10 s without reaching the host, closes the session with a reason.
 
+## Hostile peers
+
+Both sides parse the other's packets as untrusted (`docs/net_security.md`): input packets must be exact (1-16 rows,
+no tick below 0), the host's input buffer refuses ticks more than 600 past the newest and holds at most 256, the
+session handles at most 64 packets per tick (none over 4 KB) and 20 control messages per second, lobby fields are read
+through `NetLobby.dict_of` / `int_of` / `float_of`, one HELLO per connection, and the event decoder checks every read.
+`tests/unit/test_net_fuzz.gd` and `tests/sim/sim_net_cheat.gd` guard it.
+
 ## Pure logic vs nodes
 
 Pure `RefCounted` (no Node, no clock, no global random; unit tested): `NetConfig`, `NetQuant`, `NetFighterSnap`,

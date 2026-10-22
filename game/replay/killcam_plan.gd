@@ -23,6 +23,13 @@ const ORBIT_LEAD_DEG: float = 20.0  ## the orbit starts this far short of side-o
 const CLOSE_DIST0: float = 2.3
 const CLOSE_DIST1: float = 1.7
 const CLOSE_RISE: float = 0.55
+const WOUND_DIST0: float = 2.0
+const WOUND_DIST1: float = 1.45
+const WOUND_RISE: float = -0.12  ## slightly low: the camera sits a little under the wound and looks up at it
+const WOUND_SIDE_DEG: float = 30.0  ## off the wound's own axis, to the side whose sightline clears the attacker
+const WOUND_MIN_RADIUS: float = 0.03  ## a contact closer than this to the part's axis says nothing about its side
+const WOUND_DOWN_MAX: float = -0.3  ## a wound facing the sand is filmed from its side, at most this far below
+const STUMP_LATERAL: float = 0.8  ## a stump is filmed from its cut face tilted this much toward the body's side
 const CAM_MIN_Y: float = 0.25
 const WALL_MARGIN: float = 0.6
 
@@ -206,4 +213,72 @@ static func close_view(target: Vector3, from_dir: Vector3, t_real: float, arena_
 	d = d.normalized() if d.length() > 0.01 else Vector3.BACK
 	var dist: float = lerpf(CLOSE_DIST0, CLOSE_DIST1, ease01(t_real / 2.0))
 	var pos: Vector3 = target + d * dist + Vector3(0.0, CLOSE_RISE, 0.0)
+	return [clamp_cam(pos, arena_r), target]
+
+
+## The wound in its body part's frame, so the close shot can follow it as the body falls and turns:
+## {"point": part-local wound point, "out": part-local unit direction the wound faces}. `out` runs from the part's
+## long axis (local y) out through the contact point, turned to face the attacker when it points away from him (a
+## contact found on the far side of the part); with no usable radius it is the attacker's direction.
+static func wound_frame(part_xf: Transform3D, point: Vector3, attacker: Vector3) -> Dictionary:
+	var b: Basis = part_xf.basis.orthonormalized()
+	var axis: Vector3 = b.y
+	var radial: Vector3 = point - part_xf.origin
+	radial -= axis * radial.dot(axis)
+	var to_att: Vector3 = attacker - point
+	to_att -= axis * to_att.dot(axis)
+	var out: Vector3 = radial
+	if out.length() < WOUND_MIN_RADIUS or (to_att.length() > 0.01 and out.dot(to_att) < 0.0):
+		out = to_att
+	if out.length() < 0.001:
+		out = -b.z  # the part's front
+	var inv: Basis = b.inverse()
+	return {"point": inv * (point - part_xf.origin), "out": (inv * out.normalized()).normalized()}
+
+
+## The stump left on the parent when part `n` is cut off, in the parent's frame: {"point", "out"}, or {} for a part
+## with no parent. The cut face looks along the bone toward where the piece was; the shot tilts toward the body's side.
+static func stump_frame(n: String) -> Dictionary:
+	var pd: Dictionary = FighterRig.part(n)
+	if pd.is_empty() or str(pd["parent"]) == "":
+		return {}
+	var parent_c: Vector3 = FighterRig.part(str(pd["parent"]))["center"]
+	var pivot: Vector3 = pd["pivot"]
+	var piece_c: Vector3 = pd["center"]
+	var toward_piece: Vector3 = Vector3.DOWN if piece_c.y < pivot.y else Vector3.UP
+	var lateral: Vector3 = Vector3(pivot.x - parent_c.x, 0.0, 0.0)
+	lateral = lateral.normalized() if lateral.length() > 0.01 else Vector3.ZERO
+	return {"point": pivot - parent_c, "out": (toward_piece + lateral * STUMP_LATERAL).normalized()}
+
+
+static func _wound_dir(out: Vector3, side: float) -> Vector3:
+	var d: Vector3 = out.normalized() if out.length() > 0.001 else Vector3.BACK
+	if d.y < WOUND_DOWN_MAX:
+		var f: Vector3 = _flat(d)
+		f = f.normalized() if f.length() > 0.01 else Vector3.BACK
+		d = (f * sqrt(1.0 - WOUND_DOWN_MAX * WOUND_DOWN_MAX) + Vector3(0.0, WOUND_DOWN_MAX, 0.0))
+	return d.rotated(Vector3.UP, side * deg_to_rad(WOUND_SIDE_DEG)).normalized()
+
+
+## +1 or -1: which way the close shot swings off the wound's axis, the side whose sightline to the wound passes
+## farther from the attacker's body (so he does not stand between the camera and the wound).
+static func wound_side(target: Vector3, out: Vector3, attacker: Vector3) -> float:
+	var best: float = 1.0
+	var best_gap: float = -INF
+	for s: float in [1.0, -1.0]:
+		var cam: Vector3 = target + _wound_dir(out, s) * WOUND_DIST1
+		var a: Vector2 = Vector2(attacker.x, attacker.z)
+		var c: Vector2 = Geometry2D.get_closest_point_to_segment(a, Vector2(cam.x, cam.z), Vector2(target.x, target.z))
+		var gap: float = a.distance_to(c)
+		if gap > best_gap + 0.001:
+			best_gap = gap
+			best = s
+	return best
+
+
+## [camera position, look point]: close on a wound (`target`, facing `out`, both world space): in front of it, a little
+## low, swung `side` off its axis, moving in over two seconds.
+static func close_wound_view(target: Vector3, out: Vector3, side: float, t_real: float, arena_r: float) -> Array:
+	var dist: float = lerpf(WOUND_DIST0, WOUND_DIST1, ease01(t_real / 2.0))
+	var pos: Vector3 = target + _wound_dir(out, side) * dist + Vector3(0.0, WOUND_RISE, 0.0)
 	return [clamp_cam(pos, arena_r), target]

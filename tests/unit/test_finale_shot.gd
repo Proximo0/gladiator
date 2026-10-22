@@ -119,3 +119,53 @@ func test_beheading_shot_tracks_head_then_leans_to_it() -> void:
 	assert_true(f.head_point().distance_to(f.look_body()) <= tun.feel_finale_head_reach + 0.01, "far head is clamped")
 	f.update(0.016, body)
 	assert_true(not f.has_head())
+
+
+func test_head_free_after_the_shot_ended_restarts_it() -> void:
+	var f := FinaleShot.new()
+	f.start(Vector3(1, 1, 0), Vector3(-1, 0.9, 0), Vector3(-1, 1.5, 0), Tuning.shared())
+	for i: int in 600:
+		f.update(1.0 / 60.0, Vector3(-1, 0.2, 0))
+	assert_true(not f.active)
+	f.head_free(Vector3(-1.5, 0.2, 0.5))
+	assert_true(f.active)
+	assert_eq(f.weight, 0.0, "eases in from nothing")
+	var max_w: float = 0.0
+	for i: int in 60:
+		f.update(1.0 / 60.0, Vector3(-1.5, 0.2, 0.5), Vector3(0.5, 0.2, 0.5))
+		max_w = maxf(max_w, f.weight)
+	assert_true(max_w > 0.99 and f.has_head())
+
+
+func test_head_free_in_release_rises_without_a_jump_and_extends_the_hold() -> void:
+	var f := FinaleShot.new()
+	f.start(Vector3(1, 1, 0), Vector3(-1, 0.9, 0), Vector3(-1, 1.5, 0), Tuning.shared())
+	var steps: int = int((Tuning.shared().feel_finale_hold_s + 0.4) * 60.0)
+	for i: int in steps:
+		f.update(1.0 / 60.0, Vector3(-1, 0.2, 0))
+	var w0: float = f.weight
+	assert_true(w0 < 1.0 and w0 > 0.0, "in the release")
+	f.head_free(Vector3(-1, 0.2, 0))
+	assert_near(f.weight, w0, 0.01, "no jump")
+	for i: int in 120:
+		f.update(1.0 / 60.0, Vector3(-1, 0.2, 0), Vector3(1.0, 0.2, 1.0))
+	assert_eq(f.weight, 1.0, "held again for the head")
+
+
+func test_head_side_films_body_and_head_side_on() -> void:
+	var s: Vector3 = FinaleShot.head_side(Vector3(0, 0.5, 0), Vector3(2, 0.2, 0), Vector3(0, 0, 1))
+	assert_near(s.x, 0.0, 0.001)
+	assert_near(s.z, 1.0, 0.001, "keeps the side nearer the current one")
+	assert_eq(FinaleShot.head_side(Vector3.ZERO, Vector3(0.1, 0, 0), Vector3(1, 0, 0)), Vector3(1, 0, 0))
+	var t: Vector3 = FinaleShot.turn_toward(Vector3(1, 0, 0), Vector3(0, 0, 1), 0.1)
+	assert_near(Vector2(1, 0).angle_to(Vector2(t.x, t.z)), 0.1, 0.001)
+
+
+func test_look_sinks_to_a_body_on_the_sand() -> void:
+	var tun: Tuning = Tuning.shared()
+	var f := FinaleShot.new()
+	f.start(Vector3(1, 1, 0), Vector3(-1, 0.9, 0), Vector3(-1, 1.5, 0), tun)
+	for i: int in 150:
+		f.update(1.0 / 60.0, Vector3(-1, 0.15, 0))
+	assert_true(f.look().y < tun.feel_finale_look_y - 0.2, "look %.2f" % f.look().y)
+	assert_true(f.look().y >= 0.34)

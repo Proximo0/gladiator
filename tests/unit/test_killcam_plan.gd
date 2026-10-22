@@ -140,3 +140,62 @@ func test_orbit_starts_side_on_and_turns_toward_the_attackers_back() -> void:
 	var behind: float = KillcamPlan.angle_of(pt, att)
 	var later: float = side_a + turn * deg_to_rad(45.0)
 	assert_true(absf(angle_difference(later, behind)) < absf(angle_difference(side_a, behind)), "turning brings it behind the attacker")
+
+
+## Regression (gut_close.png showed the victim's back and shorts): the close shot of a gut wound is filmed from the
+## wound's side, i.e. the attacker's side of the victim, a little low, whatever way the previous shot looked.
+func test_gut_close_shot_faces_the_wound_not_the_back() -> void:
+	var torso := Transform3D(Basis(Vector3.UP, PI), Vector3(0, 1.33, 0))  # the victim faces +Z
+	var attacker := Vector3(0, 1.3, 1.0)
+	var point := Vector3(0.03, 1.2, 0.11)  # the blade's contact on the belly
+	var wf: Dictionary = KillcamPlan.wound_frame(torso, point, attacker)
+	var out_w: Vector3 = torso.basis * (wf["out"] as Vector3)
+	assert_true(out_w.z > 0.9, "the wound faces the attacker: %s" % str(out_w))
+	var target: Vector3 = torso * (wf["point"] as Vector3)
+	assert_true(target.is_equal_approx(point), "the wound point round-trips")
+	for side: float in [1.0, -1.0]:
+		var v: Array = KillcamPlan.close_wound_view(target, out_w, side, 1.0, 11.0)
+		var cam: Vector3 = v[0]
+		assert_true(cam.z - target.z > 0.8, "camera on the belly side, not behind: %s" % str(cam))
+		assert_true(cam.y < target.y, "slightly low: %s" % str(cam))
+		assert_true((v[1] as Vector3).is_equal_approx(target))
+
+
+func test_wound_on_the_far_side_turns_to_the_attacker() -> void:
+	var part := Transform3D(Basis(), Vector3(0, 1.3, 0))
+	var wf: Dictionary = KillcamPlan.wound_frame(part, Vector3(0, 1.3, 0.1), Vector3(0, 1.3, -2.0))
+	assert_true((wf["out"] as Vector3).z < -0.9, "flipped toward the attacker at -Z: %s" % str(wf["out"]))
+	var on_axis: Dictionary = KillcamPlan.wound_frame(part, Vector3(0, 1.4, 0.0), Vector3(2.0, 1.3, 0))
+	assert_true((on_axis["out"] as Vector3).x > 0.9, "no radius: the attacker's direction")
+
+
+func test_wound_follows_the_body_when_it_falls() -> void:
+	var standing := Transform3D(Basis(), Vector3(0, 1.3, 0))  # faces -Z
+	var wf: Dictionary = KillcamPlan.wound_frame(standing, Vector3(0, 1.25, -0.11), Vector3(0, 1.3, -1.0))
+	var on_back := Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0.15, 0))  # local -Z now points up
+	var out_w: Vector3 = on_back.basis * (wf["out"] as Vector3)
+	assert_true(out_w.y > 0.9, "the belly faces the sky: %s" % str(out_w))
+	var target: Vector3 = on_back * (wf["point"] as Vector3)
+	var cam: Vector3 = KillcamPlan.close_wound_view(target, out_w, 1.0, 2.0, 11.0)[0]
+	assert_true(cam.y > target.y + 1.0, "filmed from above: %s" % str(cam))
+	var face_down: Vector3 = KillcamPlan.close_wound_view(Vector3(0, 0.15, 0), Vector3.DOWN, 1.0, 2.0, 11.0)[0]
+	assert_true(face_down.y >= KillcamPlan.CAM_MIN_Y - 0.001, "a wound facing the sand is filmed from its side, above the sand")
+
+
+func test_wound_side_keeps_the_attacker_out_of_the_sightline() -> void:
+	var target := Vector3(0, 1.2, 0)
+	var out := Vector3(0, 0, 1)
+	var attacker := Vector3(0.4, 1.3, 0.9)  # in front of the wound, a little to +X
+	var s: float = KillcamPlan.wound_side(target, out, attacker)
+	var cam: Vector3 = KillcamPlan.close_wound_view(target, out, s, 2.0, 11.0)[0]
+	assert_true(cam.x < 0.0, "swings to -X, away from him: %s" % str(cam))
+	assert_eq(KillcamPlan.wound_side(target, out, Vector3(-0.4, 1.3, 0.9)), -s, "mirrored attacker, mirrored side")
+
+
+func test_stump_frame_looks_at_the_cut_face() -> void:
+	var arm: Dictionary = KillcamPlan.stump_frame("upper_arm_r")
+	assert_true((arm["point"] as Vector3).is_equal_approx(Vector3(0.23, 0.2, 0.0)), "the shoulder on the torso")
+	assert_true((arm["out"] as Vector3).y < 0.0 and (arm["out"] as Vector3).x > 0.0, "down along the arm, from the right side")
+	var leg: Dictionary = KillcamPlan.stump_frame("shin_l")
+	assert_true((leg["out"] as Vector3).y < -0.99, "a knee stump faces down: %s" % str(leg["out"]))
+	assert_true(KillcamPlan.stump_frame("pelvis").is_empty())

@@ -27,3 +27,11 @@ func test_title_hint_follows_the_device() -> void:
 	assert_true(str(TitleScreen.hint_lines(true, true)[0]).contains("A:"))
 	assert_true(TitleScreen.hint_font_units(0.28) > TitleScreen.hint_font_units(1.0))
 	assert_eq(TitleScreen.hint_font_units(1.0), 24)
+
+
+func test_fake_insets_argument() -> void:
+	assert_eq(SafeArea.parse_arg("96,0,0,48"), Vector4(96.0, 0.0, 0.0, 48.0))
+	assert_eq(SafeArea.parse_arg(""), Vector4.ZERO)
+	assert_eq(SafeArea.parse_arg("1,2,3"), Vector4.ZERO, "needs four numbers")
+	assert_eq(SafeArea.parse_arg("1,x,3,4"), Vector4.ZERO)
+	assert_eq(SafeArea.parse_arg("1,-2,3,4"), Vector4.ZERO, "no negative insets")

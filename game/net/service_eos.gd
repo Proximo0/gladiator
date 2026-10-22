@@ -91,6 +91,7 @@ var _current: Dictionary = {}  ## {mid, key, opp_id, opp_name, opp_rating, opp_g
 var _reported: Dictionary = {}
 var _board: ServiceBoard = ServiceBoard.new()  ## me plus the opponents met: the repeat-pair damper
 var _lb_busy: bool = false
+var _lb_want: Array = []  ## [top_n, around_me, offset] of the newest leaderboard request not yet answered
 var _settling: bool = false
 
 
@@ -280,7 +281,7 @@ static func decode_report(raw: String, key: String, player_id: String, match_id:
 	if not (v is Dictionary) or not ((v as Dictionary).get("r") is Dictionary):
 		return {}
 	var rep: Dictionary = (v as Dictionary)["r"]
-	rep["ticks"] = int(rep.get("ticks", 0))  # JSON numbers come back as floats
+	rep["ticks"] = NetLobby.int_of(rep.get("ticks"), 0)  # JSON numbers come back as floats; anything else is 0
 	if str(rep.get("player", "")) != player_id or str(rep.get("match_id", "")) != match_id:
 		return {}
 	if not Rating.verify_report(key, rep, str((v as Dictionary).get("s", ""))):
@@ -295,7 +296,7 @@ static func fallback_name(id: String) -> String:
 ## Leaderboard rows from EOS records ([{user_id, rank, score, user_display_name}]) and the per-user counters
 ## (`extra`: id -> {games, wins, losses}); `mine` fills my own row. Same shape as ServiceBoard.leaderboard.
 static func leaderboard_view(records: Array, extra: Dictionary, my_id: String, mine: Dictionary, top_n: int,
-		around_me: int) -> Dictionary:
+		around_me: int, offset: int = 0) -> Dictionary:
 	var rows: Array = []
 	for rec: Variant in records:
 		if not (rec is Dictionary):
@@ -312,24 +313,17 @@ static func leaderboard_view(records: Array, extra: Dictionary, my_id: String, m
 			nm = str(mine["name"])
 		rows.append({"id": id, "name": NetLobby.clean_name(nm) if nm != "" else fallback_name(id), "rating": rating,
 			"games": games, "wins": int(counts.get("wins", 0)), "losses": int(counts.get("losses", 0)),
-			"provisional": Rating.is_provisional(games), "tier": Rating.tier(rating), "rank": int(r.get("rank", 0))})
+			"streak": int(counts.get("streak", 0)), "provisional": Rating.is_provisional(games), "tier": Rating.tier(rating),
+			"rank": int(r.get("rank", 0))})
 	rows.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return int(x["rank"]) < int(y["rank"]))
-	var top: Array = rows.slice(0, maxi(top_n, 0))
-	var me: Dictionary = {}
-	var my_i: int = -1
-	for i: int in rows.size():
-		if str(rows[i]["id"]) == my_id:
-			me = rows[i]
-			my_i = i
-	var around: Array = []
-	if my_i >= top.size():
-		around = rows.slice(maxi(my_i - around_me, top.size()), mini(my_i + around_me + 1, rows.size()))
-	return {"top": top, "around": around, "me": me, "total": rows.size(), "source": ""}
+	var data: Dictionary = ServiceBoard.page_view(rows, my_id, top_n, around_me, offset)
+	data["source"] = ""
+	return data
 
 
 ## The user ids whose games / wins / losses the screen will show (top rows and my window).
-static func ids_to_detail(records: Array, my_id: String, top_n: int, around_me: int) -> PackedStringArray:
-	var view: Dictionary = leaderboard_view(records, {}, my_id, {}, top_n, around_me)
+static func ids_to_detail(records: Array, my_id: String, top_n: int, around_me: int, offset: int = 0) -> PackedStringArray:
+	var view: Dictionary = leaderboard_view(records, {}, my_id, {}, top_n, around_me, offset)
 	var out := PackedStringArray()
 	for r: Dictionary in (view["top"] as Array) + (view["around"] as Array):
 		if str(r["id"]) != my_id:
@@ -420,13 +414,18 @@ func report_result(match_id: String, report: Dictionary, signature: String) -> v
 	_settling = false
 
 
-func request_leaderboard(top_n: int = 20, around_me: int = 3) -> void:
+func request_leaderboard(top_n: int = 20, around_me: int = 3, offset: int = 0) -> void:
+	_lb_want = [top_n, around_me, offset]
 	if _lb_busy:
-		return  # the answer to the running request serves this one too
+		return  # the running request picks this one up when it is done (the newest page wins)
 	_lb_busy = true
-	var data: Dictionary = await _leaderboard_async(top_n, around_me)
+	while not _lb_want.is_empty():
+		var w: Array = _lb_want
+		_lb_want = []
+		var data: Dictionary = await _leaderboard_async(int(w[0]), int(w[1]), int(w[2]))
+		if _lb_want.is_empty():
+			leaderboard_ready.emit(data)
 	_lb_busy = false
-	leaderboard_ready.emit(data)
 
 
 func _process(delta: float) -> void:
@@ -652,7 +651,7 @@ func _apply_numbers(d: Dictionary) -> void:
 		profile[k] = d[k]
 	if is_logged_in():
 		var e: Dictionary = _board.ensure(str(profile["id"]), str(profile.get("name", "")))
-		for k2: String in ["rating", "games", "wins", "losses"]:
+		for k2: String in ["rating", "games", "wins", "losses", "streak"]:
 			e[k2] = int(profile.get(k2, Rating.START_RATING if k2 == "rating" else 0))
 
 
@@ -942,7 +941,8 @@ func _settle(cur: Dictionary, report: Dictionary, signature: String) -> void:
 		_apply_numbers({})  # my board entry = the profile numbers
 		_board.apply(me, opp_id, float(v["score_a"]))
 		var e: Dictionary = _board.entry(me)
-		_apply_numbers({"rating": int(e["rating"]), "games": int(e["games"]), "wins": int(e["wins"]), "losses": int(e["losses"])})
+		_apply_numbers({"rating": int(e["rating"]), "games": int(e["games"]), "wins": int(e["wins"]), "losses": int(e["losses"]),
+			"streak": int(e.get("streak", 0))})
 		after = int(e["rating"])
 		_save_local()
 	result_recorded.emit(OnlineService.result_summary(mid, str(v["status"]), str(v["winner"]), before, after, str(v["why"])))
@@ -965,7 +965,7 @@ func _ingest(list: Array) -> void:
 
 # --- leaderboard --------------------------------------------------------------------------------------------------
 
-func _leaderboard_async(top_n: int, around_me: int) -> Dictionary:
+func _leaderboard_async(top_n: int, around_me: int, offset: int) -> Dictionary:
 	var waited: float = 0.0
 	while _logging_in and waited < CALL_TIMEOUT:
 		await _wait(POLL_STEP)
@@ -973,6 +973,7 @@ func _leaderboard_async(top_n: int, around_me: int) -> Dictionary:
 	var empty: Dictionary = {"top": [], "around": [], "me": {}, "total": 0, "source": "EOS"}
 	if not is_logged_in() or _platform_state != PlatformState.READY:
 		empty["source"] = "EOS: not signed in%s" % (" (%s)" % _last_error if _last_error != "" else "")
+		empty["error"] = "offline"
 		return empty
 	var q: Object = _new_opts("Leaderboards.QueryLeaderboardRanksOptions")
 	q.set("leaderboard_id", LEADERBOARD_ID)
@@ -980,6 +981,7 @@ func _leaderboard_async(top_n: int, around_me: int) -> Dictionary:
 	var r: Dictionary = await _await_cb(&"leaderboards_interface_query_leaderboard_ranks_callback")
 	if not _ok(r):
 		empty["source"] = "EOS leaderboard unavailable (%s)" % _code_name(_code(r))
+		empty["error"] = "unavailable"
 		return empty
 	var n: int = int(_ieos.call("leaderboards_interface_get_leaderboard_record_count", _new_opts("Leaderboards.GetLeaderboardRecordCountOptions")))
 	var records: Array = []
@@ -990,8 +992,8 @@ func _leaderboard_async(top_n: int, around_me: int) -> Dictionary:
 		if got is Dictionary and _ok(got) and (got as Dictionary).get("record") is Dictionary:
 			records.append((got as Dictionary)["record"])
 	var me: String = str(profile.get("id", ""))
-	var extra: Dictionary = await _user_counts(ids_to_detail(records, me, top_n, around_me))
-	var data: Dictionary = leaderboard_view(records, extra, me, profile, top_n, around_me)
+	var extra: Dictionary = await _user_counts(ids_to_detail(records, me, top_n, around_me, offset))
+	var data: Dictionary = leaderboard_view(records, extra, me, profile, top_n, around_me, offset)
 	data["source"] = "EOS: all players"
 	return data
 
@@ -1040,6 +1042,8 @@ func _load_local() -> void:
 	var d: Dictionary = _read_local(store_path_for(profile_name))
 	if str(d.get("puid", "")) == str(profile.get("id", "")) and d.get("recent") is Dictionary:
 		_board.recent = d["recent"]
+	if str(d.get("puid", "")) == str(profile.get("id", "")):
+		profile["streak"] = int(d.get("streak", 0))  # EOS has no streak stat: this device remembers it
 
 
 func _save_local() -> void:
@@ -1048,4 +1052,4 @@ func _save_local() -> void:
 	var f := FileAccess.open(store_path_for(profile_name), FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify({"name": str(profile.get("name", "")), "puid": str(profile["id"]),
-			"recent": _board.recent}))
+			"recent": _board.recent, "streak": int(profile.get("streak", 0))}))

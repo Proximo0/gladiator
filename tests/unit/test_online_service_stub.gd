@@ -145,3 +145,67 @@ func test_local_ids_and_match_ids_are_deterministic() -> void:
 	assert_true(ServiceLocal._match_id("h", "c", 1) != ServiceLocal._match_id("h", "c", 2))
 	a.free()
 	b.free()
+
+
+func test_leaderboard_pages_errors_and_hold() -> void:
+	var s: ServiceStub = _stub()
+	for i: int in range(30):
+		s.add_fake_player("f%d" % i, "Fake%d" % i, 1500 - i * 10, 20, 10, 2 if i == 0 else 0)
+	var got: Array = []
+	s.leaderboard_ready.connect(func(d: Dictionary) -> void: got.append(d))
+	s.request_leaderboard(20, 2, 20)
+	assert_eq(got[0]["offset"], 20)
+	assert_eq((got[0]["top"] as Array).size(), 10)
+	s.hold_leaderboard = true
+	s.request_leaderboard(20, 2, 0)
+	assert_eq(got.size(), 1, "held: the loading state")
+	s.release_leaderboard()
+	assert_eq(got.size(), 2)
+	assert_eq(got[1]["top"][0]["streak"], 2)
+	s.hold_leaderboard = false
+	s.fail_leaderboard_with = "offline"
+	s.request_leaderboard(20, 2, 0)
+	assert_eq(got[2]["error"], "offline")
+	assert_eq(got[2]["top"], [])
+	s.free()
+
+
+func test_rated_rematch_ids() -> void:
+	var s: ServiceStub = _stub()
+	s.auto_match = true
+	var infos: Array = []
+	s.matched.connect(func(i: Dictionary) -> void: infos.append(i))
+	s.quick_match({})
+	var r1: Dictionary = s.rematch_info(infos[0], 1)
+	assert_eq(r1["match_id"], "stub-match-1-r1")
+	assert_eq(s.rematch_info(r1, 2)["match_id"], "stub-match-1-r2", "derived from the first match, not chained")
+	var a: Array = _signed(s, "stub-match-1-r1", Rating.KIND_RESULT, str(s.profile["id"]))
+	assert_eq(Rating.sign_report(str(r1["match_key"]), a[0]), a[1], "the derived key signs the rematch's reports")
+	s.report_result("stub-match-1-r1", a[0], a[1])
+	s.opponent_report("stub-match-1-r1", a[0])
+	assert_eq(s.summaries[0]["status"], "agree")
+	assert_eq(s.my_rating()["streak"], 1)
+	var base := OnlineService.new()
+	assert_true(base.rematch_info(infos[0], 1).is_empty(), "the base: rematches are friendlies")
+	base.free()
+	assert_true(s.expected_wait_s() > 0.0)
+	s.free()
+
+
+func test_local_rematch_ids_match_on_both_sides() -> void:
+	var a := ServiceLocal.new()
+	a.device_id = "aaaa"
+	a.login("A")
+	a.call("_finish", OnlineService.ROLE_HOST, "127.0.0.1", 7777, "m123", {"id": "bbbb", "name": "B", "rating": 1000, "games": 0})
+	var b := ServiceLocal.new()
+	b.device_id = "bbbb"
+	b.login("B")
+	b.call("_finish", OnlineService.ROLE_CLIENT, "127.0.0.1", 7777, "m123", {"id": "aaaa", "name": "A", "rating": 1000, "games": 0})
+	var info := {"match_id": "m123", "match_key": ServiceLocal.match_key("m123")}
+	var ra: Dictionary = a.rematch_info(info, 1)
+	var rb: Dictionary = b.rematch_info(info, 1)
+	assert_eq(ra["match_id"], rb["match_id"])
+	assert_eq(ra["match_key"], rb["match_key"])
+	assert_true(str(ra["match_id"]) != "m123")
+	a.free()
+	b.free()

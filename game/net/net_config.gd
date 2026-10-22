@@ -32,6 +32,7 @@ const MSG_EVENTS: int = 6  ## host -> client, reliable: hit and gore events with
 const MSG_OVER: int = 7  ## host -> client, reliable: the match result
 const MSG_LEAVE: int = 8  ## either way, reliable: going back to the menu
 const MSG_LOADOUT: int = 9  ## client -> host, reliable: the client changed its pick in the lobby
+const MSG_NOTE: int = 10  ## either way, reliable: a small lobby note {t: "ready" | "rematch" | "decline"} (OnlineScreen)
 
 const STATES: PackedStringArray = ["standing", "stumbling", "down", "getting_up", "ko", "dead"]
 

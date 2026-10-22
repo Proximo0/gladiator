@@ -17,7 +17,9 @@ const MIN_RATED_TICKS: int = 600  ## a "result" shorter than this (10 s at 60 Hz
 const WINDOW_START: int = 100  ## matchmaking: accept opponents within this many points at first ...
 const WINDOW_PER_S: int = 25  ## ... and widen by this much per second searched
 const PAIR_WEIGHTS: Array[float] = [1.0, 1.0, 0.5, 0.25, 0.1]  ## k multiplier for the n-th recent game vs the same opponent
-const TIERS: Array = [[1000, "Tiro"], [1200, "Gladiator"], [1400, "Veteranus"], [1600, "Primus Palus"]]
+## Roman ladder, low to high: [below this rating, name]. Tiro (recruit), Gladiator, Veteranus (survived bouts),
+## Primus Palus (first of his school), Rudiarius (freed with the wooden sword, fights by choice), Summa Rudis.
+const TIERS: Array = [[1000, "Tiro"], [1200, "Gladiator"], [1400, "Veteranus"], [1600, "Primus Palus"], [1800, "Rudiarius"]]
 const TOP_TIER: String = "Summa Rudis"
 
 const KIND_RESULT: String = "result"  ## "the fight ended and this is who won" (winner id, "" = draw)
@@ -75,6 +77,32 @@ static func tier(rating: int) -> String:
 	return TOP_TIER
 
 
+## 0 for the lowest tier .. TIERS.size() for the top one.
+static func tier_index(rating: int) -> int:
+	for i: int in TIERS.size():
+		if rating < int(TIERS[i][0]):
+			return i
+	return TIERS.size()
+
+
+## Every tier name, lowest first.
+static func tier_names() -> PackedStringArray:
+	var out := PackedStringArray()
+	for t: Array in TIERS:
+		out.append(str(t[1]))
+	out.append(TOP_TIER)
+	return out
+
+
+## {name, at, need} of the next tier up ({} at the top): "need" points from `rating` to reach it.
+static func next_tier(rating: int) -> Dictionary:
+	var i: int = tier_index(rating)
+	if i >= TIERS.size():
+		return {}
+	var at: int = int(TIERS[i][0])
+	return {"name": tier_names()[i + 1], "at": at, "need": at - rating}
+
+
 ## "1016" or "1000?" while provisional.
 static func rating_text(rating: int, games: int) -> String:
 	return "%d%s" % [rating, "?" if is_provisional(games) else ""]
@@ -93,11 +121,13 @@ static func _canon(r: Dictionary) -> String:
 
 ## HMAC-SHA256 (hex) of a report under the per-match key the service handed both players.
 static func sign_report(key: String, r: Dictionary) -> String:
+	if key == "":
+		return ""
 	return Crypto.new().hmac_digest(HashingContext.HASH_SHA256, key.to_utf8_buffer(), _canon(r).to_utf8_buffer()).hex_encode()
 
 
 static func verify_report(key: String, r: Dictionary, signature: String) -> bool:
-	return signature != "" and sign_report(key, r) == signature
+	return key != "" and signature != "" and sign_report(key, r) == signature  # (an empty HMAC key is an engine error)
 
 
 ## One verdict from the two players' reports (`a_rep` / `b_rep`, or {} when that player sent none).

@@ -42,6 +42,7 @@ func test_finisher_starts_crowd_roar_and_chant() -> void:
 	d.on_gore({"kind": "behead", "part": "head", "point": Vector3.ZERO, "normal": Vector3.UP, "amount": 1.0})
 	assert_true(d.recent_keys.has("gore/behead"))
 	d._clock = 10.0
+	d._real_clock = 10.0
 	d._run_pending()
 	assert_true(d.recent_keys.has("crowd/finisher_roar"), str(d.recent_keys))
 	assert_true(d.recent_keys.has("crowd/chant"), str(d.recent_keys))
@@ -95,3 +96,130 @@ func test_real_players_when_in_tree() -> void:
 	d._physics_process(1.0 / 60.0)
 	tree.root.remove_child(d)
 	d.free()
+
+
+func _in_tree() -> SfxDirector:
+	var d: SfxDirector = SfxDirector.new()
+	(Engine.get_main_loop() as SceneTree).root.add_child(d)
+	return d
+
+
+func _drop_tree(d: SfxDirector) -> void:
+	(Engine.get_main_loop() as SceneTree).root.remove_child(d)
+	d.free()
+
+
+func _playing(d: SfxDirector, key: String) -> int:
+	var n: int = 0
+	for i: int in range(d._pool.size()):
+		if d._pool[i].playing and str(d._meta[i].get("key", "")) == key:
+			n += 1
+	return n
+
+
+func test_finisher_steals_from_a_full_impact_group() -> void:
+	var d: SfxDirector = _in_tree()
+	var cap: int = SfxLogic.group_cap("impact")
+	for i: int in range(cap):
+		d.play_key("impact/leather_slap", Vector3.ZERO, -12.0)
+	assert_eq(int(d.group_use().get("impact", 0)), cap)
+	d.play_key("impact/bone_crack", Vector3.ZERO, 3.0, 0.9, "SFX", SfxLogic.FINISHER_BOOST_DB)
+	assert_eq(_playing(d, "impact/bone_crack"), 1, "the finisher layer got a voice")
+	assert_eq(int(d.group_use().get("impact", 0)), cap)
+	assert_eq(d.stolen_count, 1)
+	# Minor hits that follow are dropped rather than cutting it.
+	for i: int in range(cap):
+		d.play_key("impact/leather_slap", Vector3.ZERO, -12.0)
+	assert_eq(_playing(d, "impact/bone_crack"), 1, "a minor hit never cuts the finisher")
+	assert_true(d.lost_important.is_empty(), str(d.lost_important))
+	assert_eq(d.inversions, 0)
+	_drop_tree(d)
+
+
+func test_minor_sound_dropped_when_group_is_louder() -> void:
+	var d: SfxDirector = _in_tree()
+	var cap: int = SfxLogic.group_cap("impact")
+	for i: int in range(cap):
+		d.play_key("impact/clang_steel", Vector3.ZERO, 0.0)
+	var capped: int = d.capped_count
+	d.play_key("impact/leather_slap", Vector3.ZERO, -10.0)
+	assert_eq(_playing(d, "impact/clang_steel"), cap)
+	assert_eq(d.capped_count, capped + 1)
+	assert_eq(int(d.dropped_keys.get("impact/leather_slap", 0)), 1)
+	_drop_tree(d)
+
+
+func test_full_pool_gives_way_to_a_gore_stinger() -> void:
+	var d: SfxDirector = _in_tree()
+	var keys: Array[String] = ["impact/clang_steel", "voice/grunt", "move/whoosh_heavy", "move/roll_thud", "gore/gut_squelch"]
+	var n: int = 0
+	while d._free_count() > 0 and n < 200:
+		d.play_key(keys[n % keys.size()], Vector3.ZERO, -14.0)
+		n += 1
+	d.on_gore({"kind": "behead", "part": "head", "point": Vector3.ZERO}, null)
+	assert_eq(_playing(d, "gore/behead"), 1)
+	assert_true(d.lost_important.is_empty(), str(d.lost_important))
+	_drop_tree(d)
+
+
+func test_small_bleed_does_not_spurt() -> void:
+	var d: SfxDirector = _make()
+	var f: Node3D = Node3D.new()
+	f.add_user_signal("hit")
+	d._tracked.append({"f": f, "spurts": [], "gushes": []})
+	d.on_gore({"kind": "bleed", "part": "head", "amount": 0.006, "point": Vector3.ZERO}, f)
+	assert_eq((d._tracked[0]["spurts"] as Array).size(), 0)
+	d.on_gore({"kind": "bleed", "part": "torso", "amount": 0.1, "point": Vector3.ZERO}, f)
+	assert_eq((d._tracked[0]["spurts"] as Array).size(), 1)
+	f.free()
+	d.free()
+
+
+func _count(d: SfxDirector, key: String) -> int:
+	var n: int = 0
+	for k: String in d.recent_keys:
+		if k == key:
+			n += 1
+	return n
+
+
+func test_crowd_roar_keeps_real_time_in_slow_motion() -> void:
+	var d: SfxDirector = _make()
+	var old_scale: float = Engine.time_scale
+	Engine.time_scale = 0.2
+	d.on_hit(_hit({"finisher": "behead", "behead": true, "sever": true}))
+	# 0.25 real seconds of 0.2x physics steps (0.05 game seconds): the roar's 0.2 s delay is real time.
+	for i: int in range(15):
+		d._physics_process(1.0 / 60.0 * Engine.time_scale)
+	Engine.time_scale = old_scale
+	assert_true(d._clock < 0.06)
+	assert_eq(_count(d, "crowd/finisher_roar"), 1, str(d.recent_keys))
+	assert_eq(_count(d, "crowd/chant"), 0, "the chant waits 2.4 real seconds")
+	d.free()
+
+
+func test_finisher_roar_left_to_feel_director() -> void:
+	var d: SfxDirector = _make()
+	d.finisher_roar_external = true
+	var kinds: Array[String] = []
+	d.crowd_reacted.connect(func(k: String) -> void: kinds.append(k))
+	d.on_hit(_hit({"finisher": "behead", "behead": true, "sever": true}))
+	d._clock = 10.0
+	d._real_clock = 10.0
+	d._run_pending()
+	assert_eq(_count(d, "crowd/finisher_roar"), 0, "one roar: the FeelDirector's")
+	assert_eq(_count(d, "crowd/chant"), 1)
+	assert_true(kinds.has("finisher"), "the stands still react")
+	d.free()
+
+
+func test_feel_director_sibling_is_found_by_group() -> void:
+	var host: Node = Node.new()
+	var d: SfxDirector = _make()
+	host.add_child(d)
+	assert_false(d._finisher_roar_is_external())
+	var feel: Node = Node.new()
+	feel.add_to_group("feel_director")
+	host.add_child(feel)
+	assert_true(d._finisher_roar_is_external())
+	host.free()
