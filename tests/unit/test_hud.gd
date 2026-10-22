@@ -211,10 +211,25 @@ func test_meters_sit_at_the_bottom_for_mouse_and_at_the_top_for_touch() -> void:
 
 
 func test_touch_block_covers_the_meters() -> void:
-	assert_true(HUD.touch_block_px(540.0, 1170.0, 0.0) > BloodMeter.METER_SIZE.y * 0.5)
+	assert_true(HUD.touch_block_px(540.0, 1170.0, 0.0) > 60.0)
 
 
 func test_touch_meters_shrink_on_a_short_landscape_screen_only() -> void:
 	assert_true(HUD.meter_px(1170.0, 540.0, true) < HUD.meter_px(1170.0, 540.0, false))
 	assert_true(HUD.touch_block_px(1170.0, 540.0, 0.0) <= 540.0 * 0.5, "leaves the lower half to the thumbs")
-	assert_near(HUD.meter_px(540.0, 1170.0, true), HUD.meter_px(540.0, 1170.0, false))
+	assert_false(HUD.is_compact(1170.0, 540.0, true))
+	assert_false(HUD.is_compact(540.0, 1170.0, false), "mouse never uses the compact meters")
+
+
+func test_portrait_touch_uses_compact_meters_that_leave_the_arena() -> void:
+	assert_true(HUD.is_compact(540.0, 1170.0, true))
+	var w: float = HUD.meter_px(540.0, 1170.0, true)
+	assert_true(w * 2.0 < 540.0, "two side by side")
+	assert_true(HUD.touch_block_px(540.0, 1170.0, 0.0) < 1170.0 * 0.14, "well under the old quarter of the screen")
+	var m: BloodMeter = BloodMeter.new()
+	m.configure(1.0, 1.0, true)
+	assert_eq(m.custom_minimum_size, BloodMeter.COMPACT_SIZE)
+	m.configure(1.0, 1.0, false)
+	assert_eq(m.custom_minimum_size, BloodMeter.METER_SIZE)
+	m.free()
+	assert_true(BloodMeter.compact_bar_rect().end.x < BloodMeter.compact_ring_centre().x - BloodMeter.COMPACT_RING_R, "bar and ring do not overlap")

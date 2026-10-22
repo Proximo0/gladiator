@@ -7,6 +7,7 @@ extends Control
 ## a static function so the unit tests can check it.
 
 const METER_SIZE: Vector2 = Vector2(240.0, 372.0)  ## Design size (unit scale 1); the HUD lays it out at unit * this.
+const COMPACT_SIZE: Vector2 = Vector2(240.0, 112.0)  ## Portrait phones: name band, horizontal blood bar, litres and a stamina ring.
 const FULL_BLOOD: float = 5.0  ## Litres at full. Matches FighterHealth.START_BLOOD.
 const DRAIN_SPEED: float = 6.0  ## How fast the shown level follows the real blood (1/s).
 const DRIP_MIN_RATE: float = 0.002  ## bleed_rate (L/s) below which nothing drips.
@@ -45,6 +46,7 @@ const NECK_FRAC: float = 0.5  ## Neck half-width as a fraction of the bulb radiu
 const ARC_CENTER: Vector2 = Vector2(190.0, 172.0)
 const ARC_RADIUS: float = 30.0
 const ARC_STEPS: int = 12
+const COMPACT_RING_R: float = 22.0
 const DROP_RADIUS: float = 4.0
 const DROP_OFFSET: float = 0.5  ## Second drop's phase offset within the drip cycle.
 const MIN_PX_NAME: float = 16.0  ## Smallest on-screen text height (px) for each readout, so a small meter stays legible.
@@ -61,6 +63,7 @@ var heart_phase: float = 0.0
 var flow_phase: float = 0.0
 var unit: float = 1.0  ## Layout scale: the control is METER_SIZE * unit and geometry is drawn scaled; text is sized separately.
 var px_scale: float = 1.0  ## On-screen pixels per control unit (for the text size floors).
+var compact: bool = false  ## Short horizontal layout for portrait phones (see COMPACT_SIZE).
 var _started: bool = false
 var _frame: StyleBoxFlat = null
 var _meander: PackedVector2Array = PackedVector2Array()  ## Segment pairs of the rule above the readout (built once).
@@ -80,16 +83,22 @@ func _init() -> void:
 
 ## Per-size layout: geometry scales by `u`, text gets its own sizes (never below its on-screen pixel floor, given
 ## `px` on-screen pixels per control unit) so it is drawn crisp instead of being a scaled-up small font.
-func configure(u: float, px: float) -> void:
+func configure(u: float, px: float, compact_layout: bool = false) -> void:
 	u = maxf(u, 0.1)
 	px = maxf(px, 0.01)
-	if is_equal_approx(u, unit) and is_equal_approx(px, px_scale):
+	if is_equal_approx(u, unit) and is_equal_approx(px, px_scale) and compact_layout == compact:
 		return
 	unit = u
 	px_scale = px
-	size = METER_SIZE * u
-	custom_minimum_size = size
+	compact = compact_layout
+	custom_minimum_size = design_size() * u
+	size = custom_minimum_size
 	queue_redraw()
+
+
+## Design size of the current layout (unit scale 1).
+func design_size() -> Vector2:
+	return COMPACT_SIZE if compact else METER_SIZE
 
 
 ## Font size in control units: `base` scaled with the meter, but no smaller than `min_px` on screen.
@@ -123,6 +132,9 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var font: Font = ThemeDB.fallback_font
+	if compact:
+		_draw_compact(font)
+		return
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(unit, unit))
 	draw_style_box(_frame, Rect2(Vector2.ZERO, METER_SIZE))
 	_draw_header(font)
@@ -208,6 +220,52 @@ func _draw() -> void:
 	_text(font, Vector2(ARC_CENTER.x - 30.0, ARC_CENTER.y + 6.0), "%d%%" % roundi(stamina * 100.0), 60.0, 17.0, MIN_PX_PERCENT, PARCHMENT)
 	_text(font, Vector2(ARC_CENTER.x - 46.0, ARC_CENTER.y + 50.0), "VIRES", 92.0, 18.0, MIN_PX_PERCENT, PARCHMENT)
 	_text(font, Vector2(ARC_CENTER.x - 46.0, ARC_CENTER.y + 70.0), "Stamina", 92.0, 15.0, MIN_PX_SMALL, PARCHMENT)
+
+
+## Portrait layout: name band, a horizontal blood bar (death line marked) with the litres under it, stamina ring beside.
+func _draw_compact(font: Font) -> void:
+	var death: float = Tuning.shared().blood_death
+	var level: float = shown_blood
+	var danger: float = danger_frac(level, death, FULL_BLOOD)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(unit, unit))
+	draw_style_box(_frame, Rect2(Vector2.ZERO, COMPACT_SIZE))
+	var band: Rect2 = Rect2(Vector2(4.0, 4.0), Vector2(COMPACT_SIZE.x - 8.0, 30.0))
+	draw_rect(band, BLACK_BORDER)
+	draw_rect(band.grow(-2.0), PARCHMENT)
+	draw_rect(band, BRONZE, false, 2.0)
+	var bar: Rect2 = compact_bar_rect()
+	draw_rect(bar, GLASS_BACK)
+	var fill: Rect2 = Rect2(bar.position, Vector2(bar.size.x * level_frac(level, FULL_BLOOD), bar.size.y)).grow_individual(0.0, -2.0, 0.0, -2.0)
+	fill.position.x = bar.position.x
+	if fill.size.x > 0.5:
+		var col: Color = blood_color(level, death, FULL_BLOOD)
+		draw_rect(fill, col)
+		draw_rect(Rect2(fill.position, Vector2(fill.size.x, 3.0)), col.lightened(0.3))
+	var mark_x: float = bar.position.x + bar.size.x * level_frac(death, FULL_BLOOD)
+	draw_line(Vector2(mark_x, bar.position.y), Vector2(mark_x, bar.end.y), Color(0.95, 0.9, 0.75, 0.55), 1.5)
+	var pulse: float = 0.0
+	if health != null and not health.dead:
+		pulse = heartbeat_shape(heart_phase) * pulse_strength(level, death, FULL_BLOOD)
+	draw_rect(bar.grow(1.0 + 2.0 * pulse), Color(0.9, 0.12, 0.1, 0.2 + 0.6 * pulse), false, 2.0)
+	draw_rect(bar, BRONZE, false, 3.0)
+	var ring: Vector2 = compact_ring_centre()
+	var stamina: float = health.stamina if health != null else 1.0
+	draw_arc(ring, COMPACT_RING_R, 0.0, TAU, 40, STAMINA_TRACK, 5.0, true)
+	if stamina > 0.001:
+		draw_arc(ring, COMPACT_RING_R, -PI * 0.5, -PI * 0.5 + stamina_span(stamina), 40, STAMINA_COLOR, 6.0, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_text(font, Vector2(0.0, 27.0), display_name.to_upper(), COMPACT_SIZE.x, 24.0, MIN_PX_NAME, INK)
+	var readout_col: Color = PARCHMENT if danger >= 0.3 else WARN_TEXT
+	_text(font, Vector2(bar.position.x, 98.0), "%.1f L" % level, bar.size.x, 30.0, MIN_PX_READOUT, readout_col)
+	_text(font, Vector2(ring.x - 30.0, ring.y + 7.0), "%d" % roundi(stamina * 100.0), 60.0, 20.0, MIN_PX_PERCENT, PARCHMENT)
+
+
+static func compact_bar_rect() -> Rect2:
+	return Rect2(12.0, 44.0, 156.0, 30.0)
+
+
+static func compact_ring_centre() -> Vector2:
+	return Vector2(200.0, 70.0)
 
 
 ## One centred string at a control-local position and width (design units), sized per layout.

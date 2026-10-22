@@ -14,7 +14,7 @@ var _tween: Tween = null
 func _init() -> void:
 	theme = MenuTheme.theme()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_theme_stylebox_override("panel", MenuTheme.box(Color(0.06, 0.045, 0.03, 0.62), MenuTheme.BRONZE.darkened(0.2), 2, 10.0))
+	add_theme_stylebox_override("panel", MenuTheme.box(Color(0.09, 0.07, 0.05, 0.82), MenuTheme.BRONZE, 3, 10.0))
 	_box = VBoxContainer.new()
 	_box.add_theme_constant_override("separation", 2)
 	_box.mouse_filter = Control.MOUSE_FILTER_IGNORE

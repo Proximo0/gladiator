@@ -8,6 +8,8 @@ signal chosen(id: String)  ## "quick", "fight", "local_2p", "leaderboard", "onli
 const TITLE_MIN: float = 56.0
 const EDGE: float = 14.0  ## Clear space kept at the top and bottom.
 const RULE_MIN_PX: float = 12.0  ## Smallest meander cell on screen.
+const SCRIM_TOP: float = 0.22  ## Backdrop darkening, a vertical gradient so there is no seam across the arena.
+const SCRIM_BOTTOM: float = 0.4
 const HINT_MIN_PX: float = 15.0  ## Smallest hint text on screen.
 const HINT_MIN_UNITS: float = 24.0
 const HINT_MAX_UNITS: float = 64.0
@@ -44,6 +46,7 @@ func _init() -> void:
 	_col.add_child(_rule)
 	_sub = MenuTheme.label("MORS AVT VICTORIA", 56, MenuTheme.OCHRE)
 	_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_outline(_sub, 6)
 	_col.add_child(_sub)
 	var eng := MenuTheme.label("Death or victory", MenuTheme.FONT_SMALL, MenuTheme.PARCHMENT.darkened(0.2))
 	eng.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -64,13 +67,19 @@ func _init() -> void:
 		_buttons.append(b)
 		if _first == null:
 			_first = b
-	_hint = MenuTheme.label("", int(HINT_MIN_UNITS), MenuTheme.PARCHMENT.darkened(0.15))
+	_hint = MenuTheme.label("", int(HINT_MIN_UNITS), MenuTheme.PARCHMENT)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.name = "Hint"
 	_hint.text = "\n".join(hint_lines(not Input.get_connected_joypads().is_empty(), DisplayServer.is_touchscreen_available() or Flags.args.has("touch")))
 	_col.add_child(_hint)
 	resized.connect(_relayout)
 	_relayout()
+
+
+## Dark outline so text stays readable over the bright arena backdrop.
+static func _outline(l: Label, px: int) -> void:
+	l.add_theme_color_override("font_outline_color", Color(0.1, 0.05, 0.03, 0.9))
+	l.add_theme_constant_override("outline_size", px)
 
 
 ## The hint under the menu for the device in use: touch (reusing the fight hint), gamepad, or keyboard.
@@ -99,8 +108,14 @@ func _relayout() -> void:
 	var title_px: float = clampf(minf(size.x / 7.2, size.y / 6.5), TITLE_MIN, 190.0)
 	var btn_h: float = 58.0
 	var gap_h: float = 30.0
+	var sep: int = 8
+	if size.y > size.x * 1.3:  # portrait: roomy buttons so the column fills the screen
+		btn_h = 92.0
+		gap_h = 56.0
+		sep = 14
+	_col.add_theme_constant_override("separation", sep)
 	var avail: float = size.y - 2.0 * EDGE
-	for _pass: int in 12:
+	for _pass: int in 24:
 		_title.add_theme_font_size_override("font_size", int(title_px))
 		for b: Button in _buttons:
 			b.custom_minimum_size.y = btn_h
@@ -139,5 +154,6 @@ func _fit_rule() -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.012, 0.008, 0.45))
-	draw_rect(Rect2(0.0, size.y * 0.55, size.x, size.y * 0.45), Color(0.02, 0.012, 0.008, 0.35))
+	var top: Color = Color(0.02, 0.012, 0.008, SCRIM_TOP)
+	var bottom: Color = Color(0.02, 0.012, 0.008, SCRIM_BOTTOM)
+	draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(size.x, 0.0), size, Vector2(0.0, size.y)]), PackedColorArray([top, top, bottom, bottom]))

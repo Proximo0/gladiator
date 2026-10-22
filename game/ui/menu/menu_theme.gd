@@ -106,6 +106,32 @@ static func button(text: String, min_w: float = 0.0) -> Button:
 	return b
 
 
+## The in-fight pause button: a parchment tile with a bronze rim and two ink bars, in the HUD's style.
+static func pause_button() -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(96.0, 96.0)
+	var states: Dictionary = {"normal": PARCHMENT.darkened(0.08), "hover": PARCHMENT.lightened(0.1), "pressed": OCHRE, "focus": PARCHMENT}
+	for st: String in states:
+		var sb: StyleBoxFlat = box(states[st], BRONZE.darkened(0.25) if st != "hover" else OCHRE, 5, 6.0)
+		sb.set_corner_radius_all(14)
+		sb.shadow_color = Color(0.0, 0.0, 0.0, 0.5)
+		sb.shadow_size = 6
+		b.add_theme_stylebox_override(st, sb)
+	var icon := Control.new()
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.draw.connect(func() -> void:
+		var s: Vector2 = icon.size
+		var h: float = s.y * 0.44
+		var w: float = s.x * 0.14
+		var y: float = (s.y - h) * 0.5
+		icon.draw_rect(Rect2(s.x * 0.5 - w * 1.45, y, w, h), INK)
+		icon.draw_rect(Rect2(s.x * 0.5 + w * 0.45, y, w, h), INK))
+	b.add_child(icon)
+	return b
+
+
 ## Greek-key rule across `rect` (call from a draw handler).
 static func draw_meander(ci: CanvasItem, x: float, y: float, width: float, cell: float = 14.0, stroke: float = 3.0) -> void:
 	var w: float = floorf(width / cell) * cell

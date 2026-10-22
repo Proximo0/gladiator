@@ -15,6 +15,7 @@ const METER_MAX_PX: float = 210.0
 const TOUCH_EDGE_PX: float = 8.0  ## Touch layout: gap from the screen edge to the meters, which then sit at the top.
 const TOUCH_METER_HEIGHT_FRAC: float = 0.42  ## Touch: a meter is at most this share of the screen height.
 const TOUCH_METER_MIN_PX: float = 140.0
+const COMPACT_GAP_FRAC: float = 0.03  ## Portrait: gap between the two meters and to the screen edges, share of screen width.
 const METER_MIN_UNIT: float = 0.8
 const METER_MAX_UNIT: float = 4.0
 const BANNER_TARGET_PX: float = 360.0  ## On-screen width the banner aims for.
@@ -91,9 +92,16 @@ func _make_line(top: float, font_px: int, colour: Color) -> Label:
 	return label
 
 
+## True for a portrait touch screen: the meters use the short horizontal layout so they leave the arena visible.
+static func is_compact(screen_w: float, screen_h: float, touch: bool) -> bool:
+	return touch and screen_h > screen_w
+
+
 ## Layout unit for the meters on a screen `screen_w` px wide: the meter is about 16% of the screen width, held between
 ## METER_MIN_PX and METER_MAX_PX on screen (so a phone gets a real, readable meter), as a multiple of the design size.
 static func meter_px(screen_w: float, screen_h: float = 0.0, touch: bool = false) -> float:
+	if is_compact(screen_w, screen_h, touch):
+		return (screen_w * (1.0 - 3.0 * COMPACT_GAP_FRAC)) * 0.5
 	var w: float = clampf(screen_w * METER_WIDTH_FRAC, METER_MIN_PX, METER_MAX_PX)
 	if touch and screen_h > 0.0:  # a short landscape phone: keep the meters clear of the thumb buttons below them
 		w = minf(w, maxf(screen_h * TOUCH_METER_HEIGHT_FRAC * BloodMeter.METER_SIZE.x / BloodMeter.METER_SIZE.y, TOUCH_METER_MIN_PX))
@@ -116,7 +124,8 @@ static func meter_positions(vp: Vector2, meter: Vector2, k: float, insets: Vecto
 ## On-screen px from the top of a `screen_w` px wide touch screen to the bottom of the meters (for the hint below).
 static func touch_block_px(screen_w: float, screen_h: float, inset_top_px: float) -> float:
 	var w: float = meter_px(screen_w, screen_h, true)
-	return inset_top_px + TOUCH_EDGE_PX + w * BloodMeter.METER_SIZE.y / BloodMeter.METER_SIZE.x
+	var design: Vector2 = BloodMeter.COMPACT_SIZE if is_compact(screen_w, screen_h, true) else BloodMeter.METER_SIZE
+	return inset_top_px + TOUCH_EDGE_PX + w * design.y / design.x
 
 
 func meter_unit(screen_w: float, screen_h: float = 0.0, touch: bool = false) -> float:
@@ -154,10 +163,12 @@ func _layout() -> void:
 		return
 	var touch: bool = TouchControls.active()
 	var u: float = meter_unit(vp.x * k, vp.y * k, touch)
-	var spots: Array = meter_positions(vp, BloodMeter.METER_SIZE * u, k, SafeArea.window_insets() if touch else Vector4.ZERO, touch)
+	var compact: bool = is_compact(vp.x * k, vp.y * k, touch)
+	var design: Vector2 = BloodMeter.COMPACT_SIZE if compact else BloodMeter.METER_SIZE
+	var spots: Array = meter_positions(vp, design * u, k, SafeArea.window_insets() if touch else Vector4.ZERO, touch)
 	for m: BloodMeter in [player_meter, opponent_meter]:
 		m.scale = Vector2.ONE
-		m.configure(u, k)
+		m.configure(u, k, compact)
 	player_meter.position = spots[0]
 	opponent_meter.position = spots[1]
 	var bs: float = clampf(BANNER_TARGET_PX / (BANNER_W * k), 1.0, BANNER_MAX_SCALE)
