@@ -207,3 +207,36 @@ func test_step_tracker_contacts() -> void:
 	assert_eq(s.update_contacts(true, false), 0)
 	assert_eq(s.update_contacts(false, true), 1)
 	assert_eq(s.update_contacts(false, false), 0)
+
+
+func test_heavy_whoosh_needs_a_real_swing() -> void:
+	assert_true(SfxLogic.whoosh_min_speed("sledgehammer") > SfxLogic.whoosh_min_speed("gladius"))
+	assert_true(SfxLogic.whoosh_cooldown("mace") > SfxLogic.whoosh_cooldown("falchion"))
+	var g: SfxWhooshGate = SfxWhooshGate.new()
+	var lo: float = SfxLogic.whoosh_min_speed("mace")
+	assert_eq(g.update(lo - 0.5, 0.016, 0.0, lo, 1.0), 0.0, "slow poke is silent")
+	assert_true(g.update(lo + 1.0, 0.016, 0.1, lo, 1.0) > 0.0)
+	g.update(0.0, 0.016, 0.2, lo, 1.0)
+	assert_eq(g.update(lo + 1.0, 0.016, 0.5, lo, 1.0), 0.0, "per-weapon cooldown")
+
+
+func test_voice_caps_layers_and_cuts() -> void:
+	assert_eq(SfxLogic.group_of("move/footstep_run"), "step")
+	assert_eq(SfxLogic.group_of("move/whoosh_heavy"), "whoosh")
+	assert_eq(SfxLogic.group_of("gore/spurt_hiss"), "gore_loop")
+	assert_eq(SfxLogic.group_of("gore/behead"), "gore")
+	assert_eq(SfxLogic.group_of("voice/grunt"), "voice")
+	assert_true(SfxLogic.max_len("move/body_fall_sand") > 0.0 and SfxLogic.max_len("move/body_fall_sand") < 1.0)
+	assert_eq(SfxLogic.max_len("gore/behead"), 0.0, "finishers play out")
+	var layers: Array[Dictionary] = []
+	for k: String in ["impact/body_thud", "impact/flesh_cut", "impact/bone_crack", "impact/armor_clank", "impact/heavy_thump"]:
+		layers.append({"key": k, "gain_db": 0.0, "pitch": 1.0, "delay": 0.0})
+	assert_eq(SfxLogic.limit_layers(layers).size(), SfxLogic.MAX_HIT_LAYERS)
+
+
+func test_duck_envelope() -> void:
+	assert_eq(SfxLogic.duck_db(-1.0, -10.0, 0.1, 0.5, 1.0), 0.0)
+	assert_near(SfxLogic.duck_db(0.05, -10.0, 0.1, 0.5, 1.0), -5.0, 0.01)
+	assert_eq(SfxLogic.duck_db(0.3, -10.0, 0.1, 0.5, 1.0), -10.0)
+	assert_near(SfxLogic.duck_db(1.1, -10.0, 0.1, 0.5, 1.0), -5.0, 0.01)
+	assert_eq(SfxLogic.duck_db(5.0, -10.0, 0.1, 0.5, 1.0), 0.0)

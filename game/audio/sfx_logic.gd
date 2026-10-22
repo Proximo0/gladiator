@@ -69,6 +69,28 @@ const PAIN_HEAVY: float = 18.0
 const WHOOSH_SLOW_MAX: float = 7.0
 const WHOOSH_MID_MAX: float = 11.0
 const WHOOSH_MIN_SPEED: float = 3.5
+## Heavy and cleaving weapons only whoosh on a real swing: higher minimum tip speed and a longer cooldown.
+const WHOOSH_MIN_HEAVY: float = 6.5
+const WHOOSH_MIN_CLEAVE: float = 5.0
+const WHOOSH_CD_HEAVY: float = 1.0
+const WHOOSH_CD_CLEAVE: float = 0.6
+## Voice limits: at most this many sounds of a group at once (a new low-priority one is dropped, an important
+## one replaces the oldest of its group), and at most this many layers of one hit.
+const GROUP_CAPS: Dictionary = {"step": 4, "rattle": 2, "whoosh": 3, "move": 4, "gore_loop": 4, "impact": 9, "gore": 4, "voice": 4}
+const MAX_HIT_LAYERS: int = 3
+## Low-priority and ambient sounds are dropped once this many voices are busy (the pool is 28: about 78 percent).
+const SOFT_TOTAL_CAP: int = 22
+## Longest a sound is allowed to ring (s) before a short fade cuts it; keys not listed play to their end.
+const MAX_LEN: Dictionary = {
+	"move/body_fall_sand": 0.6, "move/whoosh_heavy": 0.4, "move/whoosh_cleave": 0.4, "move/whoosh_slow": 0.35,
+	"move/whoosh_mid": 0.35, "move/whoosh_fast": 0.35, "move/roll_whoosh": 0.45, "move/roll_thud": 0.35,
+	"impact/ring_steel": 1.0, "impact/helm_knock": 0.8, "impact/clang_steel": 0.7, "impact/heavy_thump": 0.5,
+	"impact/bat_tink": 0.4, "impact/mail_jingle": 0.45, "gore/spurt_hiss": 0.5, "gore/gush_pulse": 0.4,
+	"gore/gut_squelch": 0.6, "move/footstep_sand": 0.26, "move/footstep_run": 0.26, "move/armor_rattle": 0.26,
+	"move/sand_impact": 0.3, "impact/body_thud": 0.4, "impact/flesh_cut": 0.4, "impact/flesh_pierce": 0.4,
+	"impact/leather_slap": 0.3, "gore/blood_spatter_sand": 0.4,
+}
+const CUT_FADE: float = 0.08
 const SPLATTER_MIN_TOTAL: float = 4.0
 
 const ARMOR_RANK: Dictionary = {"": 0, "cloth": 1, "leather": 2, "mail": 3, "plate": 4}
@@ -431,3 +453,76 @@ static func spurt_gain_db(age: float, blood_frac: float) -> float:
 ## Delay (s) before spatter lands on the sand for a hit at `height` m above the floor.
 static func spatter_delay(height: float) -> float:
 	return clampf(sqrt(2.0 * maxf(height, 0.0) / 9.8), 0.08, 0.7)
+
+
+static func whoosh_min_speed(weapon_id: String) -> float:
+	match weapon_class(weapon_id):
+		"heavy":
+			return WHOOSH_MIN_HEAVY
+		"cleave":
+			return WHOOSH_MIN_CLEAVE
+	return WHOOSH_MIN_SPEED
+
+
+static func whoosh_cooldown(weapon_id: String) -> float:
+	match weapon_class(weapon_id):
+		"heavy":
+			return WHOOSH_CD_HEAVY
+		"cleave":
+			return WHOOSH_CD_CLEAVE
+	return 0.0
+
+
+## Voice group of a key, for the per-group caps.
+static func group_of(key: String) -> String:
+	if key == "move/armor_rattle":
+		return "rattle"
+	if key.begins_with("move/footstep"):
+		return "step"
+	if key.begins_with("move/whoosh") or key == "move/roll_whoosh":
+		return "whoosh"
+	if key.begins_with("move/"):
+		return "move"
+	if key.begins_with("voice/"):
+		return "voice"
+	if key.begins_with("gore/"):
+		return "gore_loop" if is_low_priority(key) else "gore"
+	return "impact"
+
+
+static func group_cap(group: String) -> int:
+	return int(GROUP_CAPS.get(group, 8))
+
+
+## Seconds a sound may play before it is faded out; 0 means to its natural end.
+static func max_len(key: String) -> float:
+	return float(MAX_LEN.get(key, 0.0))
+
+
+## Keeps the loudest MAX_HIT_LAYERS layers of one hit (the rest only add mud and cost voices).
+static func limit_layers(layers: Array[Dictionary]) -> Array[Dictionary]:
+	if layers.size() <= MAX_HIT_LAYERS:
+		return layers
+	var idx: Array[int] = []
+	for i: int in range(layers.size()):
+		idx.append(i)
+	idx.sort_custom(func(a: int, b: int) -> bool:
+		return float(layers[a]["gain_db"]) + base_db(str(layers[a]["key"])) > float(layers[b]["gain_db"]) + base_db(str(layers[b]["key"])))
+	var keep: Array[int] = idx.slice(0, MAX_HIT_LAYERS)
+	keep.sort()
+	var out: Array[Dictionary] = []
+	for i: int in keep:
+		out.append(layers[i])
+	return out
+
+
+## Crowd-bus duck envelope: depth (dB, negative) reached `age` seconds after a stinger, with attack, hold, release.
+static func duck_db(age: float, depth: float, attack: float, hold: float, release: float) -> float:
+	if age < 0.0:
+		return 0.0
+	if age < attack:
+		return depth * (age / maxf(attack, 0.001))
+	if age < attack + hold:
+		return depth
+	var r: float = (age - attack - hold) / maxf(release, 0.001)
+	return depth * (1.0 - clampf(r, 0.0, 1.0))

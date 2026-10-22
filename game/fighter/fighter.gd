@@ -1913,6 +1913,7 @@ func debug_frame() -> Dictionary:
 		"contacts": _contacts.duplicate() if _contacts_frame == _frame() else [], "state": _state, "rolling": _roll.active(),
 		"blood_frac": health.blood_frac() if health != null else 1.0, "armor": worn_armor(),
 		"offhand_id": offhand.weapon_id if offhand != null else "", "props": props(), "weapon_log": _wlog.duplicate(),
+		"foot_contacts": {"l": _gait.planted(0), "r": _gait.planted(1)},  # gait index 0 is the left foot (see replant)
 	}
 
 

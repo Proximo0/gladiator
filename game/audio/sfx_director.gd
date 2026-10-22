@@ -21,6 +21,11 @@ const SPURT_SECONDS: float = 4.5
 const MAX_SPURTS: int = 3
 const MAX_PENDING: int = 96
 const LOG_SIZE: int = 48
+const DUCK_BUS: String = "CrowdDuck"
+const DUCK_DEPTH_DB: float = -10.0
+const DUCK_ATTACK: float = 0.06
+const DUCK_HOLD: float = 0.5
+const DUCK_RELEASE: float = 1.2
 const LAYOUT_PATH: String = "res://assets/audio/default_bus_layout.tres"
 
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -45,6 +50,14 @@ var _tracked: Array[Dictionary] = []
 var _amb_low: AudioStreamPlayer = null
 var _amb_high: AudioStreamPlayer = null
 var _stall_check: float = 0.0
+var _meta: Array[Dictionary] = []
+var _duck_age: float = 99.0
+var _duck_base_db: float = 0.0
+## Sounds stopped early to honour a group cap (for tests and the debug overlay).
+var stolen_count: int = 0
+## Sounds skipped because their group was at its cap, and which keys were dropped either way (for tests).
+var capped_count: int = 0
+var dropped_keys: Dictionary = {}
 
 
 func _init() -> void:
@@ -60,12 +73,22 @@ func _ready() -> void:
 		p.attenuation_filter_cutoff_hz = 16000.0
 		add_child(p)
 		_pool.append(p)
+		_meta.append({})
 	for i: int in range(POOL_2D_SIZE):
 		var q: AudioStreamPlayer = AudioStreamPlayer.new()
 		add_child(q)
 		_pool_2d.append(q)
 	_amb_low = _make_loop("crowd/amb_low")
 	_amb_high = _make_loop("crowd/amb_high")
+	var di: int = AudioServer.get_bus_index(DUCK_BUS)
+	if di >= 0:
+		_duck_base_db = AudioServer.get_bus_volume_db(di)
+
+
+func _exit_tree() -> void:
+	var di: int = AudioServer.get_bus_index(DUCK_BUS)
+	if di >= 0:
+		AudioServer.set_bus_volume_db(di, _duck_base_db)
 
 
 ## Install the bus layout when the project did not (so the director still works without the project setting).
@@ -109,6 +132,8 @@ func _physics_process(delta: float) -> void:
 	crowd.tick(delta, action)
 	_run_pending()
 	_update_ambience(delta)
+	_update_cuts()
+	_update_duck(delta)
 	if crowd.take_stall_boo():
 		_crowd_play("boo")
 
@@ -129,7 +154,7 @@ func on_hit(ev: Dictionary, victim: Object = null) -> void:
 			other_mat = "wood"
 	var kind: String = SfxLogic.armor_kind_for(ev.get("armor_ids", []) as Array)
 	var pos: Vector3 = ev.get("point", Vector3.ZERO)
-	for l: Dictionary in SfxLogic.impact_plan(ev, atk_mat, other_mat, kind):
+	for l: Dictionary in SfxLogic.limit_layers(SfxLogic.impact_plan(ev, atk_mat, other_mat, kind)):
 		_queue_layer(l, pos, "SFX")
 	if on_weapon:
 		_crowd_react(ev)
@@ -153,6 +178,7 @@ func on_gore(ge: Dictionary, f: Object = null) -> void:
 	var key: String = SfxLogic.gore_key(kind)
 	if key != "" and _clock - float(_gore_last.get(key, -10.0)) >= GORE_GAP:
 		_gore_last[key] = _clock
+		_duck()
 		_queue(key, pos, 0.0, 1.0, 0.0, "SFX")
 	if kind == "skull_crush":
 		_queue("impact/bone_crack", pos, 2.0, 0.9, 0.0, "SFX")
@@ -173,6 +199,7 @@ func on_gore(ge: Dictionary, f: Object = null) -> void:
 
 func on_died(f: Object = null) -> void:
 	var pos: Vector3 = _head_pos(f)
+	_duck()
 	_queue("voice/death_gurgle", pos, 0.0, 1.0 + 0.06 * _side_sign(f), 0.15, "Voice")
 	crowd.add(0.5)
 	_crowd_play("roar")
@@ -198,6 +225,7 @@ func _crowd_play(kind: String) -> void:
 			_queue_2d("crowd/gasp", -4.0, 1.0, 0.0)
 			_queue_2d("crowd/roar", 0.0, 1.0, 0.45)
 		"finisher":
+			_duck()
 			_queue_2d("crowd/finisher_roar", 0.0, 1.0, 0.2)
 			_queue_2d("crowd/chant", -2.0, 1.0, 2.4)
 
@@ -221,7 +249,8 @@ func _poll(t: Dictionary, delta: float) -> float:
 	var tip: Vector3 = fr.get("tip_pos", pelvis)
 	var upright: bool = state == "standing" or state == "stumbling"
 	# Swing whoosh (and sometimes an effort grunt).
-	var peak: float = (t["whoosh"] as SfxWhooshGate).update(speed if upright else 0.0, delta, _clock)
+	var peak: float = (t["whoosh"] as SfxWhooshGate).update(speed if upright else 0.0, delta, _clock,
+		SfxLogic.whoosh_min_speed(wid), SfxLogic.whoosh_cooldown(wid))
 	if peak > 0.0:
 		var wk: String = SfxLogic.whoosh_key_for(peak, wid)
 		if wk != "":
@@ -377,7 +406,19 @@ func play_key(key: String, pos: Vector3, gain_db: float = 0.0, pitch: float = 1.
 		return true
 	if SfxLogic.is_low_priority(key) and _free_count() <= SfxLogic.POOL_RESERVE:
 		dropped_count += 1
+		dropped_keys[key] = int(dropped_keys.get(key, 0)) + 1
 		return true
+	var group: String = SfxLogic.group_of(key)
+	if SfxLogic.is_low_priority(key) and _total_playing() >= SfxLogic.SOFT_TOTAL_CAP:
+		capped_count += 1
+		dropped_keys[key] = int(dropped_keys.get(key, 0)) + 1
+		return true
+	if _group_count(group) >= SfxLogic.group_cap(group):
+		if SfxLogic.is_low_priority(key) or group == "step" or group == "rattle" or group == "whoosh" or group == "move":
+			capped_count += 1
+			dropped_keys[key] = int(dropped_keys.get(key, 0)) + 1
+			return true
+		_steal_oldest(group)
 	var p: AudioStreamPlayer3D = _free_player()
 	p.stop()
 	p.stream = stream
@@ -386,6 +427,8 @@ func play_key(key: String, pos: Vector3, gain_db: float = 0.0, pitch: float = 1.
 	p.pitch_scale = clampf(pitch * (1.0 + rng.randf_range(-PITCH_JITTER, PITCH_JITTER)), 0.5, 2.0)
 	p.bus = _bus_or_master(bus)
 	p.play()
+	var slot: int = _pool.find(p)
+	_meta[slot] = {"group": group, "start": _clock, "cut": SfxLogic.max_len(key), "db": p.volume_db}
 	return true
 
 
@@ -407,9 +450,79 @@ func play_2d(key: String, gain_db: float = 0.0, pitch: float = 1.0, bus: String 
 	p.stream = stream
 	p.volume_db = SfxLogic.base_db(key) + gain_db
 	p.pitch_scale = clampf(pitch * (1.0 + rng.randf_range(-0.02, 0.02)), 0.5, 2.0)
-	p.bus = _bus_or_master(bus)
+	p.bus = _bus_or_master(bus if key == "crowd/finisher_roar" or bus != "Crowd" else DUCK_BUS)
 	p.play()
 	return true
+
+
+## Playing 3D voices per group (for tests and the debug overlay).
+func group_use() -> Dictionary:
+	var out: Dictionary = {}
+	for i: int in range(_pool.size()):
+		if _pool[i].playing:
+			var g: String = str(_meta[i].get("group", "?"))
+			out[g] = int(out.get(g, 0)) + 1
+	return out
+
+
+func _total_playing() -> int:
+	return _pool.size() - _free_count()
+
+
+func _group_count(group: String) -> int:
+	var n: int = 0
+	for i: int in range(_pool.size()):
+		if _pool[i].playing and str(_meta[i].get("group", "")) == group:
+			n += 1
+	return n
+
+
+func _steal_oldest(group: String) -> void:
+	var best: int = -1
+	var best_t: float = INF
+	for i: int in range(_pool.size()):
+		if _pool[i].playing and str(_meta[i].get("group", "")) == group and float(_meta[i]["start"]) < best_t:
+			best = i
+			best_t = float(_meta[i]["start"])
+	if best >= 0:
+		_pool[best].stop()
+		_meta[best] = {}
+		stolen_count += 1
+
+
+## Fade out and stop sounds that outlive their allowed length, so long tails do not hold voices.
+func _update_cuts() -> void:
+	for i: int in range(_pool.size()):
+		var m: Dictionary = _meta[i]
+		if m.is_empty() or not _pool[i].playing:
+			continue
+		var cut: float = float(m["cut"])
+		if cut <= 0.0:
+			continue
+		var age: float = _clock - float(m["start"])
+		if age >= cut:
+			_pool[i].stop()
+			_meta[i] = {}
+		elif age > cut - SfxLogic.CUT_FADE:
+			_pool[i].volume_db = float(m["db"]) - 30.0 * (age - (cut - SfxLogic.CUT_FADE)) / SfxLogic.CUT_FADE
+
+
+## A gore or finisher stinger: restart the crowd duck envelope.
+func _duck() -> void:
+	_duck_age = 0.0
+
+
+func _update_duck(delta: float) -> void:
+	_duck_age += delta
+	var di: int = AudioServer.get_bus_index(DUCK_BUS)
+	if di < 0:
+		return
+	AudioServer.set_bus_volume_db(di, _duck_base_db + duck_level_db())
+
+
+## Current duck amount (dB, 0 or negative).
+func duck_level_db() -> float:
+	return SfxLogic.duck_db(_duck_age, DUCK_DEPTH_DB, DUCK_ATTACK, DUCK_HOLD, DUCK_RELEASE)
 
 
 func _note(key: String) -> void:
@@ -468,7 +581,7 @@ func _make_loop(key: String) -> AudioStreamPlayer:
 	if ResourceLoader.exists(path):
 		stream = load(path) as AudioStream
 	var p: AudioStreamPlayer = AudioStreamPlayer.new()
-	p.bus = _bus_or_master("Crowd")
+	p.bus = _bus_or_master(DUCK_BUS if AudioServer.get_bus_index(DUCK_BUS) >= 0 else "Crowd")
 	p.volume_db = -60.0
 	if stream is AudioStreamWAV:
 		var w: AudioStreamWAV = stream as AudioStreamWAV

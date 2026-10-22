@@ -15,13 +15,16 @@ var armed: bool = true
 
 
 ## Returns the predicted peak speed when a whoosh should start now, else 0.
-func update(speed: float, delta: float, now: float) -> float:
+## `min_speed` and `cooldown` are per weapon class (see SfxLogic.whoosh_min_speed / whoosh_cooldown); 0 means the default.
+func update(speed: float, delta: float, now: float, min_speed: float = 0.0, cooldown: float = 0.0) -> float:
+	var lo: float = min_speed if min_speed > 0.0 else SfxLogic.WHOOSH_MIN_SPEED
+	var cd: float = cooldown if cooldown > 0.0 else COOLDOWN
 	var accel: float = (speed - prev_speed) / maxf(delta, 0.0001)
 	prev_speed = speed
-	if speed < SfxLogic.WHOOSH_MIN_SPEED * REARM_FRACTION:
+	if speed < lo * REARM_FRACTION:
 		armed = true
 		return 0.0
-	if not armed or speed < SfxLogic.WHOOSH_MIN_SPEED or now - last_time < COOLDOWN:
+	if not armed or speed < lo or now - last_time < cd:
 		return 0.0
 	armed = false
 	last_time = now
