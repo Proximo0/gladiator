@@ -5,8 +5,11 @@ extends Node
 ## signals `inputs_applied(tick, inputs)` and `match_over(result)`, plus `seed` and `fighters` when present.
 ##
 ## File format (version 1, JSON):
-##   {version, seed, loadouts, personalities, tuning: {diff}, time_limit_s, ticks: N, inputs: [[[5 ints],[5 ints]], ...], result,
-##    trace_every, trace: [[tick, hash, [mm ints: every part of every fighter]], ...]}
+##   {version, seed, loadouts, personalities, tuning: {diff}, time_limit_s, fight_start_tick, ticks: N,
+##    inputs: [[[5 ints],[5 ints]], ...], result, trace_every, trace: [[tick, hash, [mm ints: every part of every fighter]], ...]}
+## `fight_start_tick` is the match tick the fight clock starts from (the intro's release; 0 without an intro or in an
+## older file). It is read from the Match on every tick and at match_over, not with the header at tick 0, because the
+## offline intro skip sets it between two physics ticks, long after the header was taken.
 ## `trace` is how a replay measures its divergence (metres) and finds the first tick that differs.
 ## F12 saves the recording; `match_over` saves it too when the run has `--record`. A scripted (headless, capture) run
 ## never writes unless `--record` is given.
@@ -27,6 +30,7 @@ var _loadouts: Array = []
 var _personalities: Array = []
 var _tuning: Dictionary = {}
 var _time_limit_s: float = 0.0
+var _fight_start_tick: int = 0
 var _inputs: Array = []
 var _trace: Array = []
 var _result: Dictionary = {}
@@ -46,6 +50,7 @@ func _reset() -> void:
 	_personalities = []
 	_tuning = {}
 	_time_limit_s = 0.0
+	_fight_start_tick = 0
 	_inputs = []
 	_trace = []
 	_result = {}
@@ -61,7 +66,7 @@ func recording() -> Dictionary:
 	return {
 		"version": VERSION, "seed": _seed, "loadouts": _loadouts.duplicate(true),
 		"personalities": _personalities.duplicate(true), "tuning": _tuning.duplicate(true),
-		"time_limit_s": _time_limit_s, "ticks": _inputs.size(), "inputs": _inputs.duplicate(true), "result": _result.duplicate(true),
+		"time_limit_s": _time_limit_s, "fight_start_tick": _fight_start_tick, "ticks": _inputs.size(), "inputs": _inputs.duplicate(true), "result": _result.duplicate(true),
 		"trace_every": TRACE_EVERY, "trace": _trace.duplicate(true),
 	}
 
@@ -110,11 +115,21 @@ func _on_inputs_applied(tick: int, inputs: Array) -> void:
 	for a: Variant in inputs:
 		row.append(quantize_input(a as Array))
 	_inputs.append(row)
+	_read_fight_start()
 	if tick % TRACE_EVERY == 0 and _match != null:
 		var fighters: Variant = _match.get("fighters")
 		if fighters is Array:
 			var s: Array = sample_state(fighters as Array)
 			_trace.append([tick, s[0], s[1]])
+
+
+## The Match's fight clock start (duck-typed; absent on a match without a fight clock).
+func _read_fight_start() -> void:
+	if _match == null:
+		return
+	var fs: Variant = _match.get("fight_start_tick")
+	if fs != null:
+		_fight_start_tick = maxi(int(fs), 0)
 
 
 func _capture_header() -> void:
@@ -140,6 +155,7 @@ func _capture_header() -> void:
 
 func _on_match_over(result: Dictionary) -> void:
 	_result = json_safe(result) as Dictionary
+	_read_fight_start()
 	if result.has("seed"):
 		_seed = int(result["seed"])
 	if result.get("loadouts") is Array:
@@ -196,6 +212,17 @@ static func json_safe(v: Variant) -> Variant:
 	return v
 
 
+## The Match setup config that replays `rec` from tick 0: same seed, loadouts, personalities, time limit and fight
+## clock start (the intro's release), no loop. `limit_s` overrides the time limit when > 0.
+static func replay_config(rec: Dictionary, presentation: bool, limit_s: float = 0.0) -> Dictionary:
+	return {
+		"mode": "bot_vs_bot", "seed": int(rec.get("seed", 0)), "loadouts": rec.get("loadouts", []),
+		"personalities": rec.get("personalities", []), "presentation": presentation, "loop": false,
+		"time_limit_s": limit_s if limit_s > 0.0 else float(rec.get("time_limit_s", 0.0)),
+		"fight_start_tick": int(rec.get("fight_start_tick", 0)),
+	}
+
+
 static func to_json(rec: Dictionary) -> String:
 	return JSON.stringify(json_safe(rec))
 
@@ -230,6 +257,7 @@ static func parse(text: String) -> Dictionary:
 	d["seed"] = int(d["seed"])
 	d["ticks"] = int(d["ticks"])
 	d["time_limit_s"] = float(d.get("time_limit_s", 0.0))
+	d["fight_start_tick"] = maxi(int(d.get("fight_start_tick", 0)), 0)
 	var inputs: Array = []
 	for row: Variant in d["inputs"] as Array:
 		var r: Array = []
