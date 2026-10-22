@@ -14,7 +14,7 @@ on:
 
 concurrency:
   group: sims-order
-  cancel-in-progress: true
+  cancel-in-progress: false  # every shuffled order that finishes is a new data point; GitHub keeps only the newest pending run
 
 env:
   GODOT_VERSION: 4.7.2

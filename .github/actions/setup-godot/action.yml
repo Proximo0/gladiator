@@ -1,5 +1,5 @@
 name: setup-godot
-description: Install the pinned headless-capable Godot editor binary as `godot` (cached between runs).
+description: Install the pinned headless-capable Godot editor binary as `godot` and restore the .godot import cache (both cached between runs).
 runs:
   using: composite
   steps:
@@ -21,3 +21,11 @@ runs:
       shell: bash
       run: |
         echo "$HOME/godot-bin" >> "$GITHUB_PATH"
+    # The import cache: a cold `godot --import` takes ~15 s, a warm one ~6 s (4 cores, main a77dd4d). Godot re-imports
+    # any source whose hash changed, so a stale cache only costs time, never a wrong import. The key moves when an
+    # .import file or project.godot changes; restore-keys falls back to the newest cache of any key.
+    - uses: actions/cache@v4
+      with:
+        path: .godot
+        key: godot-import-${{ env.GODOT_VERSION }}-${{ hashFiles('project.godot', '**/*.import') }}
+        restore-keys: godot-import-${{ env.GODOT_VERSION }}-
