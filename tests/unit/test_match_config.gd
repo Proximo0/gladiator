@@ -96,3 +96,7 @@ func test_names_distinct_and_stable() -> void:
 func test_describe() -> void:
 	assert_eq(MatchConfig.describe({"weapon": "gladius", "offhand": "shield_round", "armor": {"head": "helm_iron"}}),
 		"gladius+shield_round [helm_iron]")
+
+
+func test_practice_is_a_known_mode() -> void:
+	assert_eq(str(MatchConfig.normalize({"mode": "practice"}, 1)["mode"]), "practice")

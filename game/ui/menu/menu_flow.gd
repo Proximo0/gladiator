@@ -47,6 +47,8 @@ var _rating_line: String = ""
 var _pause: MenuPanel = null
 var _pause_dim: ColorRect
 var _hint: ControlsHint
+var _practice: PracticeSession = null
+var _practice_panel: PracticePanel = null
 var _pause_btn: Button
 var _backdrop: Node3D = null
 var _cam: Camera3D = null
@@ -121,6 +123,9 @@ func _build_ui() -> void:
 	_root.add_child(_pause_dim)
 	_hint = ControlsHint.new()
 	_root.add_child(_hint)
+	_practice_panel = PracticePanel.new()
+	_practice_panel.visible = false
+	_root.add_child(_practice_panel)
 	_pause_btn = MenuTheme.pause_button()
 	_pause_btn.pressed.connect(_pause_game)
 	_pause_btn.visible = false
@@ -166,6 +171,11 @@ func _layout() -> void:
 			hint_y = block + 8.0
 	if _hint.visible:
 		_hint.position = Vector2((_root.size.x - _hint.size.x) * 0.5, hint_y)
+	if _practice_panel.visible:
+		var card_y: float = hint_y
+		if TouchControls.active() and vp.x < vp.y:
+			card_y = pause_pos.y + _pause_btn.size.y + 6.0  # portrait: the pause button sits where the card would
+		_practice_panel.fit(_root.size.x, card_y, ppu)
 	_pause_btn.position = pause_pos
 
 
@@ -181,6 +191,7 @@ func _hide_screens() -> void:
 	_pause_dim.visible = false
 	_hint.hide_now()
 	_pause_btn.visible = false
+	_practice_panel.visible = false
 	if _pause != null:
 		_pause.queue_free()
 		_pause = null
@@ -212,7 +223,12 @@ func _on_title(id: String) -> void:
 		"local_2p":
 			_open_loadout("local_2p")
 		"quick":
-			_open_online(true)
+			if PracticeSave.shared().should_offer():
+				_show_practice_offer()
+			else:
+				_open_online(true)
+		"practice":
+			_begin_practice()
 		"leaderboard":
 			_open_leaderboard()
 		"shop":
@@ -228,6 +244,55 @@ func _on_title(id: String) -> void:
 			_options.open()
 		"quit":
 			get_tree().quit()
+
+
+## First Quick Match of a player who never did the training: offer it once (either answer is remembered).
+func _show_practice_offer() -> void:
+	PracticeSave.shared().mark_offered()
+	_hide_screens()
+	_ensure_backdrop()
+	screen = Screen.PAUSED  # a card over the backdrop; Esc must not open the fight pause
+	_pause_dim.visible = true
+	_show_panel("DISCIPLINA", "First time in the sand?",
+			"Steering the sword by hand takes a minute to learn. Train against a dummy that never hits back.",
+			[["practice", "Train first (3 minutes)"], ["quick_anyway", "Go to Quick Match"], ["title", "Back"]])
+
+
+## Practice: a Match of mode "practice" (you against a training dummy) with the guided prompts of PracticeSession.
+func _begin_practice() -> void:
+	_close_match()
+	_hide_screens()
+	_free_backdrop()
+	settings.apply_quality()
+	var cfg: Dictionary = {
+		"mode": "practice", "seed": _new_seed(), "time_limit_s": 100000.0,
+		"loadouts": [PracticeSession.PLAYER_LOADOUT.duplicate(true), PracticeSession.DUMMY_LOADOUT.duplicate(true)],
+	}
+	var m := Match.new()
+	m.name = "Match"
+	_host.add_child(m)
+	m.setup(cfg)
+	if m.presenter != null and m.presenter.blood != null:
+		m.presenter.blood.set_quality(GfxQuality.blood_level())
+	current_match = m
+	state.last_mode = "practice"
+	_hook_match(m)
+	match_started.emit(m)
+	_practice = PracticeSession.new()
+	_practice.name = "PracticeSession"
+	add_child(_practice)
+	_practice.attach(m, _practice_panel)
+	_practice.quick_match_requested.connect(_open_online.bind(true))
+	_enter_fight()
+	_practice_panel.visible = true
+
+
+func _end_practice() -> void:
+	if _practice != null:
+		_practice.queue_free()
+		_practice = null
+	if _practice_panel != null:
+		_practice_panel.visible = false
 
 
 func _ensure_backdrop() -> void:
@@ -335,7 +400,9 @@ func _enter_fight() -> void:
 	screen = Screen.FIGHT
 	_hide_screens()
 	var mode: String = str(current_match.config.get("mode", "bot_vs_bot")) if current_match != null else "bot_vs_bot"
-	if mode != "bot_vs_bot":
+	if mode == "practice":
+		_pause_btn.visible = DisplayServer.is_touchscreen_available() or Flags.args.has("touch")
+	elif mode != "bot_vs_bot":
 		var touch: bool = DisplayServer.is_touchscreen_available() or Flags.args.has("touch")
 		var pad: bool = not Input.get_connected_joypads().is_empty()
 		var px_per_unit: float = maxf(get_viewport().get_final_transform().get_scale().x * _layer.scale.x, 0.01)
@@ -347,6 +414,7 @@ func _enter_fight() -> void:
 
 
 func _close_match() -> void:
+	_end_practice()
 	if _net != null:
 		_net.detach_match()
 	get_tree().paused = false
@@ -583,6 +651,10 @@ func _pause_game() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_pause_btn.visible = false
 	_pause_dim.visible = true
+	if state.last_mode == "practice":
+		_practice_panel.visible = false
+		_show_panel("PAVSA", "Paused", "", [["resume", "Resume"], ["quick", "Quick Match"], ["title", "Title"]])
+		return
 	_show_panel("PAVSA", "Paused", "", [["resume", "Resume"], ["loadout", "Change loadout"], ["title", "Title"]])
 
 
@@ -596,6 +668,7 @@ func _resume() -> void:
 	if _pause != null:
 		_pause.queue_free()
 		_pause = null
+	_practice_panel.visible = _practice != null
 	get_tree().paused = false
 	if current_match != null:
 		for r: Variant in current_match.readers:
@@ -627,6 +700,10 @@ func _on_panel(id: String) -> void:
 			_resume()
 		"online":
 			_open_online(_quick)
+		"practice":
+			_begin_practice()
+		"quick", "quick_anyway":
+			_open_online(true)
 		"net_rematch":
 			_on_online_start()
 		"rematch":

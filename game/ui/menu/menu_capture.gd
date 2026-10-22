@@ -3,7 +3,7 @@ extends Node3D
 ## godot --path . --resolution 1280x720 res://game/ui/menu/menu_capture.tscn -- --capture --out=/tmp/menu --tag=landscape
 ## --shots=title,loadout,loadout_locked,loadout2p,options,controls,fight,pause,result (default: all)
 
-const SHOT_LIST: PackedStringArray = ["title", "loadout", "loadout_locked", "loadout2p", "options", "controls", "fight", "pause", "result"]
+const SHOT_LIST: PackedStringArray = ["title", "loadout", "loadout_locked", "loadout2p", "options", "controls", "fight", "pause", "result", "offer", "practice", "practice_swing", "practice_grab", "practice_free"]
 
 var _flow: MenuFlow
 
@@ -58,6 +58,33 @@ func _run() -> void:
 			"result":
 				_flow._resume()
 				_flow._show_result({"winner": 0}, _flow._fight_token)
+			"offer":
+				_flow._show_practice_offer()
+			"practice":
+				_flow._begin_practice()
+				await _frames(90)
+			"practice_swing":
+				_flow._begin_practice()
+				await _frames(20)
+				_flow._practice.skip_step()
+				_flow._practice.skip_step()
+				await _frames(60)
+				get_tree().paused = true  # freeze the tick so the sample tip speed stays on the bar
+				_flow._practice_panel.update_live(4.6, 3.0, 0.34, 4.6)
+				await _snap(s, 4)
+				get_tree().paused = false
+				continue
+			"practice_grab":
+				_flow._begin_practice()
+				await _frames(20)
+				for i: int in 6:
+					_flow._practice.skip_step()
+				await _frames(120)
+			"practice_free":
+				_flow._begin_practice()
+				await _frames(20)
+				_flow._practice.skip_all()
+				await _frames(120)
 		await _snap(s, 4 if s == "fight" else 40)
 	get_tree().paused = false
 	get_tree().quit()

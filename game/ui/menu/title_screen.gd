@@ -3,7 +3,7 @@ extends Control
 ## SANDBLOOD title and main menu over the arena backdrop. Quick Match (online, the main mode) is first and focused;
 ## "Online 1v1 (direct IP)" stays further down as the advanced entry.
 
-signal chosen(id: String)  ## "quick", "fight", "local_2p", "leaderboard", "online", "bots", "options", "quit"
+signal chosen(id: String)  ## "quick", "practice", "fight", "local_2p", "leaderboard", "online", "bots", "options", "quit"
 
 const TITLE_MIN: float = 56.0
 const EDGE: float = 14.0  ## Clear space kept at the top and bottom.
@@ -54,7 +54,7 @@ func _init() -> void:
 	_gap = Control.new()
 	_gap.custom_minimum_size = Vector2(0.0, 30.0)
 	_col.add_child(_gap)
-	var entries: Array = [["quick", "Quick Match"], ["fight", "Fight  (vs CPU)"], ["local_2p", "Local 2 players"],
+	var entries: Array = [["quick", "Quick Match"], ["practice", "Training  (start here)" if PracticeSave.shared().should_offer() else "Training"], ["fight", "Fight  (vs CPU)"], ["local_2p", "Local 2 players"],
 			["leaderboard", "Leaderboard"], ["shop", "Shop"], ["online", "Online 1v1 (direct IP)"], ["bots", "Watch bots"], ["options", "Options"]]
 	if not OS.has_feature("mobile") and not OS.has_feature("web"):
 		entries.append(["quit", "Quit"])

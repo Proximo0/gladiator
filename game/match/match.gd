@@ -83,6 +83,27 @@ func force_inputs(tick_inputs: Array) -> void:
 	_replaying = true
 
 
+func is_practice() -> bool:
+	return str(config.get("mode", "")) == "practice"
+
+
+## Practice only: rebuilds the bout (both fighters back at their spawns) with new loadouts; null keeps a side's.
+## The training dummy's blood is set to `dummy_blood_frac` of the way from death (blood_death) to full when that is >= 0
+## (a low value opens the finisher window).
+func reset_practice(player_loadout: Variant = null, dummy_blood_frac: float = -1.0) -> void:
+	if not is_practice() or not _built:
+		return
+	var lo: Array = config["loadouts"]
+	if player_loadout is Dictionary:
+		lo[0] = (player_loadout as Dictionary).duplicate(true)
+	_teardown()
+	_replaying = false
+	_start_match()
+	if dummy_blood_frac >= 0.0:
+		var dead_l: float = Tuning.shared().blood_death
+		(fighters[1] as Fighter).health.blood = lerpf(dead_l, FighterHealth.START_BLOOD, clampf(dummy_blood_frac, 0.0, 1.0))
+
+
 func presenting() -> bool:
 	return bool(config.get("presentation", true))
 
@@ -103,7 +124,7 @@ func _build() -> void:
 		presenter = MatchPresenter.new()
 		presenter.name = "Presenter"
 		add_child(presenter)
-		presenter.build("follow" if str(config["mode"]) == "player_vs_cpu" else "wide")
+		presenter.build("follow" if str(config["mode"]) in ["player_vs_cpu", "practice"] else "wide")
 		Flags.register_hash(Callable(self, "state_hash"))
 	else:
 		_build_collision()
@@ -160,6 +181,8 @@ func _start_match() -> void:
 	Engine.time_scale = 1.0
 	_judge = MatchJudge.new(float(config["time_limit_s"]))
 	names = MatchConfig.names_for(seed)
+	if is_practice():
+		names = ["Discipulus", "Palus"]
 	var mode: String = str(config["mode"])
 	var radius: float = Tuning.shared().arena_radius
 	fighters = []
@@ -180,14 +203,14 @@ func _start_match() -> void:
 	brains = [null, null]
 	readers = [null, null]
 	for side: int in 2:
-		var human: bool = (mode == "local_2p") or (mode == "player_vs_cpu" and side == 0)
+		var human: bool = (mode == "local_2p") or ((mode == "player_vs_cpu" or mode == "practice") and side == 0)
 		if human:
 			var r := InputReader.new()
 			r.device = _device_for(side, mode)
 			r.name = "Reader%d" % side
 			add_child(r)
 			readers[side] = r
-		else:
+		elif mode != "practice":  # practice: the training dummy has no brain and stands still
 			brains[side] = FighterBrain.new(seed * BRAIN_SEED_MUL + side * 104729 + 17,
 					(config["personalities"] as Array)[side])
 	if presenter != null:
@@ -230,7 +253,7 @@ func _physics_process(delta: float) -> void:
 	stats.on_frames(frames, delta)
 	if presenter != null:
 		presenter.tick(frames, delta)
-	var verdict: Dictionary = _judge.update(frames, tick, delta)
+	var verdict: Dictionary = {} if is_practice() else _judge.update(frames, tick, delta)
 	if not verdict.is_empty():
 		_finish(verdict, frames)
 		_apply_idle()
@@ -254,6 +277,8 @@ func _collect_inputs(frames: Array, delta: float) -> Array:
 	for i: int in 2:
 		if readers[i] != null:
 			out.append((readers[i] as InputReader).read())
+		elif brains[i] == null:
+			out.append(FighterInput.new())  # the practice dummy
 		else:
 			out.append((brains[i] as FighterBrain).think(frames[i], frames[1 - i], delta))
 	return out

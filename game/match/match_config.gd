@@ -3,7 +3,7 @@ extends RefCounted
 ## Pure, seeded match setup: random loadouts over every weapon, offhand and armor mix, random brain personalities,
 ## gladiator names, and `normalize()`, which fills every missing key of a Match config. Same seed, same match.
 
-const MODES: PackedStringArray = ["bot_vs_bot", "player_vs_cpu", "local_2p"]
+const MODES: PackedStringArray = ["bot_vs_bot", "player_vs_cpu", "local_2p", "practice"]
 const DEFAULT_TIME_LIMIT_S: float = 180.0
 const SHIELD_CHANCE: float = 0.5
 const FISTS_SHIELD_CHANCE: float = 0.15
