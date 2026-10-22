@@ -615,3 +615,24 @@ func test_held_fighter_pulls_back_and_shoves() -> void:
 		if inp.has(FighterInput.SHOVE):
 			shoves += 1
 	assert_true(shoves >= 1)
+
+
+## Every shield is raised alike: the brain keys on the shield shape, not on "shield" in the id.
+func _offhand_presses(offhand: String) -> int:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(1.8)
+	f[0]["offhand_id"] = offhand
+	var n: int = 0
+	for i in 120:
+		f[0]["tick"] = i
+		f[1]["tick"] = i
+		if b.think(f[0], f[1], DT).has(FighterInput.OFFHAND):
+			n += 1
+	return n
+
+
+func test_raises_every_shield_like_the_round_shield() -> void:
+	var round_n: int = _offhand_presses("shield_round")
+	assert_true(round_n > 0, "round shield raised")
+	for id: String in ["scutum", "buckler", "parma", "pelta", "aspis", "kite_shield", "tower_shield"]:
+		assert_eq(_offhand_presses(id), round_n, id)
