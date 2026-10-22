@@ -9,6 +9,7 @@ class FakeMatch:
 	signal match_over(result: Dictionary)
 	var seed: int = 77
 	var fighters: Array = []
+	var fight_start_tick: int = 0
 
 
 func _sample_recording() -> Dictionary:
@@ -140,3 +141,35 @@ func test_save_and_load_file() -> void:
 	empty.free()
 	r.free()
 	m.free()
+
+
+## The intro skip moves fight_start_tick after the header (tick 0) was taken: the recording keeps the latest value.
+func test_fight_start_tick_set_after_the_header_is_kept() -> void:
+	var m := FakeMatch.new()
+	var r := FlightRecorder.new()
+	r.attach(m)
+	m.inputs_applied.emit(0, [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]])
+	m.inputs_applied.emit(1, [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]])
+	assert_eq(r.recording()["fight_start_tick"], 0, "held: no release yet")
+	m.fight_start_tick = 2  # start_fight_clock between ticks 1 and 2
+	m.inputs_applied.emit(2, [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]])
+	assert_eq(r.recording()["fight_start_tick"], 2)
+	m.match_over.emit({"winner": -1, "reason": "time", "ticks": 3, "fight_ticks": 1})
+	var back: Dictionary = FlightRecorder.parse(FlightRecorder.to_json(r.recording()))
+	assert_eq(back["fight_start_tick"], 2)
+	assert_eq(typeof(back["fight_start_tick"]), TYPE_INT)
+	assert_eq(FlightRecorder.replay_config(back, false)["fight_start_tick"], 2)
+	r.free()
+	m.free()
+
+
+func test_older_file_without_fight_start_tick_replays_from_zero() -> void:
+	var rec: Dictionary = _sample_recording()
+	assert_false(rec.has("fight_start_tick"))
+	var back: Dictionary = FlightRecorder.parse(FlightRecorder.to_json(rec))
+	assert_eq(back["fight_start_tick"], 0)
+	var cfg: Dictionary = FlightRecorder.replay_config(back, false, 9.0)
+	assert_eq(cfg["fight_start_tick"], 0)
+	assert_near(float(cfg["time_limit_s"]), 9.0)
+	assert_eq(cfg["seed"], 42)
+	assert_false(bool(cfg["loop"]))

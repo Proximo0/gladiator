@@ -233,3 +233,64 @@ func test_portrait_touch_uses_compact_meters_that_leave_the_arena() -> void:
 	assert_eq(m.custom_minimum_size, BloodMeter.METER_SIZE)
 	m.free()
 	assert_true(BloodMeter.compact_bar_rect().end.x < BloodMeter.compact_ring_centre().x - BloodMeter.COMPACT_RING_R, "bar and ring do not overlap")
+
+
+func test_clock_text_counts_up_then_down_the_last_30_s() -> void:
+	assert_eq(HUD.clock_text(0.0, 180.0), "0:00")
+	assert_eq(HUD.clock_text(59.99, 180.0), "0:59", "whole seconds gone")
+	assert_eq(HUD.clock_text(61.0, 180.0), "1:01")
+	assert_eq(HUD.clock_text(149.9, 180.0), "2:29", "30.1 s left: still counting up")
+	assert_eq(HUD.clock_text(150.0, 180.0), "0:30", "30 s left: the countdown starts")
+	assert_eq(HUD.clock_text(150.5, 180.0), "0:30", "seconds left round up")
+	assert_eq(HUD.clock_text(179.5, 180.0), "0:01")
+	assert_eq(HUD.clock_text(180.0, 180.0), "0:00")
+	assert_eq(HUD.clock_text(200.0, 180.0), "0:00", "never below zero")
+	assert_eq(HUD.clock_text(-3.0, 180.0), "0:00", "never negative before the release")
+	assert_eq(HUD.clock_text(125.0, 0.0), "2:05", "no limit: counts up only")
+
+
+func test_clock_counts_down_only_near_the_limit() -> void:
+	assert_false(HUD.clock_counts_down(0.0, 180.0))
+	assert_true(HUD.clock_counts_down(150.0, 180.0))
+	assert_true(HUD.clock_counts_down(0.0, 20.0), "a short limit counts down from the start")
+	assert_false(HUD.clock_counts_down(500.0, 0.0), "no limit, no countdown")
+
+
+func test_clock_mouse_sits_bottom_centre_above_the_diagnostics_line() -> void:
+	var vp := Vector2(1920.0, 1080.0)
+	var c := Vector2(150.0, 60.0)
+	var p: Vector2 = HUD.clock_position(vp, c, 0.667, Vector4.ZERO, false, false, Vector2.ZERO, Vector2.ZERO)
+	assert_near(p.x + c.x * 0.5, vp.x * 0.5, 0.01, "centred")
+	assert_true(p.y + c.y <= vp.y - HUD.diag_clear(), "clear of the render-toggles plate")
+	var meters: Array = HUD.meter_positions(vp, BloodMeter.METER_SIZE, 0.667, Vector4.ZERO, false)
+	assert_true(p.x > (meters[0] as Vector2).x + BloodMeter.METER_SIZE.x, "right of the player's meter")
+	assert_true(p.x + c.x < (meters[1] as Vector2).x, "left of the opponent's meter")
+
+
+func test_clock_touch_landscape_sits_left_of_the_pause_button() -> void:
+	var vp := Vector2(1920.0, 886.0)  # a 2340x1080 phone
+	var k: float = 1080.0 / 886.0
+	var c := Vector2(120.0, 50.0)
+	var ins := Vector4(90.0, 0.0, 0.0, 0.0)
+	var p: Vector2 = HUD.clock_position(vp, c, k, ins, true, false, Vector2.ZERO, Vector2.ZERO)
+	var pause: float = HUD.pause_side(vp, k)
+	var pause_left: float = (vp.x - pause) * 0.5
+	assert_true(p.x + c.x <= pause_left, "left of the pause button")
+	assert_near(pause_left - (p.x + c.x), HUD.CLOCK_GAP_PX / k, 0.01)
+	var meters: Array = HUD.meter_positions(vp, BloodMeter.METER_SIZE * 0.7, k, ins, true)
+	assert_true(p.x > (meters[0] as Vector2).x + BloodMeter.METER_SIZE.x * 0.7, "right of the player's meter")
+	assert_true(p.y >= 0.0 and p.y + c.y <= pause + HUD.TOUCH_EDGE_PX / k + 0.01, "in the pause button's row")
+
+
+func test_clock_touch_portrait_sits_under_the_players_meter() -> void:
+	var meter_at := Vector2(20.0, 30.0)
+	var meter := Vector2(400.0, 190.0)
+	var p: Vector2 = HUD.clock_position(Vector2(1000.0, 2000.0), Vector2(100.0, 40.0), 0.5, Vector4.ZERO, true, true, meter_at, meter)
+	assert_near(p.x, meter_at.x)
+	assert_true(p.y > meter_at.y + meter.y, "below the meter")
+
+
+func test_pause_side_matches_menu_flow() -> void:
+	assert_near(HUD.pause_side(Vector2(1920.0, 1080.0), 1.0), 96.0, 0.001, "landscape: the design size")
+	assert_near(HUD.pause_side(Vector2(1920.0, 1080.0), 0.1), MenuFlow.PAUSE_MIN_PX / 0.1, 0.001, "never under the on-screen minimum")
+	assert_near(HUD.pause_side(Vector2(1000.0, 2000.0), 1.0), 96.0 * 1000.0 / MenuFlow.PORTRAIT_UNITS, 0.001, "portrait menu scale")
