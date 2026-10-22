@@ -12,6 +12,8 @@ const MAX_PLAYS_PER_S: float = 45.0
 const MEAN_MIN_SECS: float = 8.0
 const MAX_MEAN_PLAYS_PER_S: float = 25.0  # requests, before the voice caps drop any; run-to-run varies by about 10 percent
 const MAX_STEPS_PER_S: float = 7.0
+## Both fighters sprint in to the opening clash, so a fight that ends soon after is mostly run steps; the step rate uses at least this many seconds.
+const STEPS_MIN_SECS: float = 12.0
 const MAX_POOL_FRACTION: float = 0.8
 
 
@@ -93,7 +95,7 @@ func run() -> Array:
 		missing += int(o["missing"])
 		peak = maxi(peak, int(o["peak"]))
 		var steps: int = int((o["counts"] as Dictionary).get("move/footstep_sand", 0)) + int((o["counts"] as Dictionary).get("move/footstep_run", 0))
-		worst_steps = maxf(worst_steps, float(steps) / maxf(float(o["secs"]), 1.0))
+		worst_steps = maxf(worst_steps, float(steps) / maxf(float(o["secs"]), STEPS_MIN_SECS))
 		for k: Variant in o["counts"]:
 			all_keys[k] = int(all_keys.get(k, 0)) + int(o["counts"][k])
 		rows.append(row("audio %s v %s" % [c[1], c[2]], null, "secs=%.1f peak_players=%d/%d mean_players=%.1f max/s=%.0f mean/s=%.1f pool_full_drops=%d capped=%d stolen=%d finisher_plays=%d lost_important=%s inversions=%d peak_use=%s" % [o["secs"], o["peak"], o["pool_size"], o["pool_mean"], o["max_per_s"], o["mean"], o["dropped"], o["capped"], o["stolen"], o["finisher_plays"], o["lost"], o["inversions"], o["peak_use"]]))

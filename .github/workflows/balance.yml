@@ -1,5 +1,5 @@
-# Weapon balance round-robin fanned out over 20 runners (tools/balance_matrix.py, docs/balance_matrix.md).
-# The collect job merges the shards (hit logs dropped) into docs/balance_runs/<sha>.json.gz and commits it to the
+# Weapon balance round-robin fanned out over 20 runners, for the pushed weapon data and for main's (the "before") (tools/balance_matrix.py, docs/balance_matrix.md).
+# The collect job merges the shards (hit logs dropped) into docs/balance_runs/<sha>.json.gz (and <sha>-main.json.gz) and commits it to the
 # branch that ran, so a cloud session without artifact access can `git pull` it; `tools/balance_matrix.py report` reads it.
 name: balance
 
@@ -11,7 +11,7 @@ on:
 
 concurrency:
   group: balance-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: true  # a newer push to the same branch supersedes the sweep (the account has 20 runners for every workflow)
 
 permissions:
   contents: write
@@ -22,26 +22,36 @@ env:
 
 jobs:
   shard:
-    name: balance-${{ matrix.shard }}
+    name: balance-${{ matrix.data }}-${{ matrix.shard }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      max-parallel: 14  # leave runners for the checks workflow (20 concurrent jobs on a free account)
+      max-parallel: 14  # leave runners for checks.yml
       matrix:
+        data: [branch, main]
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
       - name: Fights
         shell: bash
+        env:
+          MSG: ${{ github.event.head_commit.message }}
         run: |
+          # main's numbers only when the commit message asks for them ("[main]") or on a manual run.
+          if [ "${{ matrix.data }}" = main ] && [ "${{ github.event_name }}" = push ] && [[ "$MSG" != *"[main]"* ]]; then
+            exit 0
+          fi
+          if [ "${{ matrix.data }}" = main ]; then
+            git fetch -q --depth=1 origin main && git checkout FETCH_HEAD -- data/weapons.json data/armor.json
+          fi
           godot --headless --path . --import > /tmp/import.log 2>&1 || { cat /tmp/import.log; exit 1; }
           python3 tools/balance_matrix.py run --fights=20 --jobs=4 --shard=${{ matrix.shard }} --nshards=20 --out=out/balance/shard.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: balance-${{ matrix.shard }}
+          name: balance-${{ matrix.data }}-${{ matrix.shard }}
           path: out/balance/shard.json
           if-no-files-found: ignore
 
@@ -53,14 +63,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: balance-*
+          pattern: balance-branch-*
           path: shards
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: balance-main-*
+          path: shards_main
+        continue-on-error: true
       - name: Commit merged records
         shell: bash
         run: |
           mkdir -p docs/balance_runs
-          f=docs/balance_runs/${GITHUB_SHA::7}.json.gz
-          python3 - "$f" shards/*/shard.json <<'PY'
+          for v in branch main; do
+          d=shards; f=docs/balance_runs/${GITHUB_SHA::7}.json.gz
+          if [ $v = main ]; then d=shards_main; f=docs/balance_runs/${GITHUB_SHA::7}-main.json.gz; fi
+          ls $d/*/shard.json > /dev/null 2>&1 || continue
+          python3 - "$f" $d/*/shard.json <<'PY'
           import gzip, json, sys
           recs = []
           for fn in sys.argv[2:]:
@@ -73,8 +91,9 @@ jobs:
               json.dump({"sha": "${{ github.sha }}", "records": recs}, f)
           print("BALANCE collected %d records" % len(recs))
           PY
+          git add "$f"
+          done
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$f"
           git commit -qm "Balance run ${GITHUB_SHA::7}: merged round-robin records"
           for i in 1 2 3 4; do git pull -q --rebase origin "$GITHUB_REF_NAME" && git push -q origin "HEAD:$GITHUB_REF_NAME" && break; sleep $((i * 3)); done
