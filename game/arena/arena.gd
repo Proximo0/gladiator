@@ -1,7 +1,8 @@
 class_name Arena
 extends Node3D
 ## The sand arena, built entirely in code: floor collider, stone wall with a wooden rail, stepped stands with a
-## blocky crowd, banners, torches, a velarium, one shadowed sun, sky and haze. Collision is layer 1 only.
+## blocky crowd, banners, braziers, a velarium, one shadowed sun, sky and haze, dressed with the Houdini decor
+## (ArenaDecor, laid out by DecorLayout). Collision is layer 1 only.
 ## The floor's visual is a SandSurface (game/sand/) when that script exists, else a flat placeholder disc.
 
 const SAND_SCRIPT: String = "res://game/sand/sand_surface.gd"
@@ -22,6 +23,14 @@ const ATTIC_HEIGHT: float = 2.0
 const BOX_ANGLE: float = 4.71238898
 const TRAVERTINE: Color = Color(0.84, 0.74, 0.56)
 const PLAQUES: PackedStringArray = ["SPQR", "MVNVS", "ROMA", "LEGIO"]
+## Braziers on the wall cap (the torch flames burn in their bowls); without the art, the old pole torches.
+const BRAZIER_SCALE: float = 0.8
+const BRAZIER_FLAME_Y: float = 1.12
+const TORCH_FLAME_Y: float = 1.8
+## The statue on its plinth stands on this tier behind the imperial box; the trophy on the box's front.
+const STATUE_TIER: int = 3
+const STATUE_SCALE: float = 1.65  ## top under the velarium, its upper half clear of the box's roof
+const STATUE_GAP: float = 0.07  ## radians of that tier left empty of spectators round the statue
 
 var radius: float = 11.0
 var sand: Node3D
@@ -30,6 +39,7 @@ var crowd: Crowd
 var _flames: Array[MeshInstance3D] = []
 var _flame_time: float = 0.0
 var _torch_positions: PackedVector3Array = PackedVector3Array()
+var _decor: Array[Dictionary] = []
 
 
 ## Spawn transform for a side: 0 at +Z, 1 at -Z, both facing the centre (fighter forward is -Z).
@@ -56,15 +66,17 @@ func _ready() -> void:
 	if get_viewport() != null:
 		get_viewport().msaa_3d = GfxQuality.pick_i(GfxQuality.MSAA) as Viewport.MSAA
 	_torch_positions = PackedVector3Array()
+	var flame_y: float = BRAZIER_FLAME_Y if ArenaDecor.has_art("brazier") else TORCH_FLAME_Y
 	for k: int in 6:
 		var ta: float = deg_to_rad(30.0 + float(k) * 60.0)
-		_torch_positions.append(ring_point(radius + 0.3, ta, WALL_HEIGHT, WALL_SIDES) + Vector3(0, 1.6, 0))
+		_torch_positions.append(ring_point(radius + 0.3, ta, WALL_HEIGHT, WALL_SIDES) + Vector3(0, flame_y - 0.2, 0))
 	_build_floor()
 	_build_wall_colliders()
 	_build_wall_visual()
 	_build_stands()
 	_build_crowd()
 	_build_props()
+	_build_decor()
 	_build_velarium()
 	_build_environment()
 
@@ -352,6 +364,8 @@ func _build_stands() -> void:
 
 
 func _in_box_sector(a: float, tier: int) -> bool:
+	if tier == STATUE_TIER and ArenaDecor.has_art("statue_plinth"):
+		return absf(wrapf(a - BOX_ANGLE, -PI, PI)) < STATUE_GAP
 	if tier > 1:
 		return false
 	return absf(wrapf(a - BOX_ANGLE, -PI, PI)) < 0.24
@@ -423,8 +437,8 @@ func _build_props() -> void:
 	wood.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var bronze := SurfaceTool.new()
 	bronze.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# Banners on the wall panels, away from the spawn axis and the gates.
-	for k: int in 4:
+	# Banners on the wall panels, away from the spawn axis and the gates (the Houdini banners when they exist).
+	for k: int in 0 if ArenaDecor.has_art("banner") else 4:
 		var a: float = [deg_to_rad(63.75), deg_to_rad(123.75), deg_to_rad(243.75), deg_to_rad(303.75)][k]
 		_banner(cloth, bronze, ring_point(radius - 0.12, a, WALL_HEIGHT - 0.55, WALL_SIDES), a, 1.0, 1.7, k % 2 == 1)
 	# Standards on masts along the attic top.
@@ -436,13 +450,17 @@ func _build_props() -> void:
 		var base := Vector3(rim * cos(a), _attic_top(), rim * sin(a))
 		RomanDecor.box(wood, Transform3D(ring_basis(a), base + Vector3(0, 2.0, 0)), Vector3(0.12, 4.0, 0.12), Color(0.3, 0.2, 0.12))
 		_banner(cloth, bronze, base + Vector3(0, 3.9, 0), a, 1.0, 2.0, k % 2 == 0, false)
-	# Torches on the wall cap, bronze bowls.
+	# Braziers on the wall cap (or torches on poles with bronze bowls when the art is missing).
+	var braziers: bool = ArenaDecor.has_art("brazier")
 	for k: int in 6:
 		var a: float = deg_to_rad(30.0 + float(k) * 60.0)
 		var p: Vector3 = ring_point(radius + 0.3, a, WALL_HEIGHT, WALL_SIDES)
-		RomanDecor.box(wood, Transform3D(ring_basis(a), p + Vector3(0, 0.7, 0)), Vector3(0.12, 1.4, 0.12), Color(0.25, 0.17, 0.1))
-		RomanDecor.box(bronze, Transform3D(ring_basis(a), p + Vector3(0, 1.45, 0)), Vector3(0.3, 0.16, 0.3), Color(0.55, 0.38, 0.16))
-		RomanDecor.box(bronze, Transform3D(ring_basis(a), p + Vector3(0, 1.2, 0)), Vector3(0.16, 0.06, 0.16), Color(0.5, 0.35, 0.15))
+		if braziers:
+			_decor.append({"id": "brazier", "xf": Transform3D(DecorLayout.facing(a, BRAZIER_SCALE), p)})
+		else:
+			RomanDecor.box(wood, Transform3D(ring_basis(a), p + Vector3(0, 0.7, 0)), Vector3(0.12, 1.4, 0.12), Color(0.25, 0.17, 0.1))
+			RomanDecor.box(bronze, Transform3D(ring_basis(a), p + Vector3(0, 1.45, 0)), Vector3(0.3, 0.16, 0.3), Color(0.55, 0.38, 0.16))
+			RomanDecor.box(bronze, Transform3D(ring_basis(a), p + Vector3(0, 1.2, 0)), Vector3(0.16, 0.06, 0.16), Color(0.5, 0.35, 0.15))
 		var flame := MeshInstance3D.new()
 		var cone := CylinderMesh.new()
 		cone.top_radius = 0.0
@@ -458,7 +476,7 @@ func _build_props() -> void:
 		fm.emission = Color(1.0, 0.5, 0.1)
 		fm.emission_energy_multiplier = 2.0
 		flame.material_override = fm
-		flame.position = p + Vector3(0, 1.8, 0)
+		flame.position = p + Vector3(0, BRAZIER_FLAME_Y if braziers else TORCH_FLAME_Y, 0)
 		flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(flame)
 		_flames.append(flame)
@@ -539,7 +557,23 @@ func _build_imperial_box(cloth: SurfaceTool, wood: SurfaceTool, bronze: SurfaceT
 		RomanDecor.box(bronze, Transform3D(bb, sp + Vector3(0, floor_y + 0.25, 0)), Vector3(0.6, 0.5, 0.55), Color(0.72, 0.52, 0.2))
 		RomanDecor.box(bronze, Transform3D(bb, sp + radial * 0.25 + Vector3(0, floor_y + 0.8, 0)), Vector3(0.6, 0.6, 0.08), Color(0.72, 0.52, 0.2))
 	RomanDecor.box(wood, Transform3D(bb, front + radial * 0.4 + Vector3(0, floor_y + 0.05, 0)), Vector3(half_w * 2.0 - 0.2, 0.05, 0.1), Color(0.3, 0.2, 0.12))
+	# The victor's laurel trophy at the front of the box, and the statue on its plinth on the stands behind it.
+	_decor.append({"id": "laurel_trophy", "xf": Transform3D(DecorLayout.facing(a), front + radial * 0.75 + Vector3(0, floor_y, 0))})
+	var statue_r: float = _tier_inner(STATUE_TIER) + TIER_DEPTH * 0.5
+	_decor.append({"id": "statue_plinth", "xf": Transform3D(DecorLayout.facing(a, STATUE_SCALE), radial * statue_r + Vector3(0, _tier_top(STATUE_TIER), 0))})
 	_add_mesh("ImperialBox", paint, _vertex_material(false, 0.8, true), false)
+
+
+## The Houdini decor and dressing: wall pieces from DecorLayout plus the braziers, trophy and statue queued above.
+func _build_decor() -> void:
+	var items: Array[Dictionary] = DecorLayout.pieces(radius, GfxQuality.pick_i(GfxQuality.DECOR_COLUMNS),
+			GfxQuality.pick_i(GfxQuality.DECOR_STUMPS), GfxQuality.pick_i(GfxQuality.DECOR_BANNERS))
+	items.append_array(_decor)
+	var node := Node3D.new()
+	node.name = "Decor"
+	add_child(node)
+	ArenaDecor.build(node, items, DecorLayout.colliders(radius), GfxQuality.pick_i(GfxQuality.DECOR_LOD), GfxQuality.decor_shadows())
+	_decor.clear()
 
 
 func _build_velarium() -> void:

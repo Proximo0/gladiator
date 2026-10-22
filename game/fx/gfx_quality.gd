@@ -53,6 +53,15 @@ const SPARK_LIGHT: Array[bool] = [false, true, true]
 const BLADE_TRAIL_SAMPLES: Array[int] = [0, 10, 18]
 const BLADE_LIGHT_ENERGY: Array[float] = [0.0, 0.6, 1.0]
 
+## Arena decor (DecorLayout): engaged columns, broken column stumps and wall banners shown, the decimated mesh level
+## of the Houdini decor (-1 full, 0 about half the triangles, as CROWD_TIER_LOD), and whether the big pieces
+## (columns, stumps, gates, statue) cast sun shadows.
+const DECOR_COLUMNS: Array[int] = [4, 8, 8]
+const DECOR_STUMPS: Array[int] = [1, 2, 4]
+const DECOR_BANNERS: Array[int] = [2, 4, 4]
+const DECOR_LOD: Array[int] = [0, -1, -1]
+const DECOR_SHADOWS: Array[bool] = [false, true, true]
+
 static var level: int = default_level()
 
 
@@ -83,6 +92,10 @@ static func pick_i(table: Array[int], l: int = -1) -> int:
 
 static func small_part_shadows(l: int = -1) -> bool:
 	return SMALL_PART_SHADOWS[clampi(level if l < 0 else l, LOW, HIGH)]
+
+
+static func decor_shadows(l: int = -1) -> bool:
+	return DECOR_SHADOWS[clampi(level if l < 0 else l, LOW, HIGH)]
 
 
 static func tier_lod(tier: int, l: int = -1) -> int:
