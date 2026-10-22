@@ -2,6 +2,9 @@ class_name LoadoutPanel
 extends PanelContainer
 ## One fighter's loadout column: weapon, off hand and four armor slots as pickers, and a stat card for the item
 ## last focused. Emits loadout_changed(loadout). Extra rows (the CPU's difficulty, say) go in through add_row().
+## Locked weapons (premium without the outfit, play-to-unlock not yet earned; see set_weapon_access) stay in the list,
+## greyed with a padlock; browsing one shows its stats and a note with what unlocks it, while the loadout keeps the
+## last usable weapon ("Fighting with ...").
 
 signal loadout_changed(loadout: Dictionary)
 
@@ -17,6 +20,10 @@ var _card_line: Label
 var _bars: Dictionary = {}
 var _all: Array[MenuPicker] = []
 var _quiet: bool = false
+var _access: Variant = null  ## the `owned` list weapons are checked against (null: everything usable)
+var _progress: Dictionary = {}  ## PlayerProgress counters, for the "(1/4)" in the lock note
+var _usable_weapon: String = ""  ## the weapon the loadout really carries (the browsed one unless it is locked)
+var _lock_note: Label
 
 
 func _init() -> void:
@@ -34,6 +41,12 @@ func _init() -> void:
 	for id: String in LoadoutRules.main_weapons():
 		wl.append([id, LoadoutRules.display_name(id)])
 	weapon_picker = _add_picker("Weapon", wl)
+	_usable_weapon = weapon_picker.current_id()
+	_lock_note = MenuTheme.label("", 24, MenuTheme.OCHRE)
+	_lock_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_lock_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_lock_note.visible = false
+	_rows.add_child(_lock_note)
 	var ol: Array = []
 	for id: String in LoadoutRules.offhands():
 		ol.append([id, LoadoutRules.display_name(id)])
@@ -87,14 +100,47 @@ func loadout() -> Dictionary:
 		var id: String = (armor_pickers[slot] as MenuPicker).current_id()
 		if id != "":
 			armor[slot] = id
-	var off: String = "" if LoadoutRules.offhand_blocked(weapon_picker.current_id()) else offhand_picker.current_id()
-	return {"weapon": weapon_picker.current_id(), "offhand": off, "armor": armor}
+	var off: String = "" if LoadoutRules.offhand_blocked(_usable_weapon) else offhand_picker.current_id()
+	return {"weapon": _usable_weapon, "offhand": off, "armor": armor}
+
+
+## The loadout as browsed: the weapon on show even when it is locked (for the preview).
+func browsed_loadout() -> Dictionary:
+	var l: Dictionary = loadout()
+	l["weapon"] = weapon_picker.current_id()
+	if LoadoutRules.offhand_blocked(weapon_picker.current_id()):
+		l["offhand"] = ""
+	return l
+
+
+## Lists every main weapon and greys the ones `access` does not unlock (an `owned` list from WeaponUnlocks.access;
+## null unlocks all). `progress` (PlayerProgress counters) fills the lock note. Keeps the current pick when usable.
+func set_weapon_access(access: Variant, progress: Dictionary = {}) -> void:
+	_access = access
+	_progress = progress.duplicate()
+	var keep: String = weapon_picker.current_id()
+	var items: Array = []
+	for id: String in LoadoutRules.picker_weapons():
+		items.append([id, LoadoutRules.display_name(id), not LoadoutRules.weapon_unlocked(id, access)])
+	weapon_picker.items = items
+	weapon_picker.index = clampi(weapon_picker.index, 0, items.size() - 1)
+	weapon_picker.select(keep, false)
+	var was: String = _usable_weapon
+	if not LoadoutRules.weapon_unlocked(_usable_weapon, access):
+		_usable_weapon = LoadoutRules.PREMIUM_FALLBACK
+	if not weapon_picker.is_locked():
+		_usable_weapon = weapon_picker.current_id()
+	if _usable_weapon != was:
+		_refresh_offhand(offhand_picker.current_id() if offhand_picker.enabled else LoadoutRules.DEFAULT_OFFHAND)
+	_sync_lock_note()
 
 
 func set_loadout(l: Dictionary) -> void:
-	var clean: Dictionary = LoadoutRules.sanitize(l)
+	var clean: Dictionary = LoadoutRules.sanitize(l, _access)
 	_quiet = true
 	weapon_picker.select(str(clean["weapon"]), false)
+	_usable_weapon = str(clean["weapon"])
+	_sync_lock_note()
 	_refresh_offhand(str(clean["offhand"]))
 	for slot: String in armor_pickers:
 		(armor_pickers[slot] as MenuPicker).select(str((clean["armor"] as Dictionary).get(slot, "")), false)
@@ -115,7 +161,7 @@ func first_focus() -> Control:
 
 
 func _refresh_offhand(wanted: String) -> void:
-	var blocked: bool = LoadoutRules.offhand_blocked(weapon_picker.current_id())
+	var blocked: bool = LoadoutRules.offhand_blocked(_usable_weapon)
 	if blocked:
 		offhand_picker.items = [["", "Two-handed grip"]]
 		offhand_picker.index = 0
@@ -134,6 +180,9 @@ func _on_picker(p: MenuPicker) -> void:
 	if _quiet:
 		return
 	if p == weapon_picker:
+		if not weapon_picker.is_locked():
+			_usable_weapon = weapon_picker.current_id()
+		_sync_lock_note()
 		var keep: String = offhand_picker.current_id() if offhand_picker.enabled else LoadoutRules.DEFAULT_OFFHAND
 		_refresh_offhand(keep)
 	_show_card(p)
@@ -153,3 +202,12 @@ func _show_card(p: MenuPicker) -> void:
 	for k: String in _bars:
 		(_bars[k] as MenuStatBar).fraction = float(stats[k]) if id != "" else 0.0
 		(_bars[k] as MenuStatBar).queue_redraw()
+
+
+## Shown under the weapon picker while it is on a locked weapon: what unlocks it and what is carried instead.
+func _sync_lock_note() -> void:
+	var locked: bool = weapon_picker.is_locked()
+	_lock_note.visible = locked
+	if locked:
+		var why: String = LoadoutRules.lock_reason(weapon_picker.current_id(), _access, _progress)
+		_lock_note.text = "Locked: %s. Fighting with %s." % [why, LoadoutRules.display_name(_usable_weapon)]

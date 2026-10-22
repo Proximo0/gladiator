@@ -50,6 +50,10 @@ fi
 
 rm -f "${ZIP_OUT}"
 cp "${ROOT}"/tools/windows/*.bat build/windows/ 2>/dev/null || true  # mode launchers
+# Owner launchers (docs/weapons_unlocks.md, docs/shop.md) must ship.
+for f in "Try all weapons (unlock all).bat" "Try outfits (test shop).bat"; do
+	[[ -f "build/windows/${f}" ]] || fail "launcher missing: ${f}"
+done
 # EOS credentials (docs/eos_setup.md), when the owner has them: next to the exe, where EosConfig looks after
 # res://config/. A client secret is not a secret in a client build; the git-ignored source file stays out of git.
 rm -f build/windows/eos_credentials.cfg

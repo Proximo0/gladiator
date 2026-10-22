@@ -17,7 +17,8 @@ static func is_shield(id: String) -> bool:
 	return str(CombatData.weapon(id).get("shape", "")) == "shield"
 
 
-## Premium weapons come with an outfit (weapon def "requires_outfit"); this is what a locked one becomes.
+## Premium weapons come with an outfit (weapon def "requires_outfit"); weapons earned by playing carry an "unlock"
+## milestone (WeaponUnlocks). This is what a locked weapon of either kind becomes.
 const PREMIUM_FALLBACK: String = "longsword"
 
 
@@ -30,13 +31,34 @@ static func is_premium_weapon(weapon_id: String) -> bool:
 	return required_outfit(weapon_id) != ""
 
 
-## True when `weapon_id` is free, or `owned` (the store's product ids) holds its outfit. `owned` null means "do not
-## check" (bots, dev runs, network loadouts the host cannot verify).
+## True when `weapon_id` is a starter, or `owned` holds what it needs: its outfit's store product id (premium) or its
+## earned-weapon token (WeaponUnlocks.access builds that list). `owned` null means "do not check" (bots, dev runs,
+## network loadouts the host cannot verify).
 static func weapon_unlocked(weapon_id: String, owned: Variant) -> bool:
-	var need: String = required_outfit(weapon_id)
-	if need == "" or not (owned is Array):
+	if not (owned is Array):
 		return true
-	return (owned as Array).has(OutfitRules.product_id(need))
+	var need: String = required_outfit(weapon_id)
+	if need != "":
+		return (owned as Array).has(OutfitRules.product_id(need))
+	if WeaponUnlocks.is_unlockable(weapon_id):
+		return (owned as Array).has(WeaponUnlocks.token(weapon_id))
+	return true
+
+
+## Every main-hand weapon, locked or not, in data order (the picker lists them all and greys the locked ones).
+static func picker_weapons() -> Array:
+	return main_weapons(null)
+
+
+## Why `weapon_id` cannot be used with `owned` ("" when it can): the outfit it comes with, or its milestone with the
+## player's `progress` counters ("Win 4 fights (1/4)").
+static func lock_reason(weapon_id: String, owned: Variant, progress: Dictionary = {}) -> String:
+	if weapon_unlocked(weapon_id, owned):
+		return ""
+	var need: String = required_outfit(weapon_id)
+	if need != "":
+		return "Comes with the %s outfit (Shop)" % OutfitRules.display_name(need)
+	return WeaponUnlocks.progress_text(weapon_id, progress)
 
 
 ## Main-hand weapon ids in data order (fists first); shields are never a main weapon. With `owned` (an array of
@@ -93,8 +115,9 @@ static func default_loadout() -> Dictionary:
 
 
 ## A valid copy: unknown weapon becomes fists, a non-shield or blocked off hand is dropped, armor ids must exist and
-## fit their slot. Missing keys are filled. `owned` (the local player's store product ids) turns on the premium weapon
-## check: a weapon whose outfit is not owned becomes PREMIUM_FALLBACK. The default null trusts the loadout, which is
+## fit their slot. Missing keys are filled. `owned` (the local player's store product ids plus earned-weapon tokens,
+## see WeaponUnlocks.access) turns on the lock check: a premium weapon whose outfit is not owned, or an unlockable one
+## not yet earned, becomes PREMIUM_FALLBACK. The default null trusts the loadout, which is
 ## what the online host does for a client (it cannot see the client's store; see docs/weapons_premium.md).
 static func sanitize(loadout: Dictionary, owned: Variant = null) -> Dictionary:
 	var weapon: String = str(loadout.get("weapon", "fists"))

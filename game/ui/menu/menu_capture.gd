@@ -1,9 +1,9 @@
 extends Node3D
 ## Dev tool: boots MenuFlow like the main scene and saves a PNG of each menu screen.
 ## godot --path . --resolution 1280x720 res://game/ui/menu/menu_capture.tscn -- --capture --out=/tmp/menu --tag=landscape
-## --shots=title,loadout,loadout2p,options,controls,fight,pause,result (default: all)
+## --shots=title,loadout,loadout_locked,loadout2p,options,controls,fight,pause,result (default: all)
 
-const SHOT_LIST: PackedStringArray = ["title", "loadout", "loadout2p", "options", "controls", "fight", "pause", "result"]
+const SHOT_LIST: PackedStringArray = ["title", "loadout", "loadout_locked", "loadout2p", "options", "controls", "fight", "pause", "result"]
 
 var _flow: MenuFlow
 
@@ -41,6 +41,9 @@ func _run() -> void:
 				_flow._open_loadout("player_vs_cpu")
 				_flow._loadout._panel_a.weapon_picker.select("longsword")
 				_flow._loadout._panel_a.armor_pickers["head"].select("helm_iron")
+			"loadout_locked":
+				_flow._open_loadout("player_vs_cpu")
+				_flow._loadout._panel_a.weapon_picker.select("falchion")  # locked (unless --unlock-all): greyed, with its note
 			"loadout2p":
 				_flow._open_loadout("local_2p")
 			"options":

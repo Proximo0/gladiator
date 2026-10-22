@@ -64,6 +64,6 @@ cp "${ROOT}"/tools/windows/*.bat "${OUT_DIR}/"
 [[ -f "${ROOT}/config/eos_credentials.cfg" ]] && cp "${ROOT}/config/eos_credentials.cfg" "${OUT_DIR}/eos_credentials.cfg"
 
 # Every file the EOS build needs must be in the output.
-for f in Sandblood.exe; do [[ -f "${OUT_DIR}/${f}" ]] || fail "missing ${f}"; done
+for f in Sandblood.exe "Try all weapons (unlock all).bat" "Try outfits (test shop).bat"; do [[ -f "${OUT_DIR}/${f}" ]] || fail "missing ${f}"; done
 (cd "${ROOT}/build" && rm -f "${ZIP}" && zip -q -r "$(basename "${ZIP}")" eos_windows) || fail "zip not produced"
 echo "export_eos_windows: ok ${ZIP}"

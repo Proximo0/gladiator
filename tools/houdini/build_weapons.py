@@ -32,6 +32,14 @@ SPECS = {
     # Premium (outfit-bundled) weapons: docs/weapons_premium.md. Run only these with --only=dai_katana,laser_sword
     "dai_katana": (1.25, 0.1, 0.9, ["steel", "cord", "wrap", "brass", "iron"]),
     "laser_sword": (1.25, 0.12, 1.05, ["hilt", "brass", "energy"]),
+    # Play-to-unlock weapons: docs/weapons_unlocks.md. Numbers match data/weapons.json (length, grip_offset, edge_len).
+    # Run only these with --only=machete,sledgehammer,mace,falchion,warhammer,halberd
+    "machete": (0.85, 0.12, 0.55, ["steel", "grip", "brass"]),
+    "sledgehammer": (0.9, 0.12, None, ["wood", "iron"]),
+    "mace": (0.8, 0.1, None, ["iron", "grip", "steel"]),
+    "falchion": (0.92, 0.1, 0.72, ["steel", "grip", "iron"]),
+    "warhammer": (1.35, 0.25, 0.08, ["wood", "steel", "iron"]),
+    "halberd": (2.0, 0.35, 0.22, ["wood", "steel", "iron"]),
 }
 ONLY = [a.split("=", 1)[1] for a in sys.argv if a.startswith("--only=")]
 if ONLY:
@@ -340,6 +348,83 @@ def build_laser_sword(b):
     lathe(b, [(0.0165, 0.04), (0.03, 0.045), (0.034, 0.055), (0.03, 0.062), (0.014, 0.064)], 20, "hilt")
     box(b, (-0.06, 0.036, -0.009), (0.06, 0.046, 0.009), "hilt")
     lathe(b, [(0.0035, 0.064), (0.011, 0.07), (0.011, 1.10), (0.0085, 1.12), (0.004, 1.128), (0.0008, 1.132)], 14, "energy")
+
+# --- play-to-unlock weapons (docs/weapons_unlocks.md); placeholders in game/fighter/weapon.gd match these shapes ---
+
+def plate(b, x0, x1, c0, c1, h0, h1, t0, t1, mat, nseg=6):
+    # A flat plate along +X (or -X) from x0 to x1: centre height c, half height h and half thickness t interpolate.
+    rings = []
+    for i in range(nseg + 1):
+        s = i / nseg
+        x = x0 + (x1 - x0) * s
+        cy = c0 + (c1 - c0) * s
+        hh = max(h0 + (h1 - h0) * s, 0.0008)
+        ht = max(t0 + (t1 - t0) * s, 0.0006)
+        rings.append([(x, cy - hh, -ht), (x, cy + hh, -ht), (x, cy + hh, ht), (x, cy - hh, ht)])
+    b.loft(rings, mat)
+
+def flange(b, a, r0, r1, y0, y1, inset, t, mat):
+    # One mace flange: a plate in the plane of the axis at angle a, from radius r0 out to r1 (outer edge inset at both ends).
+    u = (math.cos(a), 0.0, math.sin(a))
+    v = (-math.sin(a), 0.0, math.cos(a))
+    def ring(r, ya, yb):
+        return [(r * u[0] + sv * t * v[0], y, r * u[2] + sv * t * v[2]) for y, sv in ((ya, -1), (yb, -1), (yb, 1), (ya, 1))]
+    b.loft([ring(r0, y0, y1), ring(r1, y0 + inset, y1 - inset)], mat)
+
+def build_machete(b):
+    # Slab grip -0.12..0.17 with three brass rivets, then a 0.56 m single-edged blade that widens to a clipped tip.
+    box(b, (-0.016, -0.12, -0.013), (0.016, 0.17, 0.013), "grip")
+    for k in range(3):
+        y = -0.08 + k * 0.09
+        lathe(b, [(0.0045, -0.0135), (0.0045, 0.0135)], 8, "brass", axis="z", c=(0, y, 0))
+    curved_blade(b, 0.17, 0.73, 0.0,
+                 [(0, 0.019), (0.55, 0.027), (0.88, 0.031), (0.96, 0.024), (1.0, 0.012)],
+                 [(0, 0.0028), (0.9, 0.002), (1.0, 0.0012)], "steel")
+
+def build_sledgehammer(b):
+    # Hickory handle -0.12..0.695 and a 6 lb octagon-ish iron head across the top (faces toward +X and -X).
+    lathe(b, [(0.017, -0.12), (0.019, -0.11), (0.016, 0.1), (0.017, 0.5), (0.02, 0.695)], 12, "wood")
+    plate(b, -0.105, 0.105, 0.7375, 0.7375, 0.0425, 0.0425, 0.042, 0.042, "iron", nseg=4)
+
+def build_mace(b):
+    # Leather-wrapped iron haft, a core with six flanges (0.52..0.68) and a knob that ends at the tip (0.7).
+    lathe(b, [(0.017, -0.1), (0.022, -0.096), (0.022, -0.085), (0.016, -0.08)], 14, "iron")
+    lathe(b, [(0.017, -0.08), (0.0175, 0.0), (0.017, 0.12)], 14, "grip")
+    lathe(b, [(0.015, 0.12), (0.014, 0.35), (0.017, 0.52)], 14, "iron")
+    lathe(b, [(0.017, 0.52), (0.027, 0.54), (0.027, 0.66), (0.02, 0.685)], 14, "iron")
+    for k in range(6):
+        flange(b, 2 * math.pi * k / 6, 0.024, 0.066, 0.525, 0.685, 0.03, 0.004, "steel")
+    lathe(b, sphere_prof(0.02, 0.68), 14, "steel")
+
+def build_falchion(b):
+    # Pommel, grip, straight guard, then a broad blade that bellies toward the tip and sweeps back to the point.
+    lathe(b, sphere_prof(0.022, -0.078), 14, "iron")
+    lathe(b, [(0.013, -0.058), (0.0155, 0.0), (0.0135, 0.07)], 12, "grip", sz=0.8)
+    plate(b, -0.085, 0.085, 0.08, 0.08, 0.009, 0.009, 0.013, 0.013, "iron", nseg=4)
+    curved_blade(b, 0.09, 0.82, 0.012,
+                 [(0, 0.019), (0.5, 0.024), (0.78, 0.031), (0.92, 0.018), (1.0, 0.0)],
+                 [(0, 0.0045), (0.8, 0.003), (1.0, 0.0008)], "steel")
+
+def build_warhammer(b):
+    # Ash haft -0.25..1.03 with langets, a head block, a hammer face toward -X, a downswept beak toward +X, top spike to 1.10.
+    lathe(b, [(0.018, -0.25), (0.02, -0.24), (0.017, 0.2), (0.016, 1.03)], 12, "wood")
+    box(b, (-0.0035, 0.75, -0.019), (0.0035, 1.0, 0.019), "steel")
+    box(b, (-0.019, 0.75, -0.0035), (0.019, 1.0, 0.0035), "steel")
+    box(b, (-0.025, 0.995, -0.025), (0.025, 1.06, 0.025), "iron")
+    plate(b, -0.025, -0.09, 1.0275, 1.0275, 0.025, 0.028, 0.025, 0.028, "steel", nseg=3)
+    plate(b, 0.025, 0.165, 1.0275, 0.985, 0.02, 0.002, 0.012, 0.002, "steel", nseg=8)
+    lathe(b, [(0.012, 1.06), (0.008, 1.08), (0.0008, 1.10)], 10, "steel")
+
+def build_halberd(b):
+    # Ash haft -0.35..1.32, iron butt cap, steel socket and langets, a broad axe blade toward +X (1.38..1.59),
+    # a back fluke toward -X and a top spike ending at the tip (1.65).
+    lathe(b, [(0.019, -0.35), (0.019, -0.3)], 12, "iron")
+    lathe(b, [(0.017, -0.3), (0.0165, 0.6), (0.0155, 1.32)], 12, "wood")
+    lathe(b, [(0.019, 1.3), (0.02, 1.36), (0.018, 1.56)], 12, "steel")
+    box(b, (-0.004, 1.0, -0.02), (0.004, 1.3, 0.02), "steel")
+    plate(b, 0.018, 0.16, 1.485, 1.48, 0.06, 0.11, 0.006, 0.0015, "steel", nseg=8)
+    plate(b, -0.018, -0.11, 1.48, 1.43, 0.025, 0.003, 0.006, 0.0015, "steel", nseg=6)
+    blade(b, 1.56, 1.65, [(0, 0.012), (0.3, 0.014), (1.0, 0.0)], [(0, 0.007), (1.0, 0.001)], "steel", nseg=8)
 '''
 
 

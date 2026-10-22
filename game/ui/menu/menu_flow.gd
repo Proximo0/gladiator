@@ -51,6 +51,8 @@ var _cam: Camera3D = null
 var _orbit: float = 0.6
 var _next_seed: int = 0
 var _fight_token: int = 0
+var _recorded_token: int = -1  ## the fight whose result already went into PlayerProgress
+var _unlocked_line: String = ""  ## "Unlocked: ..." after a fight that earned a weapon
 
 
 func _init() -> void:
@@ -59,6 +61,7 @@ func _init() -> void:
 
 func setup(p_host: Node) -> void:
 	_host = p_host
+	PlayerProgress.open_shared(not Flags.is_scripted_run())  # weapon unlock counters (docs/weapons_unlocks.md)
 	settings.load_file()
 	settings.apply()
 	_build_ui()
@@ -71,6 +74,7 @@ func setup(p_host: Node) -> void:
 ## The host already started `m` itself (for example from --mode); wire pause and the end menu to it.
 func adopt(m: Match, mode: String) -> void:
 	_host = m.get_parent()
+	PlayerProgress.open_shared(not Flags.is_scripted_run())
 	settings.load_file()
 	settings.apply()
 	_build_ui()
@@ -245,6 +249,7 @@ func _begin_fight(mode: String) -> void:
 	_hide_screens()
 	_free_backdrop()
 	var cfg: Dictionary = state.to_config(mode, _new_seed())
+	_gate_human_weapons(cfg)
 	settings.apply_quality()  # before Match.new(): the arena, sand and blood read GfxQuality when built
 	var m := Match.new()
 	m.name = "Match"
@@ -256,6 +261,47 @@ func _begin_fight(mode: String) -> void:
 	_hook_match(m)
 	match_started.emit(m)
 	_enter_fight()
+
+
+## A human side never fights with a weapon it has not unlocked (premium outfit or play milestone; --unlock-all opens
+## the milestones). The pickers already refuse one; this catches a stale pick from another screen.
+func _gate_human_weapons(cfg: Dictionary) -> void:
+	var access: Array = WeaponUnlocks.access(state.store.owned(), PlayerProgress.shared().counters, Flags.unlock_all())
+	var lo: Array = cfg.get("loadouts", [])
+	var humans: int = 2 if str(cfg.get("mode", "")) == "local_2p" else (1 if str(cfg.get("mode", "")) == "player_vs_cpu" else 0)
+	for i: int in mini(humans, lo.size()):
+		lo[i] = LoadoutRules.sanitize(lo[i], access)
+
+
+## Counts a finished fight the local player was in (vs CPU, local 2P, online; not bots) toward weapon unlocks.
+## Online: a win is the local side winning; a Quick Match also counts as ranked.
+func _record_progress(result: Dictionary, token: int) -> void:
+	if current_match == null or token == _recorded_token:
+		return
+	_recorded_token = token
+	_unlocked_line = ""
+	var mode: String = str(current_match.config.get("mode", ""))
+	var w: int = int(result.get("winner", -1))
+	var won: bool = false
+	var ranked: bool = false
+	if _is_online():
+		won = w == (0 if _net.role == NetSession.ROLE_HOST else 1)
+		ranked = _quick
+	elif bool(current_match.config.get("loop", false)) or mode == "bot_vs_bot":
+		return
+	elif mode == "player_vs_cpu":
+		won = w == 0
+	_unlocked_line = unlocked_text(PlayerProgress.shared().record_match(won, ranked))
+
+
+## "Unlocked: Mace, Falchion!" ("" for none).
+static func unlocked_text(ids: Array) -> String:
+	if ids.is_empty():
+		return ""
+	var names: PackedStringArray = PackedStringArray()
+	for id: Variant in ids:
+		names.append(LoadoutRules.display_name(str(id)))
+	return "Unlocked: %s! Pick it in your loadout." % ", ".join(names)
 
 
 func _hook_match(m: Match) -> void:
@@ -446,6 +492,7 @@ func _on_net_closed(reason: String) -> void:
 
 
 func _on_match_over(result: Dictionary, token: int) -> void:
+	_record_progress(result, token)
 	if _quick and _is_online() and _online.has_open_match():
 		_online.report_finished(int(result.get("winner", -1)), int(result.get("ticks", 0)), str(result.get("reason", "")))
 	if current_match == null or bool(current_match.config.get("loop", false)):
@@ -473,7 +520,7 @@ func _show_result(result: Dictionary, token: int) -> void:
 		latin = "VICTORIA" if (mode != "player_vs_cpu" or w == 0) else "MORS"
 		english = ("%s wins" % str(names[w])) if mode != "player_vs_cpu" else ("You won" if w == 0 else "%s wins" % str(names[w]))
 	_pause_dim.visible = true
-	_show_panel(latin, english, "", [["rematch", "Rematch"], ["loadout", "Change loadout"], ["title", "Title"]])
+	_show_panel(latin, english, _unlocked_line, [["rematch", "Rematch"], ["loadout", "Change loadout"], ["title", "Title"]])
 
 
 func _show_online_result(w: int, names: Array) -> void:
@@ -490,6 +537,8 @@ func _show_online_result(w: int, names: Array) -> void:
 		body = _rating_line  # ranked fights have no rematch
 	elif _net.role == NetSession.ROLE_HOST:
 		entries.push_front(["net_rematch", "Rematch"])
+	if _unlocked_line != "":
+		body = _unlocked_line if body == "" else "%s\n%s" % [body, _unlocked_line]
 	_show_panel(latin, english, body, entries)
 
 

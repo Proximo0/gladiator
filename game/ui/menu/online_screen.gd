@@ -164,6 +164,7 @@ func _edit(text: String, hint: String) -> LineEdit:
 func open(p_session: NetSession) -> void:
 	_set_mode(false)
 	_bind_session(p_session)
+	_apply_weapon_access()
 	_panel.set_loadout(state.loadout_with_outfit(0))
 	_name_edit.text = player_name
 	_push_local()
@@ -223,6 +224,7 @@ func open_quick(p_session: NetSession, p_service: OnlineService) -> void:
 		service.matched.connect(_on_matched)
 		service.match_failed.connect(_on_match_failed)
 		service.status_changed.connect(show_status)
+	_apply_weapon_access()
 	_panel.set_loadout(state.loadout_with_outfit(0))
 	_name_edit.text = player_name
 	_status_text = ""
@@ -242,9 +244,27 @@ func _begin_search() -> void:
 	refresh()
 
 
-func _on_logged_in(_profile: Dictionary) -> void:
+func _on_logged_in(profile: Dictionary) -> void:
+	if _quick and PlayerProgress.shared().sync_ranked(int(profile.get("games", 0)), int(profile.get("wins", 0))).size() > 0:
+		_apply_weapon_access()  # the service's own record unlocked something (a reinstall, another device)
 	if _quick and _phase == Phase.SEARCHING and not service.is_searching():
-		service.quick_match(state.loadout_with_outfit(0))
+		service.quick_match(my_loadout())
+
+
+## The `owned` list this screen's weapons are checked against: store products plus earned weapons. A ranked Quick
+## Match only takes what was earned; --unlock-all works in a direct (unrated) lobby only.
+func weapon_access() -> Array:
+	return WeaponUnlocks.access(state.store.owned(), PlayerProgress.shared().counters, Flags.unlock_all() and not _quick)
+
+
+func _apply_weapon_access() -> void:
+	_panel.set_weapon_access(weapon_access(), PlayerProgress.shared().counters)
+
+
+## The loadout this player brings: the menu pick with its outfit, gated by `weapon_access()` (a weapon picked with
+## --unlock-all off-line, or not yet earned, becomes the longsword here).
+func my_loadout() -> Dictionary:
+	return LoadoutRules.sanitize(state.loadout_with_outfit(0), weapon_access())
 
 
 func _on_login_failed(reason: String) -> void:
@@ -460,14 +480,14 @@ static func _lan_addresses(port: int) -> Array:
 
 func _push_local() -> void:
 	if session != null:
-		session.set_local(player_name, _panel.loadout())
+		session.set_local(player_name, LoadoutRules.sanitize(_panel.loadout(), weapon_access()))
 
 
 func _on_loadout(l: Dictionary) -> void:
 	state.set_loadout(0, l)
 	_push_local()
 	if _quick and _phase == Phase.SEARCHING and service != null:
-		service.quick_match(l)  # same search, new arms
+		service.quick_match(LoadoutRules.sanitize(l, weapon_access()))  # same search, new arms
 
 
 func _on_host() -> void:

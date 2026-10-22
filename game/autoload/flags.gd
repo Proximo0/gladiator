@@ -28,6 +28,12 @@ func dev_menu() -> bool:
 	return args.has("dev")
 
 
+## Owner bypass (docs/weapons_unlocks.md): every play-to-unlock weapon is usable vs CPU, in local 2P and in direct
+## online lobbies. Ranked Quick Match ignores it and gates on what the player has earned.
+func unlock_all() -> bool:
+	return args.has("unlock-all")
+
+
 func get_arg(key: String, default: String = "") -> String:
 	return args.get(key, default)
 

@@ -156,23 +156,30 @@ func open(p_mode: String) -> void:
 	_panel_a.first_focus().grab_focus()
 
 
-## Weapon picker items per side: a premium weapon (Dai-katana, Laser sword) is listed only when its outfit is owned.
-## The CPU side of a fight vs CPU has no store, so it gets them only in a dev run (`--dev`); bots use forced loadouts.
+## Weapon picker access per side. Every weapon is listed; locked ones are greyed with what unlocks them: a premium
+## weapon (Dai-katana, Laser sword) needs its outfit, a play-to-unlock one its milestone (WeaponUnlocks), and
+## --unlock-all opens every play-to-unlock weapon. The CPU side of a fight vs CPU may carry any play-to-unlock weapon
+## (meet it before you earn it); premium ones only in a dev run (`--dev`). Bots use forced loadouts.
 func refresh_weapon_choices() -> void:
-	var owned: Array = state.store.owned()
+	var progress: Dictionary = PlayerProgress.shared().counters
 	var two: bool = mode == "local_2p"
 	for side: int in 2:
 		var panel: LoadoutPanel = _panel_a if side == 0 else _panel_b
-		var check: Variant = owned
-		if side == 1 and not two and Flags.dev_menu():
-			check = null
-		var keep: String = panel.weapon_picker.current_id()
-		var items: Array = []
-		for id: String in LoadoutRules.main_weapons(check):
-			items.append([id, LoadoutRules.display_name(id)])
-		panel.weapon_picker.items = items
-		panel.weapon_picker.index = clampi(panel.weapon_picker.index, 0, items.size() - 1)
-		panel.weapon_picker.select(keep, false)
+		var check: Variant = player_access() if (side == 0 or two) else cpu_access()
+		panel.set_weapon_access(check, progress)
+
+
+## What the CPU's custom pick may carry: any play-to-unlock weapon, premium ones only in a dev run. A random CPU shows
+## what the seed rolled, unchecked (null), so the panel matches the fight.
+func cpu_access() -> Variant:
+	if Flags.dev_menu() or state.cpu_loadout_mode == MenuState.CPU_RANDOM:
+		return null
+	return WeaponUnlocks.access(state.store.owned(), PlayerProgress.shared().counters, true)
+
+
+## The `owned` list the human sides' weapons are checked against (store products plus earned weapons).
+func player_access() -> Array:
+	return WeaponUnlocks.access(state.store.owned(), PlayerProgress.shared().counters, Flags.unlock_all())
 
 
 func focus_start() -> void:
@@ -204,10 +211,11 @@ func _note_text() -> String:
 func _refresh_preview() -> void:
 	var two: bool = mode == "local_2p"
 	var b: Dictionary = state.loadouts[1] if (two or state.cpu_loadout_mode == MenuState.CPU_CUSTOM) else state.cpu_shown_loadout()
-	var left_look: Dictionary = OutfitRules.with_outfit(LoadoutRules.sanitize(state.loadouts[0]), _browsing[0])
+	# The preview shows the weapon being browsed, even a locked one (the panel's note says what is really carried).
+	var left_look: Dictionary = OutfitRules.with_outfit(LoadoutRules.sanitize(_panel_a.browsed_loadout()), _browsing[0])
 	var right_look: Dictionary = LoadoutRules.sanitize(b)
 	if two:
-		right_look = OutfitRules.with_outfit(right_look, _browsing[1])
+		right_look = OutfitRules.with_outfit(LoadoutRules.sanitize(_panel_b.browsed_loadout()), _browsing[1])
 	_preview.show_loadouts([left_look, right_look])
 	var left: String = LoadoutRules.display_name(str(state.loadouts[0]["weapon"]))
 	var right: String = LoadoutRules.display_name(str(b["weapon"]))
@@ -300,8 +308,9 @@ func _on_b(l: Dictionary) -> void:
 
 func _on_cpu_mode(id: String) -> void:
 	state.cpu_loadout_mode = id
+	refresh_weapon_choices()
 	if id == MenuState.CPU_CUSTOM:
-		state.loadouts[1] = LoadoutRules.sanitize(MenuState.rolled_opponent(state.cpu_seed))
+		state.loadouts[1] = LoadoutRules.sanitize(MenuState.rolled_opponent(state.cpu_seed), cpu_access())
 	_sync_opponent()
 
 

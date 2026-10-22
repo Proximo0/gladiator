@@ -74,6 +74,18 @@ func build(d: Dictionary, physical_mass: float = -1.0) -> void:
 			_build_katana(tip, col)
 		"laser":
 			_build_laser(tip, parse_color(d.get("glow", "#33ffcc")), col)
+		"machete":
+			_build_machete(tip, col)
+		"falchion":
+			_build_falchion(tip, col)
+		"mace":
+			_build_mace(tip, col)
+		"sledge":
+			_build_sledge(tip, col)
+		"warhammer":
+			_build_warhammer(tip, col)
+		"halberd":
+			_build_halberd(tip, col)
 		"fist":
 			tip_local = Vector3(0, 0.03, 0)
 			com_local = Vector3(0, 0.02, 0)
@@ -247,6 +259,110 @@ func _build_laser(tip: float, glow: Color, hilt_col: Color) -> void:
 		fx.name = "BladeGlow"
 		add_child(fx)
 		fx.setup(self, glow, guard_y, tip)
+
+
+# --- unlockable weapons (docs/weapons_unlocks.md) ----------------------------------------------------------------
+# Same frame as every weapon: grip at the origin, +Y to the tip, edges (and hammer beaks) toward +X. Colliders follow
+# the striking parts; small decoration (rivets, flanges, wraps) is mesh only.
+
+const UNLOCK_WOOD: Color = Color(0.42, 0.29, 0.16)
+const UNLOCK_DARK_GRIP: Color = Color(0.12, 0.1, 0.08)
+const MACHETE_SEGMENTS: int = 4
+const FALCHION_SEGMENTS: int = 5
+const MACE_FLANGES: int = 6
+
+
+## Machete: a dark slab grip and a long single-edged blade that widens toward a clipped tip (spine straight along -X).
+func _build_machete(tip: float, steel_col: Color) -> void:
+	var blade_y: float = maxf(tip - edge_len - 0.02, 0.02)
+	_add_box(Vector3(0.03, blade_y + grip_offset, 0.026), Vector3(0, (blade_y - grip_offset) * 0.5, 0), UNLOCK_DARK_GRIP)
+	for i: int in range(3):
+		var ry: float = -grip_offset + (blade_y + grip_offset) * (float(i) + 0.5) / 3.0
+		_add_visual(_box_mesh(Vector3(0.034, 0.008, 0.03)), Vector3(0, ry, 0), Basis(), Color(0.6, 0.6, 0.62))
+	_add_box(Vector3(0.05, 0.016, 0.03), Vector3(0.006, blade_y, 0), UNLOCK_DARK_GRIP)
+	var span: float = tip - blade_y
+	for i: int in range(MACHETE_SEGMENTS):
+		var s0: float = float(i) / float(MACHETE_SEGMENTS)
+		var s1: float = float(i + 1) / float(MACHETE_SEGMENTS)
+		var w: float = lerpf(0.04, 0.062, s1)
+		var h: float = span * (s1 - s0)
+		if i == MACHETE_SEGMENTS - 1:
+			w *= 0.75  # the clipped tip
+		# Spine fixed at x = -0.02: the blade widens toward the edge (+X).
+		_add_shape_box(Vector3(w, h + 0.002, 0.01), Vector3(-0.02 + w * 0.5, blade_y + span * (s0 + s1) * 0.5, 0), Basis(), steel_col)
+
+
+## Falchion: a short grip, a straight crossguard and a broad single-edged blade that bellies out toward the tip and
+## sweeps back to a point on the spine side.
+func _build_falchion(tip: float, steel_col: Color) -> void:
+	var guard_y: float = maxf(tip - edge_len - 0.03, 0.06)
+	_add_box(Vector3(0.032, guard_y + grip_offset, 0.028), Vector3(0, (guard_y - grip_offset) * 0.5, 0), Color(0.3, 0.2, 0.12))
+	_add_box(Vector3(0.045, 0.04, 0.04), Vector3(0, -grip_offset - 0.015, 0), steel_col * 0.8)
+	_add_box(Vector3(0.17, 0.022, 0.032), Vector3(0, guard_y, 0), steel_col * 0.85)
+	var y0: float = guard_y + 0.012
+	var span: float = tip - y0
+	var widths: Array[float] = [0.038, 0.046, 0.056, 0.062, 0.03]
+	for i: int in range(FALCHION_SEGMENTS):
+		var s0: float = float(i) / float(FALCHION_SEGMENTS)
+		var s1: float = float(i + 1) / float(FALCHION_SEGMENTS)
+		var w: float = widths[i]
+		_add_shape_box(Vector3(w, span * (s1 - s0) + 0.002, 0.012), Vector3(-0.018 + w * 0.5, y0 + span * (s0 + s1) * 0.5, 0), Basis(), steel_col)
+
+
+## Flanged mace: an iron-shod haft and a head of six radiating flanges around a core, with a knob on top.
+func _build_mace(tip: float, steel_col: Color) -> void:
+	var head_len: float = 0.17
+	var head_y: float = tip - head_len * 0.5 - 0.02
+	_add_box(Vector3(0.03, tip - head_len - 0.02 + grip_offset, 0.03), Vector3(0, (tip - head_len - 0.02 - grip_offset) * 0.5, 0), steel_col * 0.55)
+	for i: int in range(4):
+		var wy: float = -grip_offset + 0.03 + 0.035 * float(i)
+		_add_visual(_box_mesh(Vector3(0.036, 0.02, 0.036)), Vector3(0, wy, 0), Basis(), Color(0.32, 0.2, 0.1))
+	_add_capsule(0.032, head_len, Vector3(0, head_y, 0), steel_col * 0.8)
+	_add_sphere(0.024, Vector3(0, tip - 0.016, 0), steel_col)
+	for i: int in range(MACE_FLANGES):
+		var a: float = TAU * float(i) / float(MACE_FLANGES)
+		var b := Basis(Vector3.UP, a)
+		_add_visual(_box_mesh(Vector3(0.05, head_len * 0.85, 0.008)), b * Vector3(0.042, 0, 0) + Vector3(0, head_y, 0), b, steel_col)
+	# One collider wide enough to cover the flange tips.
+	var cs := CollisionShape3D.new()
+	var cyl := CylinderShape3D.new()
+	cyl.radius = 0.066
+	cyl.height = head_len * 0.85
+	cs.shape = cyl
+	cs.position = Vector3(0, head_y, 0)
+	add_child(cs)
+
+
+## Sledgehammer: a long wooden handle and a heavy steel block across the top (faces toward +X and -X).
+func _build_sledge(tip: float, steel_col: Color) -> void:
+	var head_h: float = 0.085
+	_add_box(Vector3(0.034, tip - head_h + grip_offset, 0.03), Vector3(0, (tip - head_h - grip_offset) * 0.5, 0), UNLOCK_WOOD)
+	_add_box(Vector3(0.21, head_h, 0.085), Vector3(0, tip - head_h * 0.5, 0), steel_col)
+	_add_visual(_box_mesh(Vector3(0.012, head_h + 0.004, 0.089)), Vector3(0.1, tip - head_h * 0.5, 0), Basis(), steel_col.lightened(0.3))
+	_add_visual(_box_mesh(Vector3(0.012, head_h + 0.004, 0.089)), Vector3(-0.1, tip - head_h * 0.5, 0), Basis(), steel_col.lightened(0.3))
+
+
+## War hammer (two-handed): a long haft with steel langets, a square hammer face toward -X, a curved beak (the "pick")
+## toward +X and a short top spike.
+func _build_warhammer(tip: float, steel_col: Color) -> void:
+	var head_y: float = tip - 0.08
+	_add_box(Vector3(0.032, tip - 0.04 + grip_offset, 0.032), Vector3(0, (tip - 0.04 - grip_offset) * 0.5, 0), UNLOCK_WOOD)
+	_add_visual(_box_mesh(Vector3(0.036, 0.3, 0.036)), Vector3(0, head_y - 0.12, 0), Basis(), steel_col * 0.7)
+	_add_box(Vector3(0.05, 0.07, 0.05), Vector3(0, head_y, 0), steel_col * 0.8)
+	_add_box(Vector3(0.07, 0.055, 0.055), Vector3(-0.055, head_y, 0), steel_col)
+	_add_shape_box(Vector3(0.07, 0.03, 0.028), Vector3(0.06, head_y - 0.005, 0), Basis(Vector3(0, 0, 1), -0.2), steel_col)
+	_add_shape_box(Vector3(0.06, 0.018, 0.014), Vector3(0.12, head_y - 0.028, 0), Basis(Vector3(0, 0, 1), -0.45), steel_col)
+	_add_box(Vector3(0.018, 0.06, 0.018), Vector3(0, tip - 0.025, 0), steel_col)
+
+
+## Halberd: a long ash haft, a broad axe blade toward +X under a top spike, and a back fluke toward -X.
+func _build_halberd(tip: float, steel_col: Color) -> void:
+	_add_box(Vector3(0.032, tip - 0.16 + grip_offset, 0.032), Vector3(0, (tip - 0.16 - grip_offset) * 0.5, 0), UNLOCK_WOOD)
+	_add_visual(_box_mesh(Vector3(0.036, 0.35, 0.036)), Vector3(0, tip - 0.36, 0), Basis(), steel_col * 0.65)
+	_add_box(Vector3(0.026, 0.18, 0.016), Vector3(0, tip - 0.09, 0), steel_col)
+	var blade_h: float = maxf(edge_len, 0.12)
+	_add_box(Vector3(0.15, blade_h, 0.012), Vector3(0.09, tip - 0.06 - blade_h * 0.5, 0), steel_col)
+	_add_shape_box(Vector3(0.09, 0.035, 0.012), Vector3(-0.055, tip - 0.17, 0), Basis(Vector3(0, 0, 1), 0.35), steel_col * 0.85)
 
 
 static func parse_color(c: Variant) -> Color:
