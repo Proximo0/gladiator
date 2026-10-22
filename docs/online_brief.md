@@ -6,7 +6,7 @@ Android in any combination. Code in `game/net/`, the lobby in `game/ui/menu/onli
 
 ## Model: host-authoritative, client renders
 
-Jolt is not deterministic across machines (and not even run to run: see lessons_learned), so lockstep and rollback
+Jolt is not deterministic across machines (and not even run to run: see docs/lessons/), so lockstep and rollback
 are out. The **host simulates both fighters** exactly as offline: its own side 0 from its devices, side 1 from the
 client's input stream. The **client simulates nothing**: it builds the same Match from the same seed and loadouts
 (so it has the same bodies, art, armor and weapons), switches the simulation off, and poses the bodies from the

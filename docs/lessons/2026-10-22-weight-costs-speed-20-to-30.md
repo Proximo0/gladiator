@@ -1,0 +1,2 @@
+What happened: Weight costs (speed -20 to -30%, stamina per step and swing, weaker hands) barely moved iron plate v naked (92% to 88-90%, 48 fights): a gladius cut passes 8% of plate, so the naked side lost on blood however it moved, and the bots never use speed
+Rule: Before tuning a cost, check the outcome mechanism it must beat (here blood per hit); measure a harsh setting first to see whether the lever can reach the target at all

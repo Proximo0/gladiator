@@ -1,6 +1,6 @@
 # Core brief: step 1 (fighter core, damage model, input, arena, tuning panel)
 
-Read `CLAUDE.md`, `docs/agent_brief.md` and `docs/lessons_learned.md` first. This file is the contract every worker
+Read `CLAUDE.md`, `docs/agent_brief.md` and the lessons (`python3 tools/lessons_index.py`) first. This file is the contract every worker
 in step 1 codes against. Do not change a signature here; if one is wrong, say so in your report.
 
 ## The game in one paragraph

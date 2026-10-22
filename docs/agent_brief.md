@@ -1,6 +1,6 @@
 # Agent brief
 
-Read `CLAUDE.md` first, then `docs/lessons_learned.md`. This file lists the rules for helper agents and the
+Read `CLAUDE.md` first, then the lessons (`python3 tools/lessons_index.py`). This file lists the rules for helper agents and the
 contracts other modules already provide. Use the contracts; do not change them.
 
 ## Hard rules for helper agents

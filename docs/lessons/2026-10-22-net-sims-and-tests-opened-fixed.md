@@ -1,0 +1,2 @@
+What happened: Net sims and tests opened fixed ports (17931, 17941, 17961, 17981, discovery 17790..97, the stub's 7777), so two suites on one machine failed with "Could not listen on port 17961", and two Quick Match runs could even find each other's peers by UDP
+Rule: Sims take ports from `net_port(slot)` in `tests/sim/sim_base.gd` (a 64-port block per OS process id, plus a slot); the stub reads `--net-port`; the game's default port is unchanged. Never write a literal port in a test

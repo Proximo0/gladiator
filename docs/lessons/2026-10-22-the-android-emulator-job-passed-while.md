@@ -1,0 +1,2 @@
+What happened: The Android emulator job passed while 186 lit scene shaders failed to link ("Fragment shader active uniforms exceed GL_MAX_FRAGMENT_UNIFORM_VECTORS (261)") under `-gpu swiftshader_indirect`; the gate only grepped for SCRIPT ERROR
+Rule: Emulator uses `-gpu swangle_indirect` (ANGLE: 0 failures); tools/android_ci_run.sh fails on `Program linking failed` too. A green smoke test must also prove it rendered: look at the fight frame
