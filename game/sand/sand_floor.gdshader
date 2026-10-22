@@ -45,11 +45,17 @@ uniform float rim_light = 0.3;
 // once a frame; the live ones come first and the first zero strength ends the list.
 uniform vec4 contact[8];
 uniform vec4 contact_bound = vec4(0.0);  // x, z, radius holding every live blob (ContactShadow.bound); radius 0 = none
+uniform vec4 contact_axis[8];  // per blob: flat direction x, z and aspect (length over width; 0 = round)
+// Sun fade (GfxQuality.CONTACT_SUN_FADE): 1 takes the blobs off the sun light only (none in the sun's shadow, which
+// already darkens the sand there) and `contact_sun_ambient` of them off the ambient; 0 darkens the albedo as before.
+uniform float contact_sun_fade = 0.0;
+uniform float contact_sun_ambient = 0.35;
 
 varying vec3 lpos;
 varying float v_sparkle;
 varying float v_gloss;
 varying vec2 v_jit;
+varying float v_cshade;
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -215,7 +221,8 @@ void fragment() {
 	vec3 col = mix(sand, soaked, stain * (0.4 + 0.55 * smoothstep(0.05, 0.5, b)));
 	bcol *= 0.9 + 0.2 * n2.r;
 	col = mix(col, bcol, cov);
-	// Contact shadows: each blob multiplies by 1 - strength * (1 - d²/r²)² (ContactShadow.shade_at mirrors this).
+	// Contact shadows: each blob multiplies by 1 - strength * (1 - e²)², e the distance in the blob's oval
+	// (ContactShadow.shade_at mirrors this).
 	float cshade = 1.0;
 	vec2 cbd = wp - contact_bound.xy;
 	int cn = dot(cbd, cbd) < contact_bound.z * contact_bound.z ? 8 : 0;
@@ -224,13 +231,19 @@ void fragment() {
 		if (cb.w <= 0.0) {
 			break;
 		}
+		vec4 ca = contact_axis[i];
+		vec2 cax = ca.z > 0.0 ? ca.xy : vec2(1.0, 0.0);
+		float casp = ca.z > 0.0 ? ca.z : 1.0;
 		vec2 cd = wp - cb.xy;
-		float cq = clamp(1.0 - dot(cd, cd) / (cb.z * cb.z), 0.0, 1.0);
+		float along = dot(cd, cax);
+		float across = dot(cd, vec2(-cax.y, cax.x));
+		float cq = clamp(1.0 - (along * along / casp + across * across * casp) / (cb.z * cb.z), 0.0, 1.0);
 		cshade *= 1.0 - cb.w * cq * cq;
 	}
-	col *= cshade;
+	v_cshade = mix(1.0, cshade, contact_sun_fade);
+	col *= mix(cshade, 1.0, contact_sun_fade);
 	ALBEDO = col;
-	EMISSION = col * sand_ambient + bcol * bglow * cov;
+	EMISSION = col * sand_ambient * mix(1.0, cshade, contact_sun_fade * contact_sun_ambient) + bcol * bglow * cov;
 
 	float gloss = cov * (1.0 - dry * 0.75) + wet * 0.2;
 	ROUGHNESS = 1.0;
@@ -250,7 +263,7 @@ void light() {
 	float ndl = dot(NORMAL, LIGHT);
 	// Wrapped diffuse: sand scatters light into the shadow side a little.
 	float wrap = clamp((ndl + 0.2) / 1.2, 0.0, 1.0);
-	DIFFUSE_LIGHT += wrap * ATTENUATION * LIGHT_COLOR / PI;
+	DIFFUSE_LIGHT += wrap * ATTENUATION * LIGHT_COLOR / PI * v_cshade;
 	vec3 h = normalize(LIGHT + VIEW);
 	float nh = max(dot(NORMAL, h), 0.0);
 	float lit = max(ndl, 0.0) * ATTENUATION;

@@ -1,7 +1,8 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
 // Accumulated damage on one body part, drawn as a material_overlay over the part's own meshes (skin, outfit, armor):
-// gashes, punctures, bruises (which swell the overlay surface) and blood smears, each a shape in the part's frame,
+// gashes, punctures, bruises (which swell the overlay surface), blood smears and sever rings (the wet band round a
+// stump or a severed part's cut end), each a shape in the part's frame,
 // so a mark wraps the real surface wherever the hit landed. Up to 8 marks (WoundMarks.pack); `to_part` takes this
 // mesh's local space into the part frame. On armor (`armor`) cuts and holes show only as blood, never flesh.
 // Palette slot 0 / 1: the two fighters' blood (fresh / dried colour, glow) and flesh colours.
@@ -10,7 +11,7 @@ uniform mat4 to_part = mat4(1.0);
 uniform int count = 0;
 uniform vec4 wa[8];  // pos, size (half length / radius)
 uniform vec4 wb[8];  // cut direction, half width
-uniform vec4 wc[8];  // outward normal, kind (0 gash, 1 puncture, 2 bruise, 3 smear)
+uniform vec4 wc[8];  // outward normal (a ring: the bone axis out through the cut), kind (0 gash, 1 puncture, 2 bruise, 3 smear, 4 ring)
 uniform vec4 wd[8];  // trickle direction (down), trickle length
 uniform vec4 we[8];  // dryness, seed, palette slot, severity
 uniform bool armor = false;
@@ -18,6 +19,10 @@ uniform float swell = 0.016;  // bruise swelling at full severity (m)
 uniform float core_scale = 1.0;  // open slit / hole width multiplier (Tuning wound_core_scale)
 uniform float rim_glow = 0.0;  // emission of a fresh wound's wet rim (Tuning wound_rim_glow)
 uniform float rim_glow_dry = 0.05;  // dryness at which that glow is gone (WoundMarks.dryness of wound_rim_glow_s)
+uniform float smear_lobe = 0.16;  // how far a smear's outline bulges (Tuning wound_smear_lobe; WoundMarks.smear_lobe)
+uniform float smear_drops = 0.35;  // share of edge cells round a smear that hold a satellite drop
+uniform float ring_glow = 0.0;  // emission of a sever ring's fresh blood (Tuning wound_ring_glow)
+uniform float ring_glow_dry = 0.2;  // dryness at which that glow is gone (wound_ring_glow_s)
 uniform vec3 fresh0 : source_color = vec3(0.80, 0.012, 0.027);
 uniform vec3 dried0 : source_color = vec3(0.24, 0.035, 0.03);
 uniform vec3 flesh0 : source_color = vec3(0.75, 0.04, 0.04);
@@ -74,11 +79,12 @@ void fragment() {
 		vec3 d = v_p - wa[i].xyz;
 		vec3 n = wc[i].xyz;
 		float depth = dot(d, n);
-		float side = 1.0 - smoothstep(0.022, 0.05, abs(depth));  // this side of the limb only
+		float kind = wc[i].w;
+		// This side of the limb only (a ring goes all the way round).
+		float side = kind > 3.5 ? 1.0 : 1.0 - smoothstep(0.022, 0.05, abs(depth));
 		if (side <= 0.0) {
 			continue;
 		}
-		float kind = wc[i].w;
 		float sz = max(wa[i].w, 0.002);
 		float seed = we[i].y;
 		float dry = we[i].x;
@@ -97,6 +103,8 @@ void fragment() {
 		float a = 0.0;
 		float w = 0.0;  // wet share of this layer
 		float rim = 0.0;  // the wet rim of an open wound (glows while fresh)
+		float rglow = rim_glow;
+		float rdry = rim_glow_dry;
 		if (kind < 0.5) {
 			// Gash: a lens along the cut with ragged edges, dark open flesh in the slit, a bright wet rim and a smear
 			// of blood around it.
@@ -150,20 +158,43 @@ void fragment() {
 			c = mix(core * (0.75 + 0.25 * r), rim, smoothstep(0.45, 0.95, r));
 			a = (1.0 - smoothstep(0.7, 1.05, r)) * (0.7 + 0.3 * sev);
 			w = 0.0;
-		} else {
-			// Smear: splashed blood with lobes and satellite drops, streaked along `t` when it landed fast (narrower
-			// across: wb.w < size).
-			float r = length(vec2(u / sz, v / max(wb[i].w, 0.002)));
-			float ang = atan(v, u);
-			float lobe = 1.0 + 0.45 * wn(ang * 3.0, seed) + 0.25 * wn(ang * 9.0, seed + 5.0);
-			a = (1.0 - smoothstep(0.75, 1.0, r / max(lobe, 0.3))) * 0.9;
-			vec2 q = vec2(u, v) / sz * 2.6 + vec2(seed * 9.0, seed * 4.0);
+		} else if (kind < 3.5) {
+			// Smear: a splashed blot with a few soft lobes (whole harmonics of the angle, so the outline closes with no
+			// seam and never spikes into a star) and a few satellite drops just outside it, streaked along `t` when it
+			// landed fast (narrower across: wb.w < size).
+			vec2 e = vec2(u / sz, v / max(wb[i].w, 0.002));
+			float r = length(e);
+			float ang = atan(e.y, e.x);
+			float p = seed * 6.2831853;
+			float lobe = 1.0 + smear_lobe * (0.55 * sin(2.0 * ang + p) + 0.3 * sin(3.0 * ang + 2.3 * p) + 0.15 * sin(5.0 * ang + 4.1 * p));
+			float rl = r / lobe;
+			a = (1.0 - smoothstep(0.8, 1.0, rl)) * (0.82 + 0.1 * (1.0 - rl));
+			vec2 q = e * 2.6 + vec2(seed * 9.0, seed * 4.0);
 			vec2 cell = floor(q);
 			vec2 f = fract(q) - 0.5;
-			float drop = step(0.72, h11(dot(cell, vec2(7.1, 13.7)) + seed)) * (1.0 - smoothstep(0.12, 0.2, length(f)));
-			a = max(a, drop * (1.0 - smoothstep(1.2, 1.8, r)) * 0.9);
+			float hd = h11(dot(cell, vec2(7.1, 13.7)) + seed);
+			float drop = step(1.0 - smear_drops * 0.6, hd) * (1.0 - smoothstep(0.1, 0.17, length(f)));
+			a = max(a, drop * smoothstep(0.95, 1.1, rl) * (1.0 - smoothstep(1.35, 1.7, rl)) * 0.9);
 			c = blood;
 			w = 1.0;
+		} else {
+			// Sever ring: a wet band of fresh blood round the limb from the cut back into the part, a dark torn line
+			// at the cut itself and a few runs hanging off its far edge. `depth` is the distance along the bone
+			// axis past the cut (negative: back into the part); wa.w is the radius it reaches, wb.w the band height.
+			float back = -depth;
+			float rad = length(d - n * depth);
+			float band = wb[i].w * (0.6 + 0.4 * sev);
+			float ang = atan(v, u);
+			float edge = band * (0.8 + 0.2 * sin(3.0 * ang + seed * 6.2831853));
+			float run = pow(max(sin(5.0 * ang + seed * 19.0), 0.0), 10.0) * band * 1.3;
+			a = (1.0 - smoothstep(edge + run, edge + run + 0.008, back)) * (1.0 - smoothstep(sz * 0.9, sz * 1.1, rad));
+			a *= step(-0.02, back) * 0.97;
+			float torn = 1.0 - smoothstep(0.0, 0.25 * band, back);
+			c = armor ? blood : mix(blood, mix(flesh * 0.35, blood, 0.4), torn);
+			w = 1.0;
+			rim = (1.0 - smoothstep(0.0, edge, back)) * a;
+			rglow = ring_glow;
+			rdry = ring_glow_dry;
 		}
 		// Trickle: gashes and punctures bleed a thin run down the skin with a drop at its end.
 		float tl = wd[i].w;
@@ -187,7 +218,7 @@ void fragment() {
 		alpha = alpha + a * (1.0 - alpha);
 		wet = max(wet, w * a * (1.0 - dry));
 		glow_sum = max(glow_sum, glow * a * w * (1.0 - dry));
-		rim_em = max(rim_em, blood * (rim * side * rim_glow * (1.0 - smoothstep(0.0, max(rim_glow_dry, 0.0001), dry))));
+		rim_em = max(rim_em, blood * (rim * side * rglow * (1.0 - smoothstep(0.0, max(rdry, 0.0001), dry))));
 	}
 	if (alpha <= 0.002) {
 		discard;
