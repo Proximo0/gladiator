@@ -82,7 +82,7 @@ func run() -> Array:
 	_rng.seed = 9400
 	loss = 0.0
 	time_limit_s = 120.0
-	port = PORT + 60
+	port = net_port(61)  # a per-process port (sim_base.net_port): slot 61 is the cheat sim
 	await sandbox()
 	if not await _setup(0, 0, 0, 9400):
 		await _teardown()

@@ -1,8 +1,8 @@
 extends "res://tests/sim/sim_base.gd"
 ## The Quick Match screens end to end in one process, two MenuFlows (the client's under its own SubViewport world),
 ## each with its own ServiceStub that pairs them over a localhost ENet port: search (timer, usual wait), found ->
-## loadout confirm (the client changes arms and readies; the host waits for its own ready) -> fight -> the result
-## panel with the rating change -> the rematch handshake (rated, a derived match id) -> the client leaves mid-fight
+## loadout confirm (the client changes arms and readies; the host waits for its own ready) -> fight -> the results
+## screen with the rating change -> the rematch handshake (rated, a derived match id) -> the client leaves mid-fight
 ## and the host is told in plain words -> back to the queue; then a confirm abandoned by the other side and a host
 ## whose client never connects both land back in the search with a plain line.
 
@@ -33,8 +33,14 @@ func _stub(f: MenuFlow, my_id: String, role: String, opp_id: String, opp_name: S
 	return s
 
 
+## The flow's results screen (MatchResults) when it is up, else its menu panel (the VALE card).
+func _panel(f: MenuFlow) -> Node:
+	var r: Node = f.get("_results")
+	return r if r != null else f.get("_pause")
+
+
 func _panel_text(f: MenuFlow) -> String:
-	var p: Node = f.get("_pause")
+	var p: Node = _panel(f)
 	if p == null:
 		return ""
 	var out: PackedStringArray = []
@@ -118,7 +124,7 @@ func run() -> Array:
 	sh.timeout_match(mid)
 	sc.timeout_match(str(cs.get("_info")["match_id"]))
 	await step(5)
-	var hp: Node = fh.get("_pause")
+	var hp: Node = _panel(fh)
 	var views: Array = hp.find_children("*", "RatingChangeView", true, false) if hp != null else []
 	var ptext: String = _panel_text(fh)
 	rows.append(row("quick_flow_result", n < 900 and views.size() == 1 and (views[0] as RatingChangeView).is_rated()

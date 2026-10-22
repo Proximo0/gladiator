@@ -173,6 +173,10 @@ const FIELDS: Array = [
 	["match_pause_s", 4.0, 1.0, 15.0, 0.5, "Match", "Pause after a match before the next bot match starts, s."],
 	["match_slowmo_scale", 0.4, 0.1, 1.0, 0.05, "Match", "Time scale during the finisher slow motion."],
 	["match_slowmo_s", 1.0, 0.0, 5.0, 0.1, "Match", "Length of the finisher slow motion, game seconds."],
+	["intro_s", 2.3, 0.0, 8.0, 0.1, "Match", "Pre-fight intro: name plates up and fighters held before FIGHT!, s (0 = no intro)."],
+	["intro_fight_s", 0.8, 0.2, 3.0, 0.1, "Match", "FIGHT! stinger on screen (the fighters are free from its first frame), s."],
+	["combo_gap_s", 1.5, 0.3, 5.0, 0.1, "Match", "Results' longest combo: most time between one fighter's blows with no blow back, s."],
+	["combo_merge_s", 0.15, 0.0, 0.5, 0.01, "Match", "Results: contacts closer than this to the last blow are the same swing, s."],
 	["killcam_on", 1.0, 0.0, 1.0, 1.0, "Replay", "1 = instant replay of the finishing blow before the result panel, 0 = off."],
 	["killcam_buffer_s", 8.0, 5.0, 20.0, 0.5, "Replay", "Seconds of shown fight kept for the replay (ring buffer)."],
 	["killcam_lead_s", 3.5, 1.0, 6.0, 0.1, "Replay", "Game seconds replayed before the killing blow."],
@@ -505,6 +509,10 @@ var knockback_scale: float
 var match_pause_s: float
 var match_slowmo_scale: float
 var match_slowmo_s: float
+var intro_s: float
+var intro_fight_s: float
+var combo_gap_s: float
+var combo_merge_s: float
 var killcam_on: float
 var killcam_buffer_s: float
 var killcam_lead_s: float
