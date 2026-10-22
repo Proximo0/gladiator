@@ -13,6 +13,7 @@ n-th pair (CI fan-out, .github/workflows/balance.yml). Records go to out/balance
 report: merges run files (a later file replaces earlier records for the same pair) and writes the tables.
 Quiet: failing fights and one summary line.
 """
+import gzip
 import json
 import os
 import subprocess
@@ -138,7 +139,7 @@ def cmd_run(opts):
 def load_records(files):
     by_pair = {}
     for fn in files:
-        with open(fn) as f:
+        with (gzip.open(fn, "rt") if fn.endswith(".gz") else open(fn)) as f:
             d = json.load(f)
         fresh = defaultdict(list)
         for r in d["records"]:

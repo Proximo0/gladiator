@@ -1,6 +1,6 @@
 # Weapon balance round-robin fanned out over 20 runners (tools/balance_matrix.py, docs/balance_matrix.md).
-# Each shard prints its records as one gzip+base64 line between BALANCE_DATA markers; merge them with
-# `tools/balance_matrix.py report`.
+# The collect job merges the shards (hit logs dropped) into docs/balance_runs/<sha>.json.gz and commits it to the
+# branch that ran, so a cloud session without artifact access can `git pull` it; `tools/balance_matrix.py report` reads it.
 name: balance
 
 on:
@@ -12,6 +12,9 @@ on:
 concurrency:
   group: balance-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: write
 
 env:
   GODOT_VERSION: 4.7.2
@@ -34,10 +37,43 @@ jobs:
         run: |
           godot --headless --path . --import > /tmp/import.log 2>&1 || { cat /tmp/import.log; exit 1; }
           python3 tools/balance_matrix.py run --fights=10 --jobs=4 --shard=${{ matrix.shard }} --nshards=20 --out=out/balance/shard.json
-          echo "BALANCE_DATA_BEGIN $(gzip -c out/balance/shard.json | base64 -w0) BALANCE_DATA_END"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: balance-${{ matrix.shard }}
           path: out/balance/shard.json
           if-no-files-found: ignore
+
+  collect:
+    needs: shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: balance-*
+          path: shards
+      - name: Commit merged records
+        shell: bash
+        run: |
+          mkdir -p docs/balance_runs
+          f=docs/balance_runs/${GITHUB_SHA::7}.json.gz
+          python3 - "$f" shards/*/shard.json <<'PY'
+          import gzip, json, sys
+          recs = []
+          for fn in sys.argv[2:]:
+              d = json.load(open(fn))
+              for r in d["records"]:
+                  r.pop("hitlog", None)
+                  r.pop("log", None)
+                  recs.append(r)
+          with gzip.open(sys.argv[1], "wt") as f:
+              json.dump({"sha": "${{ github.sha }}", "records": recs}, f)
+          print("BALANCE collected %d records" % len(recs))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$f"
+          git commit -qm "Balance run ${GITHUB_SHA::7}: merged round-robin records"
+          for i in 1 2 3 4; do git pull -q --rebase origin "$GITHUB_REF_NAME" && git push -q origin "HEAD:$GITHUB_REF_NAME" && break; sleep $((i * 3)); done
