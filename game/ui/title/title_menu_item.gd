@@ -18,10 +18,15 @@ var _f: float = 0.0  ## 0 unfocused .. 1 focused, eased
 var _press: float = 0.0
 
 
-func _init(p_text: String = "", p_note: String = "") -> void:
+## `p_plain` is the Button's own text (what tests, logs and screen readers see) when the drawn label is styled
+## differently (upper case); the Button never draws it.
+func _init(p_text: String = "", p_note: String = "", p_plain: String = "") -> void:
 	label_text = p_text
 	note = p_note
-	text = ""
+	text = p_plain if p_plain != "" else p_text
+	clip_text = true
+	for fc: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color", "font_disabled_color", "font_outline_color"]:
+		add_theme_color_override(fc, Color(0.0, 0.0, 0.0, 0.0))
 	focus_mode = Control.FOCUS_ALL
 	flat = true
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND

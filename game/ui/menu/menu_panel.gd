@@ -36,7 +36,7 @@ func build(latin: String, english: String, body: String, entries: Array) -> void
 	gap.custom_minimum_size = Vector2(0.0, 16.0)
 	v.add_child(gap)
 	for entry: Array in entries:
-		var btn := TitleMenuItem.new(str(entry[1]).to_upper())
+		var btn := TitleMenuItem.new(str(entry[1]).to_upper(), "", str(entry[1]))
 		btn.tile = true
 		btn.font_px = 34
 		btn.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)

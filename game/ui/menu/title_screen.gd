@@ -61,7 +61,7 @@ func _init() -> void:
 	if not OS.has_feature("mobile") and not OS.has_feature("web"):
 		entries.append(["quit", "Quit", ""])
 	for e: Array in entries:
-		var b := TitleMenuItem.new(str(e[1]).to_upper(), str(e[2]))
+		var b := TitleMenuItem.new(str(e[1]).to_upper(), str(e[2]), str(e[1]))
 		b.name = "Item_%s" % str(e[0])
 		b.primary = _items.is_empty()
 		b.pressed.connect(func() -> void: chosen.emit(str(e[0])))
