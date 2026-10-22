@@ -104,7 +104,7 @@ func _install(m: Match) -> ScriptReader:
 
 func run() -> Array:
 	var rows: Array = []
-	await sandbox()
+	await sandbox(true)  # a fresh physics space: the scripted run must not depend on the sims before it
 	PracticeSave.open_shared(false)  # a scripted run never persists
 	var m := Match.new()
 	world.add_child(m)
