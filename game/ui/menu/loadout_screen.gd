@@ -158,6 +158,7 @@ func open(p_mode: String) -> void:
 	_sync_opponent()
 	_relayout()
 	focus_default()
+	_scroll.set_deferred("scroll_vertical", 0)  # open at the top: the preview first (portrait scrolls)
 
 
 ## Pad and keyboard routes, set by hand because the rows sit in a scrolling box that Godot's own search sees through.

@@ -141,6 +141,14 @@ static func keeps_horizontal(c: Control) -> bool:
 	return c is MenuPicker or c is Range or c is LineEdit or c is TextEdit
 
 
+## Touch screens: every button and picker under `within` at least `min_h` units tall (a finger, not a cursor).
+## Screens that lay their rows out smaller again are corrected on the next call (MenuFlow calls it every frame).
+static func enforce_touch_height(within: Control, min_h: float) -> void:
+	for k: Control in focusables(within):
+		if (k is BaseButton or k is MenuPicker) and not (k is TitleMenuItem) and k.custom_minimum_size.y < min_h:
+			k.custom_minimum_size.y = min_h
+
+
 static func focusables(within: Control) -> Array[Control]:
 	var out: Array[Control] = []
 	for n: Node in within.find_children("*", "Control", true, false):

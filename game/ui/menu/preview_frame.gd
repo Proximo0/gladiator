@@ -92,9 +92,9 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.05, 0.035, 0.025, 0.86))
 	var c: Vector2 = Vector2(size.x * 0.5, size.y * 0.62)
 	var r: float = maxf(size.x, size.y) * 0.62
-	for i: int in 10:
-		var k: float = 1.0 - float(i) / 10.0
-		draw_circle(c, r * k, Color(0.85, 0.45, 0.18, 0.04))
+	for i: int in 40:  # many faint discs: a smooth pool, no visible bands
+		var k: float = 1.0 - float(i) / 40.0
+		draw_circle(c, r * k * k, Color(0.85, 0.45, 0.18, 0.012))
 	var b: Color = MenuTheme.BRONZE
 	var l: float = minf(size.x, size.y) * 0.08
 	for corner: Vector2 in [Vector2.ZERO, Vector2(size.x, 0.0), Vector2(0.0, size.y), size]:

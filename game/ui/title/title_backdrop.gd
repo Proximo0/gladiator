@@ -9,7 +9,7 @@ extends Node3D
 const HALF_GAP: float = 1.75  ## m from the centre to each fighter (3.5 m apart: no weapon here reaches that)
 const FOV: float = 46.0
 const FRAME_EASE: float = 1.6  ## 1/s, how fast the framing follows a new frame_x
-const MOTES: int = 260
+const MOTES: int = 150
 const HAZE_DENSITY: float = 0.013
 const LOADOUTS: Array = [
 	{"weapon": "gladius", "offhand": "shield_round", "armor": {"head": "helm_iron", "torso": "cuirass_leather", "thigh_l": "greaves_iron"}},
@@ -126,7 +126,7 @@ func _add_motes() -> void:
 	ramp.add_point(0.8, Color(1.0, 0.84, 0.6, 0.7))
 	p.color_ramp = ramp
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.04, 0.04)
+	quad.size = Vector2(0.026, 0.026)
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
