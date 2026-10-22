@@ -201,6 +201,28 @@ const FIELDS: Array = [
 	["feel_rumble_scale", 1.0, 0.0, 1.0, 0.05, "Feel", "Gamepad rumble and phone vibration strength (the options toggle also gates it)."],
 	["feel_rumble_s", 0.3, 0.0, 1.0, 0.02, "Feel", "Rumble length at full impact, s."],
 	["feel_rumble_min", 0.2, 0.0, 0.8, 0.01, "Feel", "Impact below which a hit does not rumble."],
+	["feel_hitstop_min", 0.2, 0.0, 0.9, 0.01, "Feel", "Impact below which a hit has no hit-stop (presentation only; physics never pauses)."],
+	["feel_hitstop_light_s", 0.035, 0.0, 0.2, 0.005, "Feel", "Hit-stop of a hit just over the floor, real s."],
+	["feel_hitstop_heavy_s", 0.095, 0.0, 0.3, 0.005, "Feel", "Hit-stop of a full-impact hit, real s."],
+	["feel_hitstop_sever_s", 0.12, 0.0, 0.3, 0.005, "Feel", "Least hit-stop of a blow that severs or guts, real s."],
+	["feel_hitstop_finisher_s", 0.16, 0.0, 0.4, 0.005, "Feel", "Hit-stop of a finisher (behead, gut, run through, skull crush), real s."],
+	["feel_hitstop_clash_mult", 0.7, 0.0, 1.5, 0.05, "Feel", "Hit-stop share for weapon on weapon (a crisp clang, not a stall)."],
+	["feel_hitstop_rate", 0.06, 0.0, 0.5, 0.01, "Feel", "Presentation speed while a hit-stop holds (0 = frozen)."],
+	["feel_hitstop_catchup", 1.6, 0.3, 6.0, 0.1, "Feel", "Extra presentation speed while it catches back up to physics after a hold (1.6 = 2.6x)."],
+	["feel_hitstop_lag_max", 0.15, 0.02, 0.4, 0.01, "Feel", "Most the shown pose may trail physics, s: the hard cap against stacked stalls."],
+	["feel_hitstop_budget_s", 0.3, 0.05, 1.5, 0.01, "Feel", "Hit-stop debt at which further stops shrink to nothing (a flurry does not stall)."],
+	["feel_hitstop_budget_tau", 0.8, 0.1, 4.0, 0.05, "Feel", "Time constant over which hit-stop debt drains, s."],
+	["feel_punch_min", 0.45, 0.0, 1.0, 0.01, "Feel", "Impact below which a hit does no screen punch (radial blur, colour split, flash)."],
+	["feel_punch_s", 0.16, 0.02, 0.6, 0.01, "Feel", "Length of a screen punch, real s."],
+	["feel_punch_blur", 0.045, 0.0, 0.15, 0.005, "Feel", "Radial blur reach of a full screen punch (share of the distance to the impact point)."],
+	["feel_punch_chroma", 0.006, 0.0, 0.03, 0.001, "Feel", "Colour split of a full screen punch (share of the distance to the impact point)."],
+	["feel_punch_flash", 0.22, 0.0, 0.8, 0.01, "Feel", "Screen flash alpha of a full screen punch."],
+	["feel_cine_scale", 0.2, 0.05, 1.0, 0.01, "Feel", "Time scale of the finisher slow motion on a behead, gut or run through."],
+	["feel_cine_hold_s", 0.9, 0.0, 3.0, 0.05, "Feel", "How long that slow motion holds, real s."],
+	["feel_cine_ramp_s", 0.7, 0.05, 3.0, 0.05, "Feel", "Ease back to full speed after the hold, real s (the crowd roars as it starts)."],
+	["feel_cine_lpf_hz", 900.0, 200.0, 8000.0, 50.0, "Feel", "Low-pass cutoff on crowd and effects during the finisher slow motion, Hz."],
+	["feel_cine_bass_db", -2.0, -30.0, 6.0, 0.5, "Feel", "Gain of the finisher bass hit, dB."],
+	["feel_bass_min", 0.6, 0.0, 1.0, 0.01, "Feel", "Impact above which an ordinary heavy hit gets a short sub-bass thump."],
 	["aim_trail_s", 0.3, 0.05, 1.0, 0.05, "Feel", "Length of the player's own weapon-tip trail (aim aid), s."],
 	["aim_alpha", 0.8, 0.1, 1.0, 0.05, "Feel", "Opacity of the aim aid (tip marker, trail, hand reticle)."],
 	["aim_lost_delay_s", 0.4, 0.0, 3.0, 0.1, "Feel", "Disarmed for this long before the weapon-lost prompt shows, s."],
@@ -529,6 +551,28 @@ var feel_spark_min: float
 var feel_rumble_scale: float
 var feel_rumble_s: float
 var feel_rumble_min: float
+var feel_hitstop_min: float
+var feel_hitstop_light_s: float
+var feel_hitstop_heavy_s: float
+var feel_hitstop_sever_s: float
+var feel_hitstop_finisher_s: float
+var feel_hitstop_clash_mult: float
+var feel_hitstop_rate: float
+var feel_hitstop_catchup: float
+var feel_hitstop_lag_max: float
+var feel_hitstop_budget_s: float
+var feel_hitstop_budget_tau: float
+var feel_punch_min: float
+var feel_punch_s: float
+var feel_punch_blur: float
+var feel_punch_chroma: float
+var feel_punch_flash: float
+var feel_cine_scale: float
+var feel_cine_hold_s: float
+var feel_cine_ramp_s: float
+var feel_cine_lpf_hz: float
+var feel_cine_bass_db: float
+var feel_bass_min: float
 var aim_trail_s: float
 var aim_alpha: float
 var aim_lost_delay_s: float
