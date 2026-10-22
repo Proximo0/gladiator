@@ -35,6 +35,7 @@ const WIDE_FOV: float = 55.0  ## tighter than the default so two fighters fill m
 var arena: Arena = null
 var sand: Node = null
 var blood: BloodFx = null
+var wounds: WoundFx = null  ## wound marks on bodies, blood on weapons and fists
 var sfx: SfxDirector = null
 var hud: HUD = null
 var camera: FightCamera = null
@@ -66,6 +67,9 @@ func build(camera_mode: String) -> void:
 	blood.name = "BloodFx"
 	blood.sand = sand
 	add_child(blood)
+	wounds = WoundFx.new()
+	wounds.name = "WoundFx"
+	add_child(wounds)
 	blood.set_quality(GfxQuality.blood_level())
 	sfx = SfxDirector.new()
 	sfx.name = "SfxDirector"
@@ -105,6 +109,8 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 		# Blood colour follows the outfit in the fighter's loadout (online it is the loadout both sides already have).
 		blood.set_palette(f.side, OutfitRules.blood_palette_of(f.loadout))
 		blood.track(f)
+		wounds.set_palette(f.side, OutfitRules.blood_palette_of(f.loadout))
+		wounds.track(f)
 		sfx.track(f)
 		f.died.connect(_on_fighter_died.bind(f.side))
 	var human: int = clampi(player_side, 0, 1)
@@ -127,6 +133,7 @@ func end_match() -> void:
 			blood.untrack(f as Node)
 	_fighters = []
 	blood.clear()
+	wounds.clear()
 	if sand != null and sand.has_method("clear"):
 		sand.call("clear")
 
