@@ -127,7 +127,44 @@ func _use_art_mesh() -> void:
 			(c as MeshInstance3D).visible = false
 	var art: Node3D = scene.instantiate() as Node3D
 	art.name = "Art"
+	# Houdini marks every material alpha-blend (depth pre-pass); that sorts and flickers, so force opaque.
+	_force_opaque_art(art)
+	if weapon_id == "rake":
+		# The art was built at 1.6 m with a 0.36 m head; the collider is 1.45 m with a 0.26 m crossbar (balance_rake.md).
+		# The grip end stays at -0.2 m: y' = RAKE_ART_SCALE.y * y + offset.
+		art.scale = RAKE_ART_SCALE
+		art.position = Vector3(0, -RAKE_ART_BOTTOM * (1.0 - RAKE_ART_SCALE.y), 0)
 	add_child(art)
+
+
+## Rake art fit: x 0.36 -> 0.26 m, y 1.6 -> 1.45 m (z kept), see `_use_art_mesh`.
+const RAKE_ART_SCALE: Vector3 = Vector3(0.7222, 0.90625, 1.0)
+const RAKE_ART_BOTTOM: float = 0.2
+## Blade material of an energy weapon: kept emissive and unshaded, never alpha-blended.
+const ART_ENERGY_MATERIAL: String = "energy"
+const ART_ENERGY_EMISSION: float = 2.5
+
+
+## Makes every surface material of an art scene opaque (the glb's own alpha flags are import noise). The material
+## named "energy" becomes an unshaded emissive white-hot core; the game's halo (meta "glow") provides the glow.
+static func _force_opaque_art(root: Node) -> void:
+	if root is MeshInstance3D:
+		var mi := root as MeshInstance3D
+		if mi.mesh != null:
+			for s: int in range(mi.mesh.get_surface_count()):
+				var m := mi.mesh.surface_get_material(s) as BaseMaterial3D
+				if m == null:
+					continue
+				var o := m.duplicate() as BaseMaterial3D
+				o.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+				o.albedo_color.a = 1.0
+				if o.resource_name == ART_ENERGY_MATERIAL:
+					o.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+					o.emission_enabled = true
+					o.emission_energy_multiplier = ART_ENERGY_EMISSION
+				mi.set_surface_override_material(s, o)
+	for c: Node in root.get_children():
+		_force_opaque_art(c)
 
 
 ## Dai-katana placeholder: a long wrapped tsuka, a round tsuba and a slightly curved blade of tilted segments

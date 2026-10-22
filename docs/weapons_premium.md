@@ -45,3 +45,12 @@ Unit tests assert light taps do not kill and that the premium blades cut but sho
 `hython tools/houdini/build_weapons.py --only=dai_katana,laser_sword` (add `--no-preview` to skip the Karma render).
 Same conventions as the other weapons: +Y long axis, origin at the grip, edges along +-X. The laser glb carries an
 emissive "energy" material for the core; the game keeps its own halo/light/trail around any art mesh.
+
+## Art materials and fit (weapon.gd `_use_art_mesh`)
+- Houdini 22 exports every material as alpha-blend (depth pre-pass, flickers). `_force_opaque_art` duplicates each surface
+  material as an override with transparency off. The `energy` material (laser) becomes unshaded emissive (x2.5); the cyan halo
+  (meta `glow`), light and trail stay as separate game nodes. Old glbs (all of them) had the same flag; fixed the same way.
+- The laser glb blade spans y 0.064..1.132 (r 0.011), matching the game halo/collider 0.05..1.13; the primitive core is hidden
+  when the glb exists, so only one white-hot core is drawn.
+- Rake art was built at 1.6 m x 0.36 m; `RAKE_ART_SCALE` (0.722, 0.906, 1) with the grip end pinned fits it to the 1.45 m / 0.26 m
+  collider. Cleaner fix in `build_weapons.py`: rake length 1.45 (art y -0.2..1.25) and head width 0.26.

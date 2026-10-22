@@ -98,3 +98,42 @@ func test_premium_cuts_but_shoves_less_than_longsword() -> void:
 		assert_true(float(r["cut"]) > float(ls["cut"]), id + " cuts better")
 		assert_true((r["knockback"] as Vector3).length() < (ls["knockback"] as Vector3).length(), id + " shoves less")
 		assert_true(float(r["stagger"]) <= float(ls["stagger"]))
+
+
+func _art_materials(n: Node, out: Array[BaseMaterial3D]) -> void:
+	if n is MeshInstance3D:
+		var mi := n as MeshInstance3D
+		for s: int in range(mi.mesh.get_surface_count()):
+			var m := mi.get_active_material(s) as BaseMaterial3D
+			if m != null:
+				out.append(m)
+	for c: Node in n.get_children():
+		_art_materials(c, out)
+
+
+func test_art_materials_are_opaque() -> void:
+	for id: String in ["dai_katana", "laser_sword", "rake", "longsword"]:
+		var w := Weapon.new()
+		w.build(CombatData.weapon(id))
+		var art: Node = w.get_node_or_null("Art")
+		assert_true(art != null, "%s has art" % id)
+		if art == null:
+			w.free()
+			continue
+		var mats: Array[BaseMaterial3D] = []
+		_art_materials(art, mats)
+		assert_true(mats.size() > 0, "%s art has materials" % id)
+		for m: BaseMaterial3D in mats:
+			assert_eq(m.transparency, BaseMaterial3D.TRANSPARENCY_DISABLED, "%s/%s opaque" % [id, m.resource_name])
+		w.free()
+
+
+func test_rake_art_fits_collider() -> void:
+	var w := Weapon.new()
+	w.build(CombatData.weapon("rake"))
+	var art: Node3D = w.get_node("Art") as Node3D
+	# Art spans y -0.2..1.4 (1.6 m) and x +-0.18; after the fit it must span -0.2..1.25 and x +-0.13.
+	assert_near(art.scale.y * 1.4 + art.position.y, 1.25, 0.001)
+	assert_near(art.scale.y * -0.2 + art.position.y, -0.2, 0.001)
+	assert_near(art.scale.x * 0.18, 0.13, 0.001)
+	w.free()
