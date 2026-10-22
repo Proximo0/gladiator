@@ -81,3 +81,10 @@ func test_same_tick_double_death_is_mutual_draw() -> void:
 	var j := MatchJudge.new(60.0)
 	j.note_cause(0, "behead")
 	assert_eq(j.update([_fr("dead"), _fr("dead")], 5, 0.1), {"winner": -1, "reason": "mutual"})
+
+
+func test_leader_is_the_time_limit_rule() -> void:
+	assert_eq(MatchJudge.leader([{"blood": 4.0}, {"blood": 3.0}]), 0)
+	assert_eq(MatchJudge.leader([{"blood": 3.0}, {"blood": 4.0}]), 1)
+	assert_eq(MatchJudge.leader([{"blood": 4.0, "hp": 0.9}, {"blood": 4.1, "hp": 0.5}]), 0, "level blood: hp decides")
+	assert_eq(MatchJudge.leader([{"blood": 4.0, "hp": 0.7}, {"blood": 4.0, "hp": 0.7}]), -1)

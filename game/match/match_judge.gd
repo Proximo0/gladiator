@@ -50,22 +50,26 @@ func update(frames: Array, tick: int, delta: float) -> Dictionary:
 		var faint: bool = float(frames[out].get("blood", 5.0)) < FAINT_BLOOD_L
 		return {"winner": 1 - out, "reason": "blood_loss" if faint else "ko"}
 	if float(tick) * delta >= time_limit_s:
-		var b0: float = float(frames[0].get("blood", 5.0))
-		var b1: float = float(frames[1].get("blood", 5.0))
-		var winner: int = -1
-		if b0 - b1 > DRAW_BLOOD_L:
-			winner = 0
-		elif b1 - b0 > DRAW_BLOOD_L:
-			winner = 1
-		else:
-			var h0: float = float(frames[0].get("hp", 1.0))
-			var h1: float = float(frames[1].get("hp", 1.0))
-			if h0 - h1 > DRAW_HP_FRAC:
-				winner = 0
-			elif h1 - h0 > DRAW_HP_FRAC:
-				winner = 1
-		return {"winner": winner, "reason": "time"}
+		return {"winner": leader(frames), "reason": "time"}
 	return {}
+
+
+## Who is ahead on points (the time-limit rule): the side with DRAW_BLOOD_L more blood, else DRAW_HP_FRAC more
+## whole-body hp, else -1. Also what a "dropped" result report names as its winner (Rating.reconcile).
+static func leader(frames: Array) -> int:
+	var b0: float = float(frames[0].get("blood", 5.0))
+	var b1: float = float(frames[1].get("blood", 5.0))
+	if b0 - b1 > DRAW_BLOOD_L:
+		return 0
+	if b1 - b0 > DRAW_BLOOD_L:
+		return 1
+	var h0: float = float(frames[0].get("hp", 1.0))
+	var h1: float = float(frames[1].get("hp", 1.0))
+	if h0 - h1 > DRAW_HP_FRAC:
+		return 0
+	if h1 - h0 > DRAW_HP_FRAC:
+		return 1
+	return -1
 
 
 func _reason(loser: int) -> String:
