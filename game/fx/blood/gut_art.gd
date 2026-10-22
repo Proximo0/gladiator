@@ -131,7 +131,10 @@ static func _build(kind: int) -> Dictionary:
 		verts[i] = (verts[i] + off) * sc
 		norms[i] = (norms[i] * inv).normalized()
 	if kind == GutSim.K_LINK:  # round the open tube ends so links bend like sausages, not cut pipes
-		var capped: Dictionary = _cap_ends({"v": verts, "n": norms, "c": src["c"], "i": src["i"]}, LINK_CAP)
+		var tube: Dictionary = {"v": verts, "n": norms, "c": src["c"], "i": src["i"]}
+		if src.has("uv"):
+			tube["uv"] = src["uv"]
+		var capped: Dictionary = _cap_ends(tube, LINK_CAP)
 		verts = capped["v"]
 		norms = capped["n"]
 		src = capped
@@ -219,9 +222,12 @@ static func _crop_y(src: Dictionary, lim: float) -> Dictionary:
 	var remap: PackedInt32Array = PackedInt32Array()
 	remap.resize(v.size())
 	remap.fill(-1)
+	var has_uv: bool = src.has("uv")
+	var uv: PackedVector2Array = src["uv"] if has_uv else PackedVector2Array()
 	var ov: PackedVector3Array = PackedVector3Array()
 	var on: PackedVector3Array = PackedVector3Array()
 	var oc: PackedColorArray = PackedColorArray()
+	var ouv: PackedVector2Array = PackedVector2Array()
 	var oi: PackedInt32Array = PackedInt32Array()
 	for t: int in range(0, ix.size() - 2, 3):
 		if absf(v[ix[t]].y) > lim or absf(v[ix[t + 1]].y) > lim or absf(v[ix[t + 2]].y) > lim:
@@ -233,10 +239,15 @@ static func _crop_y(src: Dictionary, lim: float) -> Dictionary:
 				ov.append(v[vi])
 				on.append(n[vi])
 				oc.append(c[vi])
+				if has_uv:
+					ouv.append(uv[vi])
 			oi.append(remap[vi])
 	if oi.size() < 3:
 		return src
-	return {"v": ov, "n": on, "c": oc, "i": oi}
+	var out: Dictionary = {"v": ov, "n": on, "c": oc, "i": oi}
+	if has_uv:
+		out["uv"] = ouv  # the textured link keeps its UVs (normal and ORM maps need them)
+	return out
 
 
 ## Closes each open end of a tube along Z (unit frame, ends at z -1 and 1) with a dome: a fan from every boundary edge
@@ -246,6 +257,8 @@ static func _cap_ends(src: Dictionary, reach: float) -> Dictionary:
 	var n: PackedVector3Array = src["n"]
 	var c: PackedColorArray = src["c"]
 	var ix: PackedInt32Array = src["i"]
+	var has_uv: bool = src.has("uv")
+	var uv: PackedVector2Array = src["uv"] if has_uv else PackedVector2Array()
 	var edges: Dictionary = {}  ## Vector2i(a, b) in triangle order -> uses
 	for t: int in range(0, ix.size() - 2, 3):
 		for k: int in 3:
@@ -263,6 +276,8 @@ static func _cap_ends(src: Dictionary, reach: float) -> Dictionary:
 		v.append(Vector3(0, 0, e_sign * (1.0 + reach)))
 		n.append(Vector3(0, 0, e_sign))
 		c.append(c[0] if c.size() > 0 else Color.WHITE)
+		if has_uv:
+			uv.append(Vector2(0.5, 0.5))
 		poles.append(pole)
 	for key: Vector2i in edges:
 		var e: Vector2i = edges[key]
@@ -280,10 +295,15 @@ static func _cap_ends(src: Dictionary, reach: float) -> Dictionary:
 				v.append(Vector3(r.x, r.y, sgn * (1.0 + reach * 0.7)))
 				n.append((Vector3(p.x, p.y, 0.0).normalized() + Vector3(0, 0, sgn)).normalized())
 				c.append(c[vi])
+				if has_uv:
+					uv.append(uv[vi])
 			m.append(int(mids[vi]))
 		# the open edge runs a -> b in its triangle, so the cap uses b -> a
 		ix.append_array(PackedInt32Array([e.y, e.x, m[0], e.y, m[0], m[1], m[1], m[0], pole_i]))
-	return {"v": v, "n": n, "c": c, "i": ix}
+	var out: Dictionary = {"v": v, "n": n, "c": c, "i": ix}
+	if has_uv:
+		out["uv"] = uv  # the dome shares the rim's UVs; the pole sits mid-texture
+	return out
 
 
 static func _sphere() -> Dictionary:

@@ -3,7 +3,7 @@ extends RefCounted
 ## Houdini-built arena dressing (assets/decor, assets/dressing): loads a glb's mesh once, makes its materials opaque
 ## (Houdini exports every material alpha-blended, which sorts and flickers), tints the stone to the arena's
 ## travertine and lights the brazier embers, then draws every placement of one asset as a single MultiMesh (one draw
-## call per surface). Visual only: no colliders. Every asset is optional: `mesh()` returns null when the file is
+## call per surface). `add_colliders` builds the floor pieces' collision from DecorLayout. Every asset is optional: `mesh()` returns null when the file is
 ## missing and the arena keeps its code-built stand-in.
 
 const PATHS: Dictionary = {
@@ -14,6 +14,8 @@ const PATHS: Dictionary = {
 	"portcullis": "res://assets/dressing/portcullis.glb",
 	"weapon_rack": "res://assets/dressing/weapon_rack.glb",
 	"laurel_trophy": "res://assets/dressing/laurel_trophy.glb",
+	"column_stump": "res://assets/decor/column_stump.glb",
+	"barrier": "res://assets/dressing/barrier.glb",
 }
 ## Material names (as Houdini exports them) and what they become here.
 const STONE_MATERIAL: String = "stone"
@@ -80,6 +82,25 @@ static func add_instances(parent: Node, node_name: String, m: Mesh, xforms: Arra
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mmi)
 	return mmi
+
+
+## Adds DecorLayout's colliders ({"xf", "box"} or {"xf", "cyl"}) as shapes of the wall's static `body`. The Arena and
+## the headless match both call this, so a watched fight and a bot fight collide the same.
+static func add_colliders(body: StaticBody3D, colliders: Array[Dictionary]) -> void:
+	for c: Dictionary in colliders:
+		var cs := CollisionShape3D.new()
+		if c.has("box"):
+			var box := BoxShape3D.new()
+			box.size = c["box"]
+			cs.shape = box
+		else:
+			var cyl := CylinderShape3D.new()
+			var rh: Vector2 = c["cyl"]
+			cyl.radius = rh.x
+			cyl.height = rh.y
+			cs.shape = cyl
+		cs.transform = c["xf"]
+		body.add_child(cs)
 
 
 ## The mesh named like the asset if there is one (weapon_rack.glb also carries other props' empties), else the first.
