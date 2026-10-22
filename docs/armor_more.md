@@ -154,12 +154,71 @@ swapped, 60 s limit). Wins of the iron side:
 Final over 96 fights: 60 (62.5%), inside the 35-65% band. The same settings move by about 3 wins of 48 between
 seed sets, so differences under that are noise. Weight is worth about 12 points on top of the gaps.
 
+## Bots read the armor
+`game/logic/armor_read.gd` (`ArmorRead`, tests in `test_armor_read.gd`) gives the CPU brain a read of the foe's armor
+from what a player can see: which parts wear plate, the gap points (neck band, face opening, elbows, knees: the
+`ArmorGaps` bands, aimed at from the foe's part positions), and each side's armor load. `FighterBrain` uses it three
+ways, scaled by the difficulty knob `armor_read` (easy 0.15, normal 0.6, hard 1.0) and drawing from its own random
+stream, so fights with no plate and no load gap play exactly as before (the shield rows below did not move):
+
+- A point weapon that picked a plated part thrusts at a gap instead (`GAP_THRUST_CHANCE` 0.65, weighted neck 1.4,
+  face 1.0, weapon elbow 0.6, knees 0.3, off elbow 0.25). A spear over a plate cuirass aims at the neck band.
+- Head targeting follows the helmet: on plate, blunt weapons hit the head 1.8 times as often (the blow carries
+  through), edged swings 0.45 times (they glance).
+- A fighter carrying 0.4 load less than its foe (about 8 kg) kites while the foe has stamina over 0.45: it keeps
+  0.9 m outside the longer reach (sprinting when inside the foe's reach), for at most 2.5 s, then goes in with a
+  committed burst; it goes in at once when the foe whiffs or tires. 2.5 s cooldown between stints.
+
+Tried and dropped: a 7 s kiting stint (the plate fighter walked, not chased, and recovered stamina: 0.6 to 0.8 while
+kited) and hit and run (sprint out after every blow: naked side lost more, iron v naked 73-75%, it took ripostes
+with no guard up).
+
+**Gap hits** (bot `--hitlog`, hits on plate that found a gap): 63% before, 61% after, iron v naked over 48 fights.
+The bands already cover so much of the plate (about 40% of each limb) that aiming at them changes little; the gap
+read is a behaviour players can see, not a balance lever.
+
+### Re-measured tables (round 4, seeds 2000-2011 both sides, 24 fights per row)
+Before = main (ed9e027 brain, the bot never reads armor); after = the armor-reading brain. `tools/armor_tables.py`
+runs every row (`--table=shields|armor|naked`, `--hitlog` for gap hits). Iron v naked is 48 fights (seeds 2000-2023);
+the merge of main b4af3cd (arena dressing) gave the same 29/48 before.
+
+| Shield (gladius + shield v longsword, leather) | Before | After | Length after |
+| --- | --- | --- | --- |
+| shield_round | 8 (33%) OUT | 9 (38%) | 24.5 s |
+| scutum | 16 (67%) OUT | 16 (67%) OUT | 26.0 s |
+| buckler | 6 (25%) OUT | 6 (25%) OUT | 23.6 s |
+| parma | 12 (50%) | 12 (50%) | 23.3 s |
+| pelta | 8 (33%) OUT | 8 (33%) OUT | 20.9 s |
+| kite_shield | 14 (58%) | 14 (58%) | 23.5 s |
+| aspis | 7 (29%) OUT | 7 (29%) OUT | 26.2 s |
+| tower_shield | 17 (71%) OUT | 17 (71%) OUT | 25.8 s |
+
+| Piece swapped into the iron set (gladius v gladius) | Before | After | Length before / after |
+| --- | --- | --- | --- |
+| (iron set v itself) | 12 (50%) | 12 (50%) | 34.1 / 44.8 s |
+| helm_murmillo | 13 (54%) | 13 (54%) | 38.4 / 42.3 s |
+| helm_thraex | 11 (46%) | 14 (58%) | 42.6 / 41.4 s |
+| helm_secutor | 12 (50%) | 13 (54%) | 40.2 / 42.5 s |
+| lorica_segmentata | 12 (50%) | 14 (58%) | 40.6 / 40.4 s |
+| lorica_squamata | 11 (46%) | 11 (46%) | 34.6 / 40.7 s |
+| balteus | 10 (42%) | 7 (29%) OUT | 32.5 / 34.7 s |
+| retiarius_arm | 12 (50%) | 9 (38%) | 31.8 / 37.7 s |
+| spaulders | 11 (46%) | 12 (50%) | 34.9 / 41.4 s |
+| fasciae | 13 (54%) | 13 (54%) | 36.8 / 40.9 s |
+| **Iron set v naked (48)** | **29 (60%)** | **30 (62.5%)** | 30.6 / 30.8 s |
+
+Out of the 35-65% band after: scutum 67%, tower shield 71%, buckler 25%, pelta 33%, aspis 29% (all unchanged: these
+fights have no plate, so the new brain plays them as before; they need data or shield handling, not armor reads)
+and balteus 29% (was 42%: the balteus leaves the chest bare, and the foe's thrusts now go to the open chest rather
+than the plate gaps; within about 3 wins of noise, re-check in the next matrix). Plate v plate fights got longer
+(iron set mirror 34 s to 45 s) as both sides thrust at gaps instead of swinging.
+
 ## Next
-- The bots do not use a naked fighter's speed (no kiting, no running from an exhausted plate fighter) and do not
-  aim for gaps; a brain that did would push plate further down, so re-measure after any brain change.
-- The shield and per-piece armor tables above were measured before weight and gaps; light pieces should now
-  gain on heavy ones, so re-run them.
 - Gaps are bands on the part's own axis, not per-piece art: a piece that covers only the middle of a limb (or the
   galerus set's one arm) has the same gaps as full plate.
-- The small shields (buckler, parma) sit near 30% against the longsword; the bots do not use a small shield's speed.
+- The small shields (buckler, pelta, aspis) sit near 30% and the big ones (scutum, tower) near 70% against the
+  longsword; the bots do not use a small shield's speed or the big shields' cover differently.
 - Covers text says "both arms" for the galerus set (left arm and right forearm).
+- Light fighters still lose on blood to plate (62.5%): a kite does not tire a plate bot that walks instead of
+  chasing. A brain that waits out a heavy foe at range (or breaks off when it sprints) would need the plate side to
+  chase.

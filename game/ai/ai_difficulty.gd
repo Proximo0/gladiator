@@ -36,27 +36,28 @@ const LIST: Array = [
 ##   stamina_mgmt                     retreat_stamina x (rests earlier when above 1, fights on empty when below)
 ##   thrust_skill                     chance a sword or pole-arm thrust is a committed one (point set, body drive)
 ##   close_plan                       0 = a shorter weapon walks up as usual; above 0 it plans its way inside
+##   armor_read                       0..1 use of the foe's armor (ArmorRead): plate-gap thrusts, helmet targeting, kiting
 const TABLE: Dictionary = {
 	"easy": {
 		"reaction_scale": 3.0, "reaction_min_ms": 450.0, "aim_noise_scale": 2.5, "aim_err": 0.4, "aim_slew": 0.022,
 		"aggr_add": 0.1, "wait_scale": 0.9, "p_scale": 1.0, "recover_scale": 1.3,
 		"guard_miss": 0.6, "guard_boost": 0.0, "guard_slew": 0.5, "finish_seek": 0.3, "opp_seek": 0.3,
 		"footwork": 0.0, "stamina_mgmt": 0.5, "swing_scale": 1.3, "target_skill": 0.2, "riposte": -0.2, "punish": 0.0,
-		"threat_speed": 5.5, "hand_return": 0.6, "core_bias": 0.6, "thrust_skill": 0.3, "close_plan": 0.0,
+		"threat_speed": 5.5, "hand_return": 0.6, "core_bias": 0.6, "thrust_skill": 0.3, "close_plan": 0.0, "armor_read": 0.15,
 	},
 	"normal": {
 		"reaction_scale": 1.0, "reaction_min_ms": 0.0, "aim_noise_scale": 1.0, "aim_err": 0.0, "aim_slew": 9.0,
 		"aggr_add": 0.0, "wait_scale": 1.0, "p_scale": 1.0, "recover_scale": 1.0,
 		"guard_miss": 0.0, "guard_boost": 0.0, "guard_slew": 1.0, "finish_seek": 1.0, "opp_seek": 1.0,
 		"footwork": 0.5, "stamina_mgmt": 1.0, "swing_scale": 1.0, "target_skill": 1.0, "riposte": 0.0, "punish": 0.3, "hand_return": 1.0, "core_bias": 1.0, "threat_speed": 4.0,
-		"thrust_skill": 1.0, "close_plan": 1.0,
+		"thrust_skill": 1.0, "close_plan": 1.0, "armor_read": 0.6,
 	},
 	"hard": {
 		"reaction_scale": 0.5, "reaction_min_ms": 70.0, "aim_noise_scale": 0.45, "aim_err": 0.0, "aim_slew": 9.0,
 		"aggr_add": 0.0, "wait_scale": 0.8, "p_scale": 1.1, "recover_scale": 0.85,
 		"guard_miss": 0.0, "guard_boost": 0.6, "guard_slew": 1.4, "finish_seek": 1.0, "opp_seek": 1.0,
 		"footwork": 1.0, "stamina_mgmt": 1.25, "swing_scale": 0.8, "target_skill": 1.6, "riposte": 0.3, "punish": 0.8,
-		"hand_return": 1.0, "core_bias": 2.4, "threat_speed": 3.8, "thrust_skill": 1.0, "close_plan": 1.0,
+		"hand_return": 1.0, "core_bias": 2.4, "threat_speed": 3.8, "thrust_skill": 1.0, "close_plan": 1.0, "armor_read": 1.0,
 	},
 }
 

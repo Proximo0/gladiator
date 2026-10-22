@@ -11,7 +11,9 @@ on:
 
 concurrency:
   group: android-${{ github.ref }}
-  cancel-in-progress: true
+  # On main a run finishes and only the newest waiting push runs next (GitHub drops older pending runs): cancelling a
+  # 7-minute run at minute 4-6 on every merge threw away 4 of 9 runs on 10-22 and left gaps with no android result.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   GODOT_VERSION: 4.7.2

@@ -150,6 +150,13 @@ func _on_hitlog(ev: Dictionary) -> void:
 	if str(ev.get("contact", "")) == "point":
 		d["point"] = int(d["point"]) + 1
 		d["point_speed"] = float(d.get("point_speed", 0.0)) + (ev.get("rel_vel", Vector3.ZERO) as Vector3).length()
+	var plated: bool = false
+	for aid: Variant in ev.get("armor_ids", []):
+		plated = plated or str(CombatData.armor(str(aid)).get("kind", "")) == "plate"
+	if plated:  # hits on plate, and those that found one of its gaps (ArmorGaps)
+		d["armored_n"] = int(d.get("armored_n", 0)) + 1
+		if float(ev.get("armor_gap", 0.0)) > 0.0:
+			d["gap_n"] = int(d.get("gap_n", 0)) + 1
 	if str(ev.get("part", "")) == "head":
 		d["head_n"] = int(d.get("head_n", 0)) + 1
 		d["head_blunt"] = float(d.get("head_blunt", 0.0)) + float(ev.get("blunt", 0.0))
