@@ -38,6 +38,22 @@ var _base_pos: Vector3 = Vector3.ZERO
 var _primed: bool = false
 var _base_fov: float = 0.0
 var _fov_extra: float = 0.0
+var _last_me: Vector3 = Vector3.ZERO  ## last finite fighter positions, kept when a pelvis goes NaN or is freed
+var _last_opp: Vector3 = Vector3(0.0, 0.0, -3.0)
+var _have_last: bool = false
+
+
+const MAX_COORD: float = 60.0  ## fighter positions are clamped to this box (a flung ragdoll must not drag the camera)
+
+
+## True when every component is a finite number.
+static func is_finite_v3(v: Vector3) -> bool:
+	return is_finite(v.x) and is_finite(v.y) and is_finite(v.z)
+
+
+## `v` with each component limited to +-MAX_COORD.
+static func limit_coord(v: Vector3) -> Vector3:
+	return Vector3(clampf(v.x, -MAX_COORD, MAX_COORD), clampf(v.y, -MAX_COORD, MAX_COORD), clampf(v.z, -MAX_COORD, MAX_COORD))
 
 
 ## Unit vector on the ground from a to b. Falls back to -Z when they coincide.
@@ -50,6 +66,8 @@ static func flat_dir(a: Vector3, b: Vector3) -> Vector3:
 
 ## Frame-rate independent blend factor for exponential smoothing at `rate` per second.
 static func smooth_factor(rate: float, delta: float) -> float:
+	if not is_finite(rate) or not is_finite(delta):
+		return 0.0
 	return 1.0 - exp(-maxf(rate, 0.0) * maxf(delta, 0.0))
 
 
@@ -211,10 +229,25 @@ func _process(delta: float) -> void:
 
 
 func update_camera(delta: float) -> void:
-	if target == null or not is_inside_tree():
+	if not is_instance_valid(target) or not target.is_inside_tree() or not is_inside_tree():
 		return
+	if not is_finite(delta):
+		delta = 0.0
 	var me: Vector3 = target.global_position
-	var opp: Vector3 = look_at_node.global_position if look_at_node != null else me + Vector3(0.0, 0.0, -3.0)
+	var opp: Vector3 = me + Vector3(0.0, 0.0, -3.0)
+	if is_instance_valid(look_at_node) and look_at_node.is_inside_tree():
+		opp = look_at_node.global_position
+	# A pelvis that went NaN/inf keeps the last good framing; a flung one is limited to a box around the arena.
+	if not is_finite_v3(me) or not is_finite_v3(opp):
+		if not _have_last:
+			return
+		me = _last_me
+		opp = _last_opp
+	me = limit_coord(me)
+	opp = limit_coord(opp)
+	_last_me = me
+	_last_opp = opp
+	_have_last = true
 	var pose: Dictionary
 	match mode:
 		"orbit":
@@ -265,6 +298,9 @@ func update_camera(delta: float) -> void:
 		_look_point = _look_point.lerp(want_look, smooth_factor(follow_rate * 1.5, delta))
 		_fov_extra = lerpf(_fov_extra, want_extra, k)
 	var fx: Dictionary = shake.update(delta)
+	if not is_finite_v3(_base_pos) or not is_finite_v3(_look_point) or not is_finite(_fov_extra):
+		_primed = false  # state poisoned: re-prime from the next good pose instead of keeping NaN for ever
+		return
 	global_position = _base_pos + (fx["offset"] as Vector3)
 	if global_position.distance_to(_look_point) > 0.05:
 		look_at(_look_point, Vector3.UP)

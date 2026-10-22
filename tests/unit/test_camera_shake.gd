@@ -76,3 +76,17 @@ func test_shake_is_deterministic_and_decays() -> void:
 	_run(a, 1.5)
 	assert_true(early > 0.0)
 	assert_true(a.shake < 0.01)
+
+
+func test_non_finite_inputs_leave_the_shake_clean() -> void:
+	var sh := CameraShake.new()
+	var tun: Tuning = Tuning.shared()
+	sh.add_hit(Vector3(NAN, 0, 0), 0.8, tun, 1.0)
+	sh.add_hit(Vector3.RIGHT, NAN, tun, 1.0)
+	sh.add_zoom(5.0, NAN, tun, 1.0)
+	assert_true(sh.is_idle())
+	sh.add_hit(Vector3.RIGHT, 0.8, tun, 1.0)
+	var fx: Dictionary = sh.update(NAN)
+	assert_true(FightCamera.is_finite_v3(fx["offset"]) and FightCamera.is_finite_v3(fx["jitter"]))
+	fx = sh.update(0.0)
+	assert_true(FightCamera.is_finite_v3(fx["offset"]))

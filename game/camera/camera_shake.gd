@@ -29,7 +29,7 @@ var _roll_deg: float = 1.6
 ## Adds a blow. `strength` 0..1 (already scaled by impact and the master scale), `dir` the world direction it travelled.
 func add_hit(dir: Vector3, strength: float, tun: Tuning, motion_scale: float) -> void:
 	var s: float = clampf(strength, 0.0, 1.0) * maxf(motion_scale, 0.0)
-	if s <= 0.0:
+	if not is_finite(s) or s <= 0.0 or not (is_finite(dir.x) and is_finite(dir.y) and is_finite(dir.z)):
 		return
 	_freq = tun.feel_kick_freq
 	_decay = tun.feel_shake_decay
@@ -47,7 +47,7 @@ func add_hit(dir: Vector3, strength: float, tun: Tuning, motion_scale: float) ->
 ## Zoom punch for a finisher: field of view narrows by `deg * strength` then relaxes.
 func add_zoom(deg: float, strength: float, tun: Tuning, motion_scale: float) -> void:
 	var s: float = clampf(strength, 0.0, 1.0) * maxf(motion_scale, 0.0)
-	if s <= 0.0:
+	if not is_finite(s) or s <= 0.0:
 		return
 	_punch_decay = tun.feel_zoom_decay
 	punch_deg = minf(punch_deg + deg * s, MAX_PUNCH_DEG)
@@ -67,7 +67,7 @@ func clear() -> void:
 ## Advances by `delta`; returns {"offset": Vector3 world metres (the kick),
 ## "jitter": Vector3 camera-local metres (the shake), "roll": radians, "fov": degrees to subtract}.
 func update(delta: float) -> Dictionary:
-	var d: float = clampf(delta, 0.0, 0.1)
+	var d: float = clampf(delta, 0.0, 0.1) if is_finite(delta) else 0.0
 	if is_idle():
 		return {"offset": Vector3.ZERO, "jitter": Vector3.ZERO, "roll": 0.0, "fov": 0.0}
 	# Semi-implicit damped spring toward zero.

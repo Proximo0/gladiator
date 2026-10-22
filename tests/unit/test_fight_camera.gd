@@ -94,3 +94,31 @@ func test_close_follow_pose_moves_off_the_back_line_and_up() -> void:
 	var near: Dictionary = FightCamera.follow_pose(me, opp, 3.4, 2.3, 0.7, 1.0, 1.1, 0.7)
 	assert_near(absf((near["pos"] as Vector3).x - (far["pos"] as Vector3).x), 1.1)
 	assert_near((near["pos"] as Vector3).y - (far["pos"] as Vector3).y, 0.7)
+
+
+func test_degenerate_inputs_never_give_nan_poses() -> void:
+	var same := Vector3(2, 0.95, 1)
+	var z: Dictionary = FightCamera.follow_pose(same, same, 3.4, 2.3, 0.7, 1.0, 1.1, 0.7)
+	assert_true(FightCamera.is_finite_v3(z["pos"]) and FightCamera.is_finite_v3(z["look"]), "same spot follow")
+	var w: Dictionary = FightCamera.wide_pose(same, same, 55.0, 4.4, 6.0, 10.0)
+	assert_true(FightCamera.is_finite_v3(w["pos"]) and FightCamera.is_finite_v3(w["look"]), "same spot wide")
+	assert_true(FightCamera.is_finite_v3(FightCamera.orbit_pose(same, 0.0, 0.3, 0.0)["pos"]))
+	assert_near(FightCamera.close_blend(0.0, 1.7, 3.6), 1.0)
+	assert_true(is_finite(FightCamera.frame_ratio(same, same, 55.0, ASPECT, FightCamera.frame_points(same))))
+	assert_eq(FightCamera.pull_back_for(same, same, 55.0, ASPECT, [same], 0.9, 3.0), 0.0)
+
+
+func test_smooth_factor_survives_zero_and_non_finite_delta() -> void:
+	assert_eq(FightCamera.smooth_factor(5.0, 0.0), 0.0)
+	assert_eq(FightCamera.smooth_factor(5.0, NAN), 0.0)
+	assert_eq(FightCamera.smooth_factor(5.0, INF), 0.0)
+	assert_eq(FightCamera.smooth_factor(NAN, 0.016), 0.0)
+
+
+func test_limit_coord_and_finite_check() -> void:
+	assert_false(FightCamera.is_finite_v3(Vector3(NAN, 0, 0)))
+	assert_false(FightCamera.is_finite_v3(Vector3(0, INF, 0)))
+	var v: Vector3 = FightCamera.limit_coord(Vector3(1.0e9, -1.0e9, 3.0))
+	assert_eq(v, Vector3(FightCamera.MAX_COORD, -FightCamera.MAX_COORD, 3.0))
+	var c: Vector3 = FightCamera.clamp_to_arena(v, 11.0, 0.7, 0.5)
+	assert_true(Vector2(c.x, c.z).length() <= 10.3 + 0.001)
