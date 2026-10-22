@@ -425,6 +425,7 @@ static func armor_fit(pn: String) -> Dictionary:
 
 
 const ARMOR_ART_DIR: String = "res://assets/armor/"
+const ARMOR_ART_METALLIC: float = 0.6
 static var _armor_art: Dictionary = {}  ## id -> opaque Mesh (or null when the asset is missing)
 
 
@@ -461,6 +462,8 @@ static func _load_armor_art(path: String) -> Mesh:
 				var o: BaseMaterial3D = bm.duplicate() as BaseMaterial3D
 				o.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 				o.albedo_color.a = 1.0
+				# Fully metallic bronze mirrored the pale sky and read as silver: keep some of its own colour.
+				o.metallic = minf(o.metallic, ARMOR_ART_METALLIC)
 				out.surface_set_material(s, o)
 	root.free()
 	return out
