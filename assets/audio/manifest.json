@@ -12,7 +12,10 @@
  "gore": {
   "behead": 3,
   "blood_spatter_sand": 5,
+  "gush_pulse": 5,
   "gut": 3,
+  "gut_flop": 5,
+  "gut_squelch": 4,
   "run_through": 3,
   "sever": 3,
   "spurt_hiss": 3
@@ -24,11 +27,13 @@
   "body_thud": 5,
   "bone_crack": 4,
   "clang_steel": 5,
+  "cleave_chop": 4,
   "drop_sand": 4,
   "drop_sand_metal": 4,
   "fist_punch": 4,
   "flesh_cut": 5,
   "flesh_pierce": 4,
+  "heavy_thump": 4,
   "helm_knock": 3,
   "leather_slap": 4,
   "mail_jingle": 4,
@@ -38,11 +43,19 @@
  "move": {
   "armor_rattle": 4,
   "body_fall_sand": 4,
+  "footstep_run": 4,
   "footstep_sand": 6,
+  "roll_thud": 3,
+  "roll_whoosh": 3,
   "sand_impact": 5,
+  "whoosh_cleave": 4,
   "whoosh_fast": 5,
+  "whoosh_heavy": 4,
   "whoosh_mid": 5,
   "whoosh_slow": 5
+ },
+ "ui": {
+  "unlock_sting": 2
  },
  "voice": {
   "death_gurgle": 3,

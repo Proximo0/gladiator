@@ -312,6 +312,8 @@ func _record_progress(result: Dictionary, token: int) -> void:
 	elif mode == "player_vs_cpu":
 		won = w == 0
 	_unlocked_line = unlocked_text(PlayerProgress.shared().record_match(won, ranked))
+	if _unlocked_line != "":
+		UiSfx.play_unlock(self)
 
 
 ## "Unlocked: Mace, Falchion!" ("" for none).

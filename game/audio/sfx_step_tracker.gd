@@ -33,6 +33,20 @@ func update(speed: float, delta: float, grounded: bool) -> int:
 	return s
 
 
+## Step from the gait's own cadence (steps per second): the sound keeps time with the legs at any speed.
+func update_cadence(cadence: float, speed: float, delta: float, grounded: bool) -> int:
+	if not grounded or speed < MIN_SPEED:
+		travelled = minf(travelled, 0.5)
+		return 0
+	travelled += cadence * delta
+	if travelled < 1.0:
+		return 0
+	travelled -= 1.0
+	var s: int = next_side
+	next_side = -s
+	return s
+
+
 ## Step from foot-contact booleans: a foot touching down this tick (false -> true) is a step.
 func update_contacts(left: bool, right: bool) -> int:
 	var out: int = 0

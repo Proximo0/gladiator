@@ -794,6 +794,117 @@ def finisher_roar(rng, i):
     return (low * 0.8 + high * 0.55 + m * 0.5) * env + claps(rng, dur, 420, env + 0.02) * 0.35
 
 
+# ---- second pass: roll, run steps, gush, gut spill, heavy and cleaving weapons, unlock sting
+@reg("move", "footstep_run", 4, 0.7)
+def footstep_run(rng, i):
+    dur = 0.35
+    t = tt(dur)
+    y = thump(rng, 110, 60, dur, 0.08) * 1.5
+    y += lowpass(noise(rng, dur), 520, 2) * env_ad(t, 0.003, 0.05) * 2.0
+    y += lowpass(grains(rng, dur, rng.integers(90, 160), 500, 4200, decay_t=0.07, glen=(0.002, 0.007)), 4500) * 1.3
+    return y + bandpass(noise(rng, dur), 700, 3000, 1) * env_ad(t, 0.006, 0.04) * 0.5
+
+
+@reg("move", "roll_whoosh", 3, 0.7)
+def roll_whoosh(rng, i):
+    dur = rng.uniform(0.55, 0.7)
+    y = _whoosh(rng, dur, 180, rng.uniform(500, 700), 1.4, 0.4)
+    t = tt(dur)
+    y = y + lowpass(grains(rng, dur, 140, 500, 3500, decay_t=0.25, glen=(0.002, 0.007)), 3800) * np.std(y) * 6 * env_ad(t, 0.05, 0.25)
+    return y
+
+
+@reg("move", "roll_thud", 3, 0.9)
+def roll_thud(rng, i):
+    dur = 0.6
+    t = tt(dur)
+    y = thump(rng, 75, 38, dur, 0.22) * 1.5
+    y += lowpass(noise(rng, dur), 380, 2) * env_ad(t, 0.006, 0.1) * 3
+    y += lowpass(grains(rng, dur, 220, 400, 3200, decay_t=0.14, glen=(0.002, 0.008)), 3600) * 0.8
+    return y
+
+
+@reg("move", "whoosh_heavy", 4, 0.9)
+def whoosh_heavy(rng, i):
+    return _whoosh(rng, rng.uniform(0.6, 0.8), 120, rng.uniform(380, 520), 1.5, 0.55, tonal=0.2)
+
+
+@reg("move", "whoosh_cleave", 4, 0.9)
+def whoosh_cleave(rng, i):
+    dur = rng.uniform(0.38, 0.5)
+    y = _whoosh(rng, dur, 280, rng.uniform(1100, 1500), 1.0, 0.5, tonal=0.1)
+    t = tt(dur)
+    return y + bandpass(noise(rng, dur), 2500, 6500, 2) * np.exp(-((t - dur * 0.55) / (dur * 0.12)) ** 2) * np.std(y) * 1.5
+
+
+@reg("impact", "heavy_thump", 4, 1.0)
+def heavy_thump(rng, i):
+    dur = 0.9
+    t = tt(dur)
+    y = thump(rng, 62, 30, dur, 0.35) * 2.0
+    y += lowpass(noise(rng, dur), 260, 2) * env_ad(t, 0.004, 0.12) * 4
+    y += lowpass(grains(rng, dur, 40, 300, 2000, decay_t=0.1), 2200) * 0.6
+    return y
+
+
+@reg("impact", "cleave_chop", 4, 1.0)
+def cleave_chop(rng, i):
+    dur = 0.6
+    t = tt(dur)
+    y = thump(rng, 110, 55, dur, 0.12) * 1.4
+    y += bandpass(noise(rng, dur), 600, 3500, 2) * env_ad(t, 0.002, 0.07) * 2.2
+    y += bubbles(rng, dur, 8, 200, 900, 0.12) * 0.5
+    place(y, click(rng, 0.004, 1500, 6000), 0.0, 1.5)
+    return y
+
+
+@reg("gore", "gush_pulse", 5, 0.9)
+def gush_pulse(rng, i):
+    dur = 0.55
+    t = tt(dur)
+    env = np.exp(-((t - 0.12) / 0.09) ** 2) + 0.18 * np.exp(-((t - 0.34) / 0.07) ** 2)
+    hiss = bandpass(noise(rng, dur), 1200, 6500, 2) * env
+    wet = bubbles(rng, dur, 30, 250, 1400, 0.2) * 0.7 * env
+    body = lowpass(noise(rng, dur), 240, 2) * env * 3
+    splash = lowpass(grains(rng, dur, 90, 800, 4500, decay_t=0.15, glen=(0.001, 0.005)), 5000) * env_ad(t, 0.02, 0.18) * 0.8
+    return hiss + wet + body + splash
+
+
+@reg("gore", "gut_squelch", 4, 0.9)
+def gut_squelch(rng, i):
+    dur = 0.9
+    t = tt(dur)
+    slosh = lowpass(noise(rng, dur), 200, 2) * (0.5 + 0.5 * np.sin(2 * np.pi * 7 * t)) * env_ad(t, 0.05, 0.3) * 5
+    wet = bubbles(rng, dur, 30, 120, 700, dens_decay=0.3) * 1.0
+    return slosh + wet + thump(rng, 70, 40, dur, 0.2) * 0.8
+
+
+@reg("gore", "gut_flop", 5, 0.9)
+def gut_flop(rng, i):
+    dur = 0.45
+    t = tt(dur)
+    y = thump(rng, 95, 50, dur, 0.1) * 1.3
+    y += lowpass(noise(rng, dur), 450, 2) * env_ad(t, 0.004, 0.06) * 2.5
+    y += bubbles(rng, dur, 7, 150, 600, 0.1) * 0.8
+    return y + lowpass(grains(rng, dur, 40, 400, 2500, decay_t=0.08), 2800) * 0.5
+
+
+@reg("ui", "unlock_sting", 2, 0.8)
+def unlock_sting(rng, i):
+    dur = 1.6
+    y = silence(dur)
+    # Brassy fanfare: fifth, octave, then a held major triad (Roman buccina flavour).
+    notes = [(0.0, 392.0, 0.18), (0.16, 523.25, 0.18), (0.32, 659.25 if i == 0 else 587.33, 0.3)]
+    for at, f, ln in notes + [(0.62, 523.25, 0.95), (0.62, 659.25, 0.95), (0.62, 783.99, 0.95)]:
+        n = tt(ln)
+        ph = 2 * np.pi * np.cumsum(np.full(len(n), f)) / SR
+        v = sum(np.sin(k * ph) / k ** 0.8 for k in range(1, 8))
+        v = lowpass(v, 3200, 2) * np.minimum(1, n / 0.03) * np.exp(-n / (ln * 0.7))
+        place(y, v, at, 0.45 if ln > 0.5 else 0.7)
+    place(y, modal(rng, [1568, 2093, 2637], [0.9, 0.7, 0.5], [0.5, 0.3, 0.2], 1.0, shimmer=False), 0.62, 0.15)
+    return y
+
+
 # ---------------------------------------------------------------- output and checks
 def finish(x, level, loop=False):
     x = highpass(np.asarray(x, float), 25, 2)

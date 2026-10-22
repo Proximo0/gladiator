@@ -19,6 +19,9 @@ const VARIANTS: Dictionary = {
 	"voice/grunt": 5, "voice/pain_light": 4, "voice/pain_heavy": 4, "voice/death_gurgle": 3,
 	"crowd/amb_low": 1, "crowd/amb_high": 1, "crowd/gasp": 3, "crowd/cheer": 3, "crowd/roar": 3,
 	"crowd/boo": 2, "crowd/chant": 2, "crowd/finisher_roar": 2,
+	"move/footstep_run": 4, "move/roll_whoosh": 3, "move/roll_thud": 3, "move/whoosh_heavy": 4,
+	"move/whoosh_cleave": 4, "impact/heavy_thump": 4, "impact/cleave_chop": 4, "gore/gush_pulse": 5,
+	"gore/gut_squelch": 4, "gore/gut_flop": 5, "ui/unlock_sting": 2,
 }
 
 ## Base level per sound in dB (the files are peak-normalised, this evens out how loud each should sit).
@@ -34,7 +37,22 @@ const BASE_DB: Dictionary = {
 	"voice/grunt": -8.0, "voice/pain_light": -6.0, "voice/pain_heavy": -4.0, "voice/death_gurgle": -6.0,
 	"crowd/amb_low": -12.0, "crowd/amb_high": -10.0, "crowd/gasp": -8.0, "crowd/cheer": -8.0, "crowd/roar": -6.0,
 	"crowd/boo": -8.0, "crowd/chant": -8.0, "crowd/finisher_roar": -3.0,
+	"move/footstep_run": -10.0, "move/roll_whoosh": -8.0, "move/roll_thud": -5.0, "move/whoosh_heavy": -6.0,
+	"move/whoosh_cleave": -6.0, "impact/heavy_thump": -2.0, "impact/cleave_chop": -4.0, "gore/gush_pulse": -8.0,
+	"gore/gut_squelch": -5.0, "gore/gut_flop": -7.0, "ui/unlock_sting": -6.0,
 }
+
+## Weapon classes by id (a def has no class field): heavy blunt weapons thump and whoosh low, cleavers chop.
+const HEAVY_BLUNT_IDS: PackedStringArray = ["sledgehammer", "mace", "warhammer"]
+const CLEAVE_IDS: PackedStringArray = ["falchion", "machete", "halberd", "axe"]
+## Sounds that yield (are dropped, not stealing a slot) when the player pool is nearly full.
+const LOW_PRIORITY: PackedStringArray = [
+	"move/footstep_sand", "move/footstep_run", "move/armor_rattle", "move/sand_impact", "move/whoosh_slow",
+	"move/whoosh_mid", "gore/blood_spatter_sand", "gore/spurt_hiss", "gore/gut_flop", "gore/gush_pulse",
+]
+const POOL_RESERVE: int = 5
+## Footsteps: at or above this fraction of sprint speed a step is a running one.
+const RUN_FRACTION: float = 0.75
 
 ## Energy (J) at which an impact reaches 63 percent intensity; below MIN_ENERGY nothing sounds.
 const ENERGY_REF: float = 70.0
@@ -250,8 +268,11 @@ static func impact_plan(ev: Dictionary, atk_mat: String, other_mat: String, armo
 		return out
 	var db: float = intensity_db(inten)
 	var layers: Array[Dictionary] = []
+	var wclass: String = weapon_class(str(ev.get("weapon_id", "")))
 	if bool(ev.get("hit_on_weapon", false)):
 		layers = _weapon_pair_layers(atk_mat, other_mat, inten)
+		if wclass == "heavy":
+			layers.append(_layer("impact/heavy_thump", -6.0, impact_pitch(inten)))
 	else:
 		var contact: String = str(ev.get("contact", "blunt"))
 		var total: float = float(ev.get("total", 0.0))
@@ -279,6 +300,11 @@ static func impact_plan(ev: Dictionary, atk_mat: String, other_mat: String, armo
 				l["gain_db"] = float(l["gain_db"]) + flesh_db
 				layers.append(l)
 		layers.append_array(armor)
+		if not glanced and atk_mat != "energy":
+			if wclass == "heavy":
+				layers.append(_layer("impact/heavy_thump", -1.0 if armor_kind != "plate" else -4.0, impact_pitch(inten)))
+			elif wclass == "cleave" and contact == "edge" and armor_kind != "plate":
+				layers.append(_layer("impact/cleave_chop", -2.0, impact_pitch(inten)))
 		# Steel on plate rings as well as clanks (the sparks in FeelLogic fire for the same pair).
 		if armor_kind == "plate" and atk_mat == "steel" and inten >= RING_INTENSITY and not glanced:
 			layers.append(_layer("impact/ring_steel", -6.0, impact_pitch(inten), 0.01))
@@ -357,6 +383,39 @@ static func whoosh_pitch(speed: float, mass: float) -> float:
 
 static func step_gain_db(speed: float) -> float:
 	return -8.0 + clampf(speed, 0.0, 6.0)
+
+
+static func weapon_class(weapon_id: String) -> String:
+	if HEAVY_BLUNT_IDS.has(weapon_id):
+		return "heavy"
+	if CLEAVE_IDS.has(weapon_id):
+		return "cleave"
+	return ""
+
+
+static func is_low_priority(key: String) -> bool:
+	return LOW_PRIORITY.has(key)
+
+
+## Footstep sound and gain: running steps crunch harder, a sideways shuffle is lighter. `lateral` 0..1 is the
+## share of the ground speed that is sideways.
+static func footstep_plan(speed: float, sprint_speed: float, lateral: float) -> Dictionary:
+	var run: bool = speed >= sprint_speed * RUN_FRACTION
+	var db: float = step_gain_db(speed) - 4.0 * clampf(lateral, 0.0, 1.0)
+	return {"key": "move/footstep_run" if run else "move/footstep_sand", "gain_db": db}
+
+
+## Whoosh key for a swing with a given weapon: heavy and cleaving weapons have their own.
+static func whoosh_key_for(speed: float, weapon_id: String) -> String:
+	var base: String = whoosh_key(speed)
+	if base == "":
+		return ""
+	match weapon_class(weapon_id):
+		"heavy":
+			return "move/whoosh_heavy"
+		"cleave":
+			return "move/whoosh_cleave" if speed >= WHOOSH_SLOW_MAX else base
+	return base
 
 
 ## Seconds between arterial spurt pulses: faster when blood is high, slowing as it runs out.

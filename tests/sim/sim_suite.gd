@@ -9,6 +9,7 @@ const SIM_FILES: Array = [
 	"sim_fighter_replay",
 	"sim_match_smoke",
 	"sim_camera_degenerate",
+	"sim_audio_bot",
 	"sim_net_loopback",
 	"sim_net_presented",
 	"sim_net_menu",

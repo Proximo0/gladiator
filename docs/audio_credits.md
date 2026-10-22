@@ -15,11 +15,12 @@ ever added, list it here with its source URL and licence (CC0 or public domain o
 
 | Folder | Sounds (variants each) |
 | --- | --- |
-| `assets/audio/impact/` | clang_steel, ring_steel, thunk_wood, bat_crack, bat_tink, body_thud, fist_punch, flesh_cut, flesh_pierce, bone_crack, armor_clank, mail_jingle, leather_slap, helm_knock, drop_sand, drop_sand_metal |
-| `assets/audio/gore/` | sever, behead, gut, run_through, spurt_hiss, blood_spatter_sand |
-| `assets/audio/move/` | whoosh_slow, whoosh_mid, whoosh_fast, footstep_sand, body_fall_sand, sand_impact, armor_rattle |
+| `assets/audio/impact/` | clang_steel, ring_steel, thunk_wood, bat_crack, bat_tink, body_thud, fist_punch, flesh_cut, flesh_pierce, heavy_thump, cleave_chop, bone_crack, armor_clank, mail_jingle, leather_slap, helm_knock, drop_sand, drop_sand_metal |
+| `assets/audio/gore/` | sever, behead, gut, run_through, spurt_hiss, gush_pulse, gut_squelch, gut_flop, blood_spatter_sand |
+| `assets/audio/move/` | whoosh_slow, whoosh_mid, whoosh_fast, whoosh_heavy, whoosh_cleave, footstep_sand, footstep_run, roll_whoosh, roll_thud, body_fall_sand, sand_impact, armor_rattle |
 | `assets/audio/voice/` | grunt, pain_light, pain_heavy, death_gurgle (non-verbal) |
 | `assets/audio/crowd/` | amb_low and amb_high (seamless loops), gasp, cheer, roar, boo, chant, finisher_roar |
+| `assets/audio/ui/` | unlock_sting (brassy fanfare from additive sine harmonics) |
 
 Files are `<name>_<n>.wav`, 16-bit 44.1 kHz mono. `assets/audio/manifest.json` lists the variant counts.
 

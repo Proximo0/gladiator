@@ -18,6 +18,7 @@ const SAND_TIP_Y: float = 0.07
 const SAND_MIN_SPEED: float = 2.5
 const SAND_GAP: float = 0.25
 const SPURT_SECONDS: float = 4.5
+const MAX_SPURTS: int = 3
 const MAX_PENDING: int = 96
 const LOG_SIZE: int = 48
 const LAYOUT_PATH: String = "res://assets/audio/default_bus_layout.tres"
@@ -27,6 +28,8 @@ var crowd: CrowdModel = CrowdModel.new()
 var muted: bool = false
 ## Total sounds started, and the most recent keys (for tests and the debug overlay).
 var played_count: int = 0
+## Low-priority sounds skipped because the pool was nearly full (they never steal a slot).
+var dropped_count: int = 0
 var recent_keys: PackedStringArray = PackedStringArray()
 
 var _pool: Array[AudioStreamPlayer3D] = []
@@ -80,7 +83,7 @@ func track(f: Node3D) -> void:
 			return
 	_tracked.append({
 		"f": f, "whoosh": SfxWhooshGate.new(), "steps": SfxStepTracker.new(), "state": "standing",
-		"last_sand": -10.0, "spurts": [],
+		"last_sand": -10.0, "spurts": [], "gushes": [], "rolling": false,
 	})
 	f.hit.connect(on_hit.bind(f))
 	f.gore.connect(on_gore.bind(f))
@@ -153,10 +156,19 @@ func on_gore(ge: Dictionary, f: Object = null) -> void:
 		_queue(key, pos, 0.0, 1.0, 0.0, "SFX")
 	if kind == "skull_crush":
 		_queue("impact/bone_crack", pos, 2.0, 0.9, 0.0, "SFX")
-	if kind == "sever" or kind == "behead" or kind == "gut" or kind == "bleed":
-		var t: Dictionary = _track_of(f)
-		if not t.is_empty():
-			(t["spurts"] as Array).append({"part": str(ge.get("part", "torso")), "age": 0.0, "next": 0.25, "pos": pos})
+	var t: Dictionary = _track_of(f)
+	if (kind == "behead" or kind == "gut") and not t.is_empty():
+		var tn: Tuning = Tuning.shared()
+		var gush: SfxGush = SfxGush.new()
+		if kind == "behead":
+			gush.setup(SfxGush.KIND_FOUNTAIN, pos, tn.fountain_dur, tn.fountain_hold, rng)
+		else:
+			gush.setup(SfxGush.KIND_GUT, pos, tn.gut_dur, tn.gut_hold, rng)
+		(t["gushes"] as Array).append(gush)
+	elif (kind == "sever" or kind == "bleed") and not t.is_empty():
+		if (t["spurts"] as Array).size() >= MAX_SPURTS:
+			(t["spurts"] as Array).remove_at(0)
+		(t["spurts"] as Array).append({"part": str(ge.get("part", "torso")), "age": 0.0, "next": 0.25, "pos": pos})
 
 
 func on_died(f: Object = null) -> void:
@@ -211,11 +223,22 @@ func _poll(t: Dictionary, delta: float) -> float:
 	# Swing whoosh (and sometimes an effort grunt).
 	var peak: float = (t["whoosh"] as SfxWhooshGate).update(speed if upright else 0.0, delta, _clock)
 	if peak > 0.0:
-		var wk: String = SfxLogic.whoosh_key(peak)
+		var wk: String = SfxLogic.whoosh_key_for(peak, wid)
 		if wk != "":
 			_queue(wk, tip, SfxLogic.whoosh_gain_db(peak), SfxLogic.whoosh_pitch(peak, mass), 0.0, "SFX")
 			if rng.randf() < SfxLogic.grunt_chance(peak, mass):
 				_queue("voice/grunt", _head_pos_of(parts, pelvis), 0.0, 1.0 + 0.08 * (1.0 if side == 0 else -1.0), 0.03, "Voice")
+	# Dodge roll: a whoosh going in and a thud into the sand on coming out.
+	var rolling: bool = bool(fr.get("rolling", false))
+	if rolling != bool(t["rolling"]):
+		t["rolling"] = rolling
+		var rp: Vector3 = Vector3(pelvis.x, 0.0, pelvis.z)
+		if rolling:
+			_queue("move/roll_whoosh", rp, 0.0, 1.0, 0.0, "SFX")
+			_queue("move/roll_thud", rp, -6.0, 1.1, 0.12, "SFX")
+		else:
+			_queue("move/roll_thud", rp, 0.0, 1.0, 0.0, "SFX")
+			_queue("move/sand_impact", rp, -6.0, 1.0, 0.03, "SFX")
 	# Weapon tip into the sand.
 	if tip.y < SAND_TIP_Y and speed > SAND_MIN_SPEED and _clock - float(t["last_sand"]) > SAND_GAP:
 		t["last_sand"] = _clock
@@ -228,15 +251,23 @@ func _poll(t: Dictionary, delta: float) -> float:
 		var fc: Dictionary = fr["foot_contacts"]
 		step = steps.update_contacts(bool(fc.get("l", false)), bool(fc.get("r", false)))
 	else:
-		step = steps.update(Vector2(vel.x, vel.z).length(), delta, upright)
-	if step != 0 and upright:
+		var tn2: Tuning = Tuning.shared()
+		var gv: Vector2 = Vector2(vel.x, vel.z)
+		var yb_x: Vector3 = Basis(Vector3.UP, float(fr.get("facing_yaw", 0.0))).x
+		var cad: float = tn2.cadence_base + tn2.cadence_per_speed * gv.length() + tn2.cadence_lateral * absf(vel.dot(yb_x))
+		step = steps.update_cadence(cad, gv.length(), delta, upright and not rolling)
+	if step != 0 and upright and not rolling:
 		var shin: String = "shin_l" if step < 0 else "shin_r"
 		var fp: Vector3 = pelvis
 		if parts.has(shin):
 			fp = (parts[shin] as Dictionary).get("pos", pelvis)
 		var g: Vector3 = Vector3(fp.x, 0.0, fp.z)
 		var sp: float = Vector2(vel.x, vel.z).length()
-		_queue("move/footstep_sand", g, SfxLogic.step_gain_db(sp), 1.0, 0.0, "SFX")
+		var lat: float = 0.0
+		if sp > 0.1:
+			lat = absf(vel.dot(Basis(Vector3.UP, float(fr.get("facing_yaw", 0.0))).x)) / sp
+		var sp_plan: Dictionary = SfxLogic.footstep_plan(sp, Tuning.shared().sprint_speed, lat)
+		_queue(str(sp_plan["key"]), g, float(sp_plan["gain_db"]), 1.0, 0.0, "SFX")
 		if _wears_heavy_armor(f):
 			_queue("move/armor_rattle", g, -2.0 + minf(sp, 5.0), 1.0, 0.02, "SFX")
 	# Falling down and getting up.
@@ -247,6 +278,8 @@ func _poll(t: Dictionary, delta: float) -> float:
 		if was_up and (state == "down" or state == "ko" or state == "dead"):
 			var gp: Vector3 = Vector3(pelvis.x, 0.0, pelvis.z)
 			_queue("move/body_fall_sand", gp, 0.0, 1.0, 0.0, "SFX")
+			# The body leaves a crater: a deep sand thump under the fall, louder for a faster drop.
+			_queue("move/roll_thud", gp, clampf(absf(vel.y) * 1.5 - 8.0, -8.0, 0.0), 0.8, 0.04, "SFX")
 			if _wears_heavy_armor(f):
 				_queue("move/armor_rattle", gp, 0.0, 0.9, 0.05, "SFX")
 			if state == "ko":
@@ -256,6 +289,7 @@ func _poll(t: Dictionary, delta: float) -> float:
 			_queue("move/armor_rattle", Vector3(pelvis.x, 0.0, pelvis.z), -4.0, 0.9, 0.0, "SFX")
 			_queue("voice/grunt", _head_pos_of(parts, pelvis), -2.0, 0.9, 0.05, "Voice")
 	_tick_spurts(t, f, delta)
+	_tick_gushes(t, f, delta)
 	return clampf(speed / 14.0, 0.0, 1.0)
 
 
@@ -274,6 +308,25 @@ func _tick_spurts(t: Dictionary, f: Object, delta: float) -> void:
 		elif float(s["age"]) >= float(s["next"]):
 			s["next"] = float(s["age"]) + SfxLogic.spurt_interval(blood)
 			_queue("gore/spurt_hiss", s["pos"], SfxLogic.spurt_gain_db(float(s["age"]), blood), 1.0, 0.0, "SFX")
+		i -= 1
+
+
+func _tick_gushes(t: Dictionary, f: Object, delta: float) -> void:
+	var gushes: Array = t["gushes"]
+	var blood: float = 1.0
+	var h: Variant = f.get("health")
+	if h != null and (h as Object).has_method("blood_frac"):
+		blood = float((h as Object).call("blood_frac"))
+	var i: int = gushes.size() - 1
+	while i >= 0:
+		var g: SfxGush = gushes[i]
+		for ev: Dictionary in g.tick(delta, blood):
+			var gpos: Vector3 = g.pos
+			if str(ev["key"]) == "gore/gut_flop":
+				gpos = Vector3(g.pos.x, 0.0, g.pos.z)
+			_queue(str(ev["key"]), gpos, float(ev["gain_db"]), float(ev["pitch"]), 0.0, "SFX")
+		if g.finished():
+			gushes.remove_at(i)
 		i -= 1
 
 
@@ -322,6 +375,9 @@ func play_key(key: String, pos: Vector3, gain_db: float = 0.0, pitch: float = 1.
 	_note(key)
 	if muted or _pool.is_empty():
 		return true
+	if SfxLogic.is_low_priority(key) and _free_count() <= SfxLogic.POOL_RESERVE:
+		dropped_count += 1
+		return true
 	var p: AudioStreamPlayer3D = _free_player()
 	p.stop()
 	p.stream = stream
@@ -361,6 +417,14 @@ func _note(key: String) -> void:
 	recent_keys.append(key)
 	if recent_keys.size() > LOG_SIZE:
 		recent_keys.remove_at(0)
+
+
+func _free_count() -> int:
+	var n: int = 0
+	for p: AudioStreamPlayer3D in _pool:
+		if not p.playing:
+			n += 1
+	return n
 
 
 func _free_player() -> AudioStreamPlayer3D:
