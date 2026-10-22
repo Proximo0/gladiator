@@ -6,10 +6,11 @@ extends "res://tests/sim/sim_base.gd"
 ## and the host is told in plain words -> back to the queue; then a confirm abandoned by the other side and a host
 ## whose client never connects both land back in the search with a plain line.
 
-const PORT: int = 17971
+const PORT_BASE: int = 21000  ## + a per-process offset, so two suites on one machine do not share the port
 const RATED_TICKS: int = 700  ## past Rating.MIN_RATED_TICKS so the forced result is rated
 
 var _vp: SubViewport
+var _port: int = PORT_BASE + (OS.get_process_id() % 4000) * 2
 
 
 func _wait_until(cond: Callable, cap: int) -> int:
@@ -26,7 +27,7 @@ func _stub(f: MenuFlow, my_id: String, role: String, opp_id: String, opp_name: S
 	s.auto_match = false
 	s.profile = {"id": my_id}
 	s.role = role
-	s.port = PORT
+	s.port = _port
 	s.address = "127.0.0.1"
 	s.opponent = {"id": opp_id, "name": opp_name, "rating": 1000, "games": 0}
 	return s
