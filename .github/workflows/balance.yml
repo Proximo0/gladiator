@@ -35,7 +35,13 @@ jobs:
       - uses: ./.github/actions/setup-godot
       - name: Fights
         shell: bash
+        env:
+          MSG: ${{ github.event.head_commit.message }}
         run: |
+          # main's numbers only when the commit message asks for them ("[main]") or on a manual run.
+          if [ "${{ matrix.data }}" = main ] && [ "${{ github.event_name }}" = push ] && [[ "$MSG" != *"[main]"* ]]; then
+            exit 0
+          fi
           if [ "${{ matrix.data }}" = main ]; then
             git fetch -q --depth=1 origin main && git checkout FETCH_HEAD -- data/weapons.json data/armor.json
           fi
@@ -62,6 +68,7 @@ jobs:
         with:
           pattern: balance-main-*
           path: shards_main
+        continue-on-error: true
       - name: Commit merged records
         shell: bash
         run: |
@@ -69,6 +76,7 @@ jobs:
           for v in branch main; do
           d=shards; f=docs/balance_runs/${GITHUB_SHA::7}.json.gz
           if [ $v = main ]; then d=shards_main; f=docs/balance_runs/${GITHUB_SHA::7}-main.json.gz; fi
+          ls $d/*/shard.json > /dev/null 2>&1 || continue
           python3 - "$f" $d/*/shard.json <<'PY'
           import gzip, json, sys
           recs = []
