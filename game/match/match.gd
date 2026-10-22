@@ -137,7 +137,7 @@ func _build() -> void:
 	_start_match()
 
 
-## Floor and wall colliders only: the same shapes the Arena builds, without any visual.
+## Floor, wall and dressing colliders only: the same shapes the Arena builds, without any visual.
 func _build_collision() -> void:
 	var radius: float = Tuning.shared().arena_radius
 	var floor_body := StaticBody3D.new()
@@ -172,6 +172,7 @@ func _build_collision() -> void:
 				Vector3((radius + WALL_DEPTH * 0.5) * cos(a), (WALL_HEIGHT - 2.5) * 0.5, (radius + WALL_DEPTH * 0.5) * sin(a)))
 		wall.add_child(cs)
 	add_child(wall)
+	ArenaDressing.add_colliders(self, DecorLayout.colliders(radius))
 
 
 func _start_match() -> void:

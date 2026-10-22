@@ -28,14 +28,18 @@ const SUN_ENERGY: float = 1.3
 const AMBIENT_ENERGY: float = 0.4
 const EXPOSURE: float = 1.05
 ## Houdini dressing placement (metres, radians). Portcullis 3.6 x 3.9 m as exported, scaled to the 3 m podium wall.
-const PORTCULLIS_SCALE: float = 0.8
-const GATE_COLUMN_SCALE: float = 0.75
-const GATE_COLUMN_OFFSET: float = 1.95
 const BRAZIER_FLAME_Y: float = 1.12
-const RACK_ANGLE_OFFSET: float = 0.36
 const STATUE_ANGLE_OFFSET: float = 0.3
 const STATUE_SCALE: float = 0.7
 const LOW_CODE_PROPS: PackedStringArray = ["banner", "brazier"]
+## Cloth banners hung on the wall panels (Houdini banner, scaled to clear the plinth moulding and the cornice).
+const WALL_BANNER_ANGLES: Array[float] = [1.1126, 2.1598, 4.2542, 5.3014]
+const WALL_BANNER_SCALE: float = 0.85
+const WALL_BANNER_OUT: float = 0.16
+## The big statue on its plinth stands on this tier behind the imperial box, its top under the velarium.
+const BOX_STATUE_TIER: int = 3
+const BOX_STATUE_SCALE: float = 1.65
+const BOX_STATUE_GAP: float = 0.07  ## radians of that tier left empty of spectators round the statue
 
 var radius: float = 11.0
 var sand: Node3D
@@ -183,6 +187,7 @@ func _build_wall_colliders() -> void:
 		cs.transform = Transform3D(ring_basis(a), Vector3((radius + depth * 0.5) * cos(a), (WALL_HEIGHT - 2.5) * 0.5, (radius + depth * 0.5) * sin(a)))
 		body.add_child(cs)
 	add_child(body)
+	ArenaDressing.add_colliders(self, DecorLayout.colliders(radius))
 
 
 func _build_wall_visual() -> void:
@@ -392,6 +397,8 @@ func _build_stands() -> void:
 
 
 func _in_box_sector(a: float, tier: int) -> bool:
+	if tier == BOX_STATUE_TIER and _art("statue_plinth") != null and GfxQuality.level > GfxQuality.LOW:
+		return absf(wrapf(a - BOX_ANGLE, -PI, PI)) < BOX_STATUE_GAP
 	if tier > 1:
 		return false
 	return absf(wrapf(a - BOX_ANGLE, -PI, PI)) < 0.24
@@ -463,8 +470,8 @@ func _build_props() -> void:
 	wood.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var bronze := SurfaceTool.new()
 	bronze.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# Banners on the wall panels, away from the spawn axis and the gates.
-	for k: int in 4:
+	# Banners on the wall panels, away from the spawn axis and the gates (Houdini cloth in _build_dressing if it exists).
+	for k: int in 0 if _art("banner") != null else 4:
 		var a: float = [deg_to_rad(63.75), deg_to_rad(123.75), deg_to_rad(243.75), deg_to_rad(303.75)][k]
 		_banner(cloth, bronze, ring_point(radius - 0.12, a, WALL_HEIGHT - 0.55, WALL_SIDES), a, 1.0, 1.7, k % 2 == 1)
 	# Standards on masts along the attic top.
@@ -651,24 +658,22 @@ func _art(id: String) -> Mesh:
 	return _dressing.mesh(id)
 
 
-## Portcullis gates with flanking columns, braziers on the torch posts, cloth standards on the attic masts, a weapon
-## rack against the wall behind each spawn, statues beside the gates and the laurel trophy under the imperial box.
-## One MultiMesh per asset; only the big stone pieces cast shadows. Missing assets keep the code stand-ins.
+## Portcullis gates with flanking columns and barriers, braziers on the torch posts, cloth standards on the attic masts
+## and banners on the wall, a weapon rack against the wall behind each spawn, column stumps, statues beside the gates
+## and behind the imperial box, and the laurel trophy under the box. One MultiMesh per asset; only the big stone
+## pieces cast shadows. Missing assets keep the code stand-ins; the floor pieces' colliders exist either way.
 func _build_dressing() -> void:
 	var low: bool = GfxQuality.level <= GfxQuality.LOW
-	var gates: Array[Transform3D] = []
-	var columns: Array[Transform3D] = []
+	# Floor pieces (gates, gate columns, racks, barriers, stumps) come from DecorLayout, which also gives their colliders.
 	var statues: Array[Transform3D] = []
-	for ga: float in [0.0, PI]:
-		var fb: Basis = RomanDecor.face_basis(ga)
-		var wall_face: Vector3 = ring_point(radius, ga, 0.0, WALL_SIDES)
-		gates.append(Transform3D(fb.scaled(Vector3.ONE * PORTCULLIS_SCALE), wall_face + fb.z * 0.08))
+	for ga: float in DecorLayout.GATE_ANGLES:
 		for sx: float in [-1.0, 1.0]:
-			columns.append(Transform3D(fb.scaled(Vector3.ONE * GATE_COLUMN_SCALE), wall_face + fb.z * 0.3 + fb.x * (sx * GATE_COLUMN_OFFSET)))
 			var sa: float = ga + sx * STATUE_ANGLE_OFFSET
 			statues.append(Transform3D(RomanDecor.face_basis(sa).scaled(Vector3.ONE * STATUE_SCALE), ring_point(radius + 0.3, sa, WALL_HEIGHT, WALL_SIDES)))
-	ArenaDressing.add_instances(self, "Portcullis", _art("portcullis"), gates, true)
-	ArenaDressing.add_instances(self, "GateColumns", _art("column"), columns, not low)
+	ArenaDressing.add_instances(self, "Portcullis", _art("portcullis"), DecorLayout.transforms(radius, "portcullis"), true)
+	ArenaDressing.add_instances(self, "GateColumns", _art("column"), DecorLayout.transforms(radius, "column"), not low)
+	ArenaDressing.add_instances(self, "Barriers", _art("barrier"), DecorLayout.transforms(radius, "barrier"), false)
+	ArenaDressing.add_instances(self, "ColumnStumps", _art("column_stump"), DecorLayout.transforms(radius, "column_stump"), not low)
 	var braziers: Array[Transform3D] = []
 	for k: int in 6:
 		var a: float = deg_to_rad(30.0 + float(k) * 60.0)
@@ -683,14 +688,18 @@ func _build_dressing() -> void:
 		var fb: Basis = RomanDecor.face_basis(a)
 		standards.append(Transform3D(fb, Vector3(rim * cos(a), _attic_top() + 1.0, rim * sin(a)) + fb.z * 0.1))
 	ArenaDressing.add_instances(self, "Standards", _art("banner"), standards, false)
-	var racks: Array[Transform3D] = []
-	for side_a: float in [PI * 0.5, PI * 1.5]:
-		var a: float = side_a + RACK_ANGLE_OFFSET
+	var wall_banners: Array[Transform3D] = []
+	for a: float in WALL_BANNER_ANGLES:
 		var fb: Basis = RomanDecor.face_basis(a)
-		racks.append(Transform3D(fb, ring_point(radius, a, 0.0, WALL_SIDES) + fb.z * 0.32))
-	ArenaDressing.add_instances(self, "WeaponRacks", _art("weapon_rack"), racks, false)
+		wall_banners.append(Transform3D(fb.scaled(Vector3.ONE * WALL_BANNER_SCALE), ring_point(radius, a, 0.0, WALL_SIDES) + fb.z * WALL_BANNER_OUT))
+	ArenaDressing.add_instances(self, "WallBanners", _art("banner"), wall_banners, false)
+	ArenaDressing.add_instances(self, "WeaponRacks", _art("weapon_rack"), DecorLayout.transforms(radius, "weapon_rack"), false)
 	if low:
 		return  # phones: the statues and the trophy are a few pixels up on the wall cap; save their draw calls
+	# The big statue stands on the stands behind the imperial box (its tier's seats there stay empty).
+	var radial := Vector3(cos(BOX_ANGLE), 0.0, sin(BOX_ANGLE))
+	var box_r: float = _tier_inner(BOX_STATUE_TIER) + TIER_DEPTH * 0.5
+	statues.append(Transform3D(RomanDecor.face_basis(BOX_ANGLE).scaled(Vector3.ONE * BOX_STATUE_SCALE), radial * box_r + Vector3(0, _tier_top(BOX_STATUE_TIER), 0)))
 	ArenaDressing.add_instances(self, "Statues", _art("statue_plinth"), statues, false)
 	var tb: Basis = RomanDecor.face_basis(BOX_ANGLE)
 	var trophy: Array[Transform3D] = [Transform3D(tb, ring_point(radius + 0.3, BOX_ANGLE, WALL_HEIGHT, WALL_SIDES))]
