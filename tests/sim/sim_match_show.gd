@@ -7,6 +7,10 @@ extends "res://tests/sim/sim_base.gd"
 const HOLD_CAP: int = 400
 ## Ticks from the bleed-out to the results: MenuFlow.RESULT_DELAY_S, then the instant replay (KillCam) when it plays.
 const RESULT_CAP: int = 1800
+## The match seed (MenuFlow draws one from the wall clock otherwise): it picks the CPU's loadout, and a held fighter
+## still settles into its guard, so a random weapon made the drift random (a spear swings up and backs its holder off
+## 0.41 m). This one gives the CPU a gladius.
+const HOLD_SEED: int = 7
 
 
 func _wait_until(cond: Callable, cap: int) -> int:
@@ -31,9 +35,17 @@ func run() -> Array:
 	flow.setup(root)
 	await step(2)
 
-	# vs CPU: held through the plates, free on FIGHT!.
+	# vs CPU: held through the plates (every tick of input neutral on both sides), free on FIGHT!.
+	flow.set("_next_seed", HOLD_SEED)
 	flow.call("_begin_fight", "player_vs_cpu")
 	var m: Match = flow.current_match
+	var leaks: Array[int] = [0, 0]  # held ticks whose applied input was not neutral
+	var neutral: Array = FighterInput.new().to_array()
+	m.inputs_applied.connect(func(_t: int, inputs: Array) -> void:
+		if flow.intro_phase() == "plates":
+			leaks[0] += 1
+			if inputs[0] != neutral or inputs[1] != neutral:
+				leaks[1] += 1)
 	var show: MatchShow = m.get_node_or_null("MatchShow") as MatchShow
 	await step(2)
 	var reader: InputReader = m.readers[0] as InputReader
@@ -45,9 +57,11 @@ func run() -> Array:
 	await step(2)
 	var freed: bool = reader.device != "none" and m.brains[1] != null
 	var want_ticks: int = roundi(Tuning.shared().intro_s * 60.0)
-	rows.append(row("match_show_intro_hold", held and freed and absi(n - want_ticks) <= 12 and drift < 0.35,
-		"held=%s for %d ticks (intro_s %d), drift %.2f m, then reader '%s' and brain back=%s" % [str(held), n, want_ticks,
-		drift, reader.device, str(m.brains[1] != null)]))
+	var cpu_weapon: String = str((m.fighters[1] as Fighter).debug_frame()["weapon_id"])
+	rows.append(row("match_show_intro_hold", held and freed and absi(n - want_ticks) <= 12 and leaks[0] > 0 and leaks[1] == 0
+		and drift < 0.35,
+		"held=%s for %d ticks (intro_s %d), %d of %d held ticks with input, drift %.2f m (CPU %s), then reader '%s' and brain back=%s"
+		% [str(held), n, want_ticks, leaks[1], leaks[0], drift, cpu_weapon, reader.device, str(m.brains[1] != null)]))
 	var hint_after: int = await _wait_until(func() -> bool: return flow.intro_phase() == "", 120)
 	rows.append(row("match_show_intro_ends", flow.intro_phase() == "" and int(flow.screen) == MenuFlow.Screen.FIGHT,
 		"stinger over %d ticks after release, screen %d" % [hint_after, int(flow.screen)]))
