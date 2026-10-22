@@ -30,7 +30,7 @@ var flow: QuickMatchFlow = QuickMatchFlow.new()
 var rematch: RematchHandshake = RematchHandshake.new()
 var last_summary: Dictionary = {}  ## the service's verdict on the last fight (with this player's streak)
 
-var _title: Label
+var _title: ScreenHeader
 var _body: BoxContainer
 var _left: VBoxContainer
 var _name_edit: LineEdit
@@ -68,6 +68,7 @@ var _confirm_box: VBoxContainer
 var _arms: Label
 var _ready_btn: Button
 var _remote_line: Label
+var _link_queued: bool = false
 
 
 func _init(p_state: MenuState) -> void:
@@ -88,12 +89,12 @@ func _init(p_state: MenuState) -> void:
 	root.offset_bottom = -16.0
 	root.add_theme_constant_override("separation", 10)
 	add_child(root)
-	_title = MenuTheme.label("ARENA REMOTA / Online 1v1", 52, MenuTheme.PARCHMENT)
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title = ScreenHeader.new("ARENA REMOTA / Online 1v1")
 	root.add_child(_title)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
 	root.add_child(scroll)
 	_body = BoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -258,7 +259,7 @@ func _set_mode(quick: bool) -> void:
 	_quick_box.visible = quick
 	_opponent.visible = not quick
 	_status.visible = not quick
-	_title.text = "ARENA REMOTA / Quick Match" if quick else "ARENA REMOTA / Online 1v1"
+	_title.set_text("ARENA REMOTA / Quick Match" if quick else "ARENA REMOTA / Online 1v1")
 	_back.text = "Cancel" if quick else "Back"
 	_start.text = "Search again" if quick else "FIGHT!"
 	set_process(quick)
@@ -516,6 +517,7 @@ func _refresh_quick() -> void:
 		_panel_locked = lock
 		_panel.set_locked(lock)  # ready: the arms are what the opponent already got
 	_spinner.queue_redraw()
+	_queue_link()
 
 
 ## "12 W - 7 L   W3" for the search card ("" before the first rated fight).
@@ -718,6 +720,7 @@ func refresh() -> void:
 	_start.disabled = not (session.role == NetSession.ROLE_HOST and session.remote_joined)
 	if session.role == NetSession.ROLE_CLIENT and session.remote_joined:
 		_status.text = "%s\nWaiting for %s to start the fight" % [_status.text, session.remote_name]
+	_queue_link()
 
 
 func _describe(l: Dictionary) -> String:
@@ -780,7 +783,7 @@ func _relayout() -> void:
 	var portrait: bool = size.x < size.y * 1.05
 	_portrait = portrait
 	_body.vertical = portrait
-	_title.add_theme_font_size_override("font_size", 40 if portrait else 52)
+	_title.set_compact(portrait)
 	var h: float = TOUCH_H_PORTRAIT if portrait else TOUCH_H_WIDE
 	for b: Button in [_back, _start, _ready_btn]:
 		b.custom_minimum_size.y = h
@@ -788,3 +791,19 @@ func _relayout() -> void:
 	_start.custom_minimum_size.x = 440.0 if portrait else 420.0
 	_ready_btn.custom_minimum_size.x = 560.0 if portrait else 420.0
 	_spinner.custom_minimum_size.y = 190.0 if portrait else 170.0
+	_queue_link()
+
+
+## Pad and keyboard routes by hand (the columns scroll, which Godot's own search sees through): the connection column
+## wraps through Back, your arms through FIGHT; portrait runs them as one column. Re-linked as rows come and go.
+func _link_focus() -> void:
+	_link_queued = false
+	var left: Array[Control] = MenuNav.focusables(_left)
+	var arms: Array[Control] = MenuNav.focusables(_panel)
+	MenuNav.link_screen([left, arms], _back, _start, _body.vertical)
+
+
+func _queue_link() -> void:
+	if not _link_queued:
+		_link_queued = true
+		_link_focus.call_deferred()
