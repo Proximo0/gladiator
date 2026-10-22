@@ -3,6 +3,7 @@ extends TestCase
 
 class _WfxFighter extends Node3D:
 	signal hit(event: Dictionary)
+	signal gore(event: Dictionary)
 	var side: int = 0
 	var parts: Dictionary = {}
 	var weapon: Node3D = null
@@ -138,3 +139,75 @@ func test_bruises_follow_the_blood_colour() -> void:
 	var ichor: Array = WoundFx.bruise_colors(OutfitRules.blood_palette("alien"))
 	var c: Color = ichor[0]
 	assert_true(c.g > c.r or c.b > c.r, "the alien bruises in its own colour")
+
+
+func test_drops_leave_streaked_smears_within_the_rate_budget() -> void:
+	var fx: WoundFx = WoundFx.new()
+	var a: _WfxFighter = _fighter(0, 0.0)
+	fx.track(a)
+	var tn: Tuning = Tuning.shared()
+	var made: int = 0
+	for k: int in 40:  ## far apart, so none merge
+		var p: Vector3 = Vector3(0.0, 1.1 + 0.02 * float(k % 20), 0.11 * (1.0 if k < 20 else -1.0))
+		if fx.add_drop(a, "torso", p, Vector3(0, -6, 0), 0.006, 1):
+			made += 1
+	assert_eq(made, int(tn.wound_drop_rate), "one second's budget, then nothing")
+	fx.step(0.5)
+	assert_true(fx.add_drop(a, "torso", Vector3(0.1, 1.3, 0.11), Vector3(0, -6, 0), 0.006, 1), "it refills")
+	var wm: WoundMarks = fx.marks_of(0)
+	assert_true(wm.count("torso") <= wm.cap)
+	var m: WoundMarks.Mark = wm.marks["torso"][0]
+	assert_eq(m.kind, WoundMarks.Kind.SMEAR)
+	assert_eq(m.slot, 1, "the blood that landed is the other fighter's")
+	assert_true(m.stretch > 1.5 and m.width < m.size, "a fast drop streaks")
+	assert_false(fx.add_drop(a, "thigh_l", Vector3.ZERO, Vector3.ZERO, 0.006, 0), "an unknown part takes nothing")
+	a.free()
+	fx.free()
+
+
+func test_stain_soaks_a_smear_and_pushes_the_readability_uniforms() -> void:
+	var fx: WoundFx = WoundFx.new()
+	var a: _WfxFighter = _fighter(0, 0.0)
+	fx.track(a)
+	assert_true(fx.add_stain(a, "torso", Vector3(0, 1.3, 0.11), Vector3.RIGHT, 0.8, 0))
+	assert_eq(fx.marks_of(0).count("torso"), 1)
+	var shells: Node = (a.parts["torso"] as Node).get_node(WoundFx.SHELL_NODE)
+	var mat: ShaderMaterial = (shells.get_child(0) as MeshInstance3D).material_override as ShaderMaterial
+	assert_eq(int(mat.get_shader_parameter("count")), 1, "a soak pushes at once")
+	assert_near(float(mat.get_shader_parameter("core_scale")), Tuning.shared().wound_core_scale, 0.0001)
+	assert_near(float(mat.get_shader_parameter("rim_glow")), Tuning.shared().wound_rim_glow, 0.0001)
+	var stranger := Node.new()
+	assert_false(fx.add_stain(stranger, "torso", Vector3.ZERO, Vector3.RIGHT, 0.8, 0), "untracked fighter")
+	stranger.free()
+	a.free()
+	fx.free()
+
+
+func test_a_beheading_puts_a_blood_collar_on_both_cut_ends() -> void:
+	var fx: WoundFx = WoundFx.new()
+	var a: _WfxFighter = _fighter(0, 0.0)
+	fx.track(a)
+	a.gore.emit({"kind": "behead", "part": "head"})
+	var wm: WoundMarks = fx.marks_of(0)
+	assert_eq(wm.count("torso"), 1, "the neck stump")
+	assert_eq(wm.count("head"), 1, "the head's cut face")
+	var neck: WoundMarks.Mark = wm.marks["torso"][0]
+	assert_true(neck.nrm.y > 0.7, "the stump's mark faces up out of the torso")
+	var under: WoundMarks.Mark = wm.marks["head"][0]
+	assert_true(under.nrm.y < -0.7, "the head's faces down")
+	a.gore.emit({"kind": "gut", "part": "torso"})
+	assert_eq(wm.count(""), 2, "only cuts that sever mark stumps")
+	fx.clear()
+	a.free()
+	fx.free()
+
+
+func test_stump_ends_are_the_joint_in_both_frames() -> void:
+	var ends: Array = WoundFx.stump_ends("forearm_r")
+	assert_eq(ends.size(), 2)
+	assert_eq(str(ends[0][0]), "upper_arm_r")
+	assert_true(((ends[0][1] as Vector3) - Vector3(0, -0.14, 0)).length() < 0.001, "the elbow, below the upper arm")
+	assert_true(((ends[1][1] as Vector3) - Vector3(0, 0.17, 0)).length() < 0.001, "the elbow, atop the forearm")
+	assert_true(WoundFx.stump_ends("pelvis").is_empty())
+	assert_true(WoundFx.drop_stretch(Vector3.ZERO) == 1.0)
+	assert_true(WoundFx.drop_stretch(Vector3(0, 100, 0)) == WoundMarks.STRETCH_MAX)

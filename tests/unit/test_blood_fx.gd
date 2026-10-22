@@ -368,3 +368,42 @@ func _bf_winding(v: PackedVector3Array, idx: PackedInt32Array) -> float:
 		if n.length_squared() > 1e-12:
 			s += n.dot((a + b + c) / 3.0)
 	return s
+
+
+class _StainFighter extends Node3D:
+	signal hit(event: Dictionary)
+	var side: int = 0
+	var parts: Dictionary = {}
+	var weapon: Node3D = null
+
+
+func test_body_stains_go_to_wound_smears_and_weapons_keep_quads() -> void:
+	var fx: BloodFx = BloodFx.new()
+	fx.auto_step = false
+	fx._build()
+	var wfx: WoundFx = WoundFx.new()
+	var f: _StainFighter = _StainFighter.new()
+	(Engine.get_main_loop() as SceneTree).root.add_child(f)
+	var torso: Node3D = Node3D.new()
+	torso.name = "torso"
+	f.add_child(torso)
+	f.parts["torso"] = torso
+	torso.global_position = Vector3(0, 1.3, 0)
+	var w: Node3D = Node3D.new()
+	f.add_child(w)
+	fx.track(f)
+	wfx.track(f)
+	assert_true(fx._body_owner(torso) == [f, "torso"])
+	assert_true(fx._body_owner(w).is_empty())
+	fx._hit_stains(torso, Vector3(0, 1.3, 0.11), 30.0, Vector3.RIGHT, 0)
+	assert_eq((torso.get_meta("bfx_stains", []) as Array).size(), 5, "no body_marks: quads (patch and four runnels)")
+	fx.body_marks = wfx
+	fx._hit_stains(torso, Vector3(0, 1.25, 0.11), 30.0, Vector3.RIGHT, 0)
+	assert_eq((torso.get_meta("bfx_stains", []) as Array).size(), 5, "no new quads on the body")
+	assert_eq(wfx.marks_of(0).count("torso"), 1, "a smear instead")
+	fx._stain(w, Vector3(0, 1.3, 0.5), Vector3.UP, Vector3.ZERO, 0.005, 0)
+	assert_eq((w.get_meta("bfx_stains", []) as Array).size(), 1, "the weapon keeps its stain quads")
+	assert_true(BloodFx.soak_sev(1.0) < BloodFx.soak_sev(30.0) and BloodFx.soak_sev(100.0) == 1.0)
+	f.free()
+	wfx.free()
+	fx.free()

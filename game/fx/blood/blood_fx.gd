@@ -128,6 +128,9 @@ var sand: Node = null:  ## duck-typed SandSurface: add_blood(pos, radius, litres
 		_push_sand_palettes()
 var quality: int = 1
 var palettes: Array = [BloodPalette.red(), BloodPalette.red()]  ## BloodPalette per slot (a fighter's side)
+## When set, blood on tracked fighters' bodies (the soak of a blow, landed drops) becomes WoundFx smears that wrap the
+## body's surface; stain quads stay for weapons and anything else. Unset (tests, warm-up): quads everywhere.
+var body_marks: WoundFx = null
 var profile_on: bool = false
 var prof: Dictionary = {}
 var auto_step: bool = true  ## false: the owner calls step(dt) (render scripts, tests)
@@ -138,6 +141,7 @@ var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Last step's numbers for perf checks.
 var stat_emitted: int = 0
 var stat_rays: int = 0
+var stat_body_drops: int = 0  ## drops that landed on a tracked fighter and went to body_marks (cumulative)
 var stat_splat_calls: int = 0
 
 var _mm_drops: MultiMeshInstance3D = null
@@ -498,7 +502,12 @@ func on_hit(event: Dictionary, emitter: Object = null) -> void:
 		if cut + pierce > 1.0 or wound > 3.0:
 			_coat_weapon(atk.fighter, wound, vslot)
 	var node: Node3D = _part_node(tf, str(event.get("part", "")))
-	if node != null:
+	if node != null and body_marks != null:
+		# WoundFx draws a gash or hole with its own blood; any other bleeding blow soaks a smear in.
+		var wk: int = WoundMarks.kind_for(contact, cut, pierce, blunt, bool(event.get("glanced", false)))
+		if wk != WoundMarks.Kind.GASH and wk != WoundMarks.Kind.PUNCTURE and wound >= Tuning.shared().wound_soak_min:
+			_hit_stains(node, point, wound, sdir, vslot)
+	elif node != null:
 		_hit_stains(node, point, wound, sdir, vslot)
 	if node != null and cut + pierce > 1.5:
 		var w: float = clampf(3.0 + wound * 0.5, 3.0, 30.0)
@@ -1215,7 +1224,12 @@ func _process_rays() -> void:
 			continue
 		sim.kill(i)
 		var col: Object = res.get("collider")
-		if col is Node3D:
+		var owner: Array = _body_owner(col) if body_marks != null else []
+		if not owner.is_empty():
+			stat_body_drops += 1
+			body_marks.add_drop(owner[0] as Node, str(owner[1]), res["position"], sim.vel_of(i), sim.radius_of(i),
+					sim.slot_of(i))
+		elif col is Node3D:
 			_stain(col as Node3D, res["position"], res["normal"], sim.vel_of(i), sim.radius_of(i), sim.slot_of(i))
 		if sim.vel_of(i).length() > 5.0 and rng.randf() < 0.3:
 			mist.emit(res["position"], res["normal"] * 0.5, 0.03, 0.10, 0.35, 0.25, rng.randf() * TAU, sim.slot_of(i))
@@ -1291,8 +1305,13 @@ func _stain(body: Node3D, pos: Vector3, normal: Vector3, vel: Vector3, r: float,
 	_place_stain(body, pos, nrm, vel - nrm * vel.dot(nrm), width * stretch, width, slot)
 
 
-## Blood soaking a body part where it was hit: a wet patch smeared along the blow plus runnels that run down.
+## Blood soaking a body part where it was hit: a wet patch smeared along the blow plus runnels that run down. On a
+## tracked fighter with `body_marks` set, one WoundFx smear instead (its size grows with the wound).
 func _hit_stains(node: Node3D, point: Vector3, wound: float, sdir: Vector3, slot: int = 0) -> void:
+	var owner: Array = _body_owner(node) if body_marks != null else []
+	if not owner.is_empty():
+		body_marks.add_stain(owner[0] as Node, str(owner[1]), point, sdir, soak_sev(wound), slot, 1.4)
+		return
 	var out: Vector3 = point - node.global_position
 	if out.length_squared() < 0.0001:
 		out = Vector3.UP
@@ -1304,6 +1323,27 @@ func _hit_stains(node: Node3D, point: Vector3, wound: float, sdir: Vector3, slot
 		var p: Vector3 = point + _jit(w0 * 0.5)
 		var len_m: float = rng.randf_range(0.08, 0.2) * (1.0 + wound / 40.0)
 		_place_stain(node, p, out, Vector3.DOWN, len_m, rng.randf_range(0.012, 0.028), slot)
+
+
+## Smear strength 0..1 of the blood a blow of `wound` points soaks into the body (40 points and up: full).
+static func soak_sev(wound: float) -> float:
+	return clampf(0.2 + wound / 40.0, 0.2, 1.0)
+
+
+## [fighter, part name] when `n` is a body part of a tracked fighter, else empty.
+func _body_owner(n: Object) -> Array:
+	if n == null:
+		return []
+	for t: _BfTracked in _tracked:
+		if t.fighter == null or not is_instance_valid(t.fighter):
+			continue
+		var pv: Variant = t.fighter.get("parts")
+		if not (pv is Dictionary):
+			continue
+		for pn: Variant in pv:
+			if (pv as Dictionary)[pn] == n:
+				return [t.fighter, str(pn)]
+	return []
 
 
 ## Blood on a weapon: stains along the blade, two crossed quads so either flat face shows it.
