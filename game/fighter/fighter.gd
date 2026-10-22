@@ -727,12 +727,23 @@ func _control(delta: float) -> void:
 	var ru: float = _roll.progress(_t("roll_time"))
 	var tk: float = RollLogic.tuck(ru) if rolling else 0.0
 	var roll_dir: Vector3 = (right * _roll.dir.x + fwd * _roll.dir.y).normalized()
+	var roll_axis: Vector3 = RollLogic.axis(roll_dir, _t("roll_shoulder") * RollLogic.shoulder_side(_roll.dir))
+	# The feet leave the sand only once the body is low (sat down or over the shoulder), or a roll starts airborne.
+	var gate: float = _t("roll_tuck_gate")
+	var tk_leg: float = tk * clampf((gate - pelvis.global_position.y) / 0.15, 0.0, 1.0) if gate > 0.0 else tk
+	tk_leg = _roll.hold_leg_tuck(tk_leg, ru, tk)
+	if rolling and RollLogic.crossed(_roll.t, delta, _t("roll_time"), RollLogic.OPEN_START):
+		# The body has come round: the legs open onto spots under the hips, a little on along the roll.
+		var lead: Vector3 = roll_dir * _t("roll_land_lead")
+		_gait.replant([_hip_point(0) + lead, _hip_point(1) + lead])
 	var h_target: float = _t("crouch_height") if crouch else _t("stand_height")
 	var sp0: float = Vector2(pelvis.linear_velocity.x, pelvis.linear_velocity.z).length()
 	if not crouch:
 		h_target += _t("walk_height_add") * clampf(sp0 / maxf(_t("sprint_speed"), 0.1), 0.0, 1.0)
 		h_target += _t("gait_bob") * _gait.bob()
 	if rolling:
+		# Dip first on planted feet, then the tucked ball rolls low on the sand.
+		h_target = lerpf(h_target, _t("roll_dip_height"), RollLogic.dip(ru))
 		h_target = lerpf(h_target, _t("roll_height"), tk)
 	if rk > 0.0:
 		h_target = lerpf(h_target, _t("reach_height"), rk)
@@ -760,7 +771,13 @@ func _control(delta: float) -> void:
 	if grounded and support > 0.0:
 		var w: float = _t("support_freq")
 		var fy: float = total_mass * (g + w * w * (h_target - pelvis.global_position.y) - 2.0 * w * pvel.y)
-		fy = clampf(fy, 0.0, _t("support_max") * total_mass * g) * support
+		# Dipping, the body weight goes onto the folding legs: a stiffer spring alone, without the weight term.
+		var wd: float = _t("roll_dip_freq")
+		var fy_dip: float = total_mass * (wd * wd * (h_target - pelvis.global_position.y) - 2.0 * wd * pvel.y)
+		var fy_turn: float = fy
+		# Tucked, the sand carries the ball: the support only eases the body down, so it cannot be held up in the air.
+		var fy_cap: float = lerpf(_t("support_max"), _t("roll_support"), tk) if rolling else _t("support_max")
+		fy = clampf(fy, 0.0, fy_cap * total_mass * g) * support
 		var fh: Vector3 = (v_des - hvel) * (total_mass * _t("move_response"))
 		# Standing still holds its spot (a weak spring) so idle drift does not wander off.
 		if _state == "standing" and move.length() < 0.05 and not rolling:
@@ -775,8 +792,12 @@ func _control(delta: float) -> void:
 		var acc_max: float = _t("roll_accel") if rolling else _t("move_accel")
 		fh = fh.limit_length(acc_max * total_mass * support * (0.5 if _state == "stumbling" else 1.0))
 		pelvis.apply_central_force(Vector3(fh.x, fy, fh.z))
-		if not rolling:
+		if tk < 0.5:
 			_load_feet(fy, fh)
+		if rolling and ru < RollLogic.OPEN_START:
+			# Through the turn the same pull keeps the ball low: without it the turning body vaults up over its
+			# planted legs and the head into a handstand.
+			_roll_dip_pull(fy_dip if ru < RollLogic.DIP_END else minf(fy_dip, fy_turn), total_mass * g)
 
 	# Fighting-stance lean, more when moving forward (the torso assist holds it, the spine target shapes it).
 	var lean: float = _t("stance_lean") + _t("lean_per_speed") * maxf(hvel.dot(fwd), 0.0) + (0.25 if crouch else 0.0)
@@ -790,11 +811,11 @@ func _control(delta: float) -> void:
 		var p_want: Basis = yb * _reach_pitch(rk, false) * Basis(Vector3(0, 0, 1), _t("gait_hip_roll") * _gait.sway())
 		if rolling:
 			# One turn of the whole body about the axis across the roll, led by the pelvis.
-			p_want = Basis(RollLogic.axis(roll_dir), RollLogic.spin(ru)) * yb
+			p_want = Basis(roll_axis, RollLogic.spin(ru)) * yb
 			cap = maxf(cap, _t("roll_torque") * s)
 		var err: Vector3 = FighterMath.rotation_error(pelvis.global_transform.basis, p_want)
 		# Rolling, the turn's own rate is fed forward, so the body is carried round instead of dragged after it.
-		var w_roll: Vector3 = RollLogic.axis(roll_dir) * RollLogic.spin_rate(ru, _t("roll_time")) if rolling else Vector3.ZERO
+		var w_roll: Vector3 = roll_axis * RollLogic.spin_rate(ru, _t("roll_time")) if rolling else Vector3.ZERO
 		var bi: float = _t("balance_inertia") * (_t("roll_inertia_scale") if rolling else 1.0)
 		pelvis.apply_torque(FighterMath.pd_torque(err, pelvis.angular_velocity - w_roll, bi, bf, 1.0, cap))
 		var torso: RigidBody3D = parts["torso"]
@@ -811,10 +832,10 @@ func _control(delta: float) -> void:
 		_gait.ready = false
 		_leg_prev.clear()
 		_foot_prev = [Vector3.INF, Vector3.INF]
-	elif not rolling:
+	elif not rolling or ru >= RollLogic.OPEN_START:
 		# The plan follows the intended velocity (feet lead the body; a fighter held by planted feet still steps off).
 		# Drift (a shove, a stumble) is caught by corrective steps, not by the cadence.
-		var v_plan: Vector3 = v_move
+		var v_plan: Vector3 = v_move if not rolling else Vector3.ZERO  # landing a roll: feet stay where they open
 		if not _gait.ready:
 			_gait.replant([_foot_point("shin_l"), _foot_point("shin_r")])  # start from where the feet are
 		_gait.tick(delta, [_hip_point(0), _hip_point(1)], yb, v_plan, _gait_params(), _state != "getting_up",
@@ -831,7 +852,11 @@ func _control(delta: float) -> void:
 		# Kneeling to reach down, the legs fold toward the lower target height themselves (the support force only
 		# pushes up) and the feet go a little forward under the bowed body.
 		var drop: float = maxf(pelvis.global_position.y - h_target, 0.0) * rk
-		_leg_targets(targets, yb, delta, h_target, drop, _t("reach_foot_fwd") * rk, tk)
+		var h_leg: float = h_target
+		if rolling and ru < RollLogic.TUCK_IN:
+			# The legs fold only a little ahead of the dropping pelvis, or the feet fold up off the sand.
+			h_leg = maxf(h_target, pelvis.global_position.y - _t("roll_fold_lead"))
+		_leg_targets(targets, yb, delta, h_leg, drop, _t("reach_foot_fwd") * rk, tk_leg)
 	else:
 		for n: String in ["thigh_l", "thigh_r"]:
 			targets[n] = Basis(Vector3.RIGHT, 0.25)
@@ -850,10 +875,16 @@ func _control(delta: float) -> void:
 		var e: Vector3 = FighterMath.rotation_error(ch.global_transform.basis, want)
 		var limb: float = FighterMath.limb_factor(_hp(n), _t("limb_floor"))
 		var freq: float = float(pd["freq"])
+		var leg: bool = n.begins_with("thigh") or n.begins_with("shin")
+		if rolling and tk_leg > 0.0 and leg:
+			# Tucked legs hold their fold against the spin's throw (a tucked roller clutches the knees).
+			freq *= lerpf(1.0, _t("roll_leg_hold"), tk_leg)
 		var arm_drive: bool = n.contains("arm") and active
 		if arm_drive:
 			freq *= 0.6
 		var cap_t: float = float(pd["torque"]) * joint_scale * limb
+		if rolling and tk_leg > 0.0 and leg:
+			cap_t *= lerpf(1.0, _t("roll_leg_hold"), tk_leg)
 		var damp: float = _t("joint_damping")
 		var margin: float = _t("pd_margin")
 		var inertia: float = FighterMath.stable_inertia(_inertia[n], _inertia_pair[n], freq, damp, delta, margin)
@@ -964,6 +995,28 @@ func _load_feet(fy: float, fh: Vector3) -> void:
 	for n: String in down:
 		var b: RigidBody3D = parts[n]
 		b.apply_force(f, _foot_point(n) - b.global_position)
+
+
+## Dipping into a roll, the support goes negative: the body weight the support stands in for drops onto the folding
+## legs. Without it the support only lets go, the stiff legs hold the pelvis, and the light feet fold up to it (the
+## roll started with a hop). `fy` below zero is what the height spring wants, capped at roll_pull of body weight;
+## the planted feet are pressed into the sand by the same amount, as the weight coming down the legs would.
+func _roll_dip_pull(fy: float, weight: float) -> void:
+	var pull: float = minf(-fy, _t("roll_pull") * weight)
+	if pull <= 0.0:
+		return
+	var down: Array[String] = []
+	for i: int in range(2):
+		var n: String = "shin_l" if i == 0 else "shin_r"
+		if not _is_cut_off(n) and _foot_point(n).y < FighterRig.ANKLE_HEIGHT + _t("foot_contact"):
+			down.append(n)
+	if down.is_empty():
+		return
+	var pelvis: RigidBody3D = parts["pelvis"]
+	pelvis.apply_central_force(Vector3.DOWN * pull)
+	for n: String in down:
+		var b: RigidBody3D = parts[n]
+		b.apply_force(Vector3.DOWN * (pull / float(down.size())), _foot_point(n) - b.global_position)
 
 
 ## Leg muscle force on foot `i` toward its planned point (a PD on the foot like the hand's, damped toward the plan's
