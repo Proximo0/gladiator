@@ -2,21 +2,25 @@ class_name PracticeLogic
 extends RefCounted
 ## Pure step machine for the guided Practice mode. Each tick the session feeds it an observation of the real fighter
 ## and it advances when the observed state satisfies the current step: no timers decide success, only skip does.
-## Steps: move, aim, swing, thrust, strike, roll, grab, finish. After the last one `complete` is true (free practice).
+## Steps: move, aim, swing, thrust, strike, shove, kick, hold, roll, grab, finish. After the last one `complete` is true
+## (free practice).
 ##
 ## Observation keys given to update(): pos (Vector2 x,z metres), aim (Vector2, -1..1, x right y up), tip_speed (m/s),
 ## min_speed (the damage threshold, Tuning.damage_min_speed), swing (bool), thrust (bool), rolling (bool),
 ## armed (bool, a real weapon in the right hand), hits (int, cumulative real hits the player landed on the dummy),
-## finishers (int, cumulative killing blows the player landed).
+## finishers (int, cumulative killing blows the player landed), shoves and kicks (int, cumulative shoves and kicks
+## that landed on the dummy), holding (bool, the player's free hand holds the dummy).
 ## update() returns event strings: "enter:<id>" (the session sets the scene up: grab drops the weapon, finish lowers the
 ## dummy's blood), "done:<id>", "complete".
 
-const STEP_IDS: PackedStringArray = ["move", "aim", "swing", "thrust", "strike", "roll", "grab", "finish"]
+const STEP_IDS: PackedStringArray = ["move", "aim", "swing", "thrust", "strike", "shove", "kick", "hold", "roll", "grab",
+	"finish"]
 const DATA_PATH: String = "res://data/practice.json"
 const DEFAULTS: Dictionary = {
 	"move_distance_m": 4.0, "aim_extreme": 0.6, "aim_extremes_needed": 3, "swings_needed": 3, "swing_rearm_frac": 0.6,
 	"thrusts_needed": 2, "thrust_window_s": 0.7, "hits_needed": 3, "rolls_needed": 2, "grab_unarmed_s": 0.01,
-	"stuck_after_s": 40.0, "finish_dummy_blood_frac": 0.15, "dummy_reset_delay_s": 1.5,
+	"stuck_after_s": 40.0, "finish_dummy_blood_frac": 0.15, "dummy_reset_delay_s": 1.5, "shoves_needed": 2,
+	"kicks_needed": 2, "hold_s": 1.0,
 }
 
 var cfg: Dictionary = {}
@@ -41,6 +45,9 @@ var _base_fin: int = 0
 var _seen_unarmed_t: float = 0.0
 var _hits_now: int = 0
 var _fin_now: int = 0
+var _base_close: int = 0  ## the shove or kick count when the step began
+var _close_now: int = 0
+var _held_t: float = 0.0  ## seconds the current hold has lasted
 
 
 static func load_config() -> Dictionary:
@@ -78,6 +85,10 @@ func progress() -> float:
 			return clampf(float(_dirs.size()) / _f("aim_extremes_needed"), 0.0, 1.0)
 		"swing", "thrust", "roll":
 			return clampf(float(_count) / _need(STEP_IDS[index]), 0.0, 1.0)
+		"shove", "kick":
+			return clampf(float(_close_now - _base_close) / _need(STEP_IDS[index]), 0.0, 1.0)
+		"hold":
+			return clampf(_held_t / _f("hold_s"), 0.0, 1.0)
 		"strike":
 			return clampf(float(_hits_now - _base_hits) / _f("hits_needed"), 0.0, 1.0)
 		"grab":
@@ -95,6 +106,8 @@ func counter_text() -> String:
 	match id:
 		"swing", "thrust", "roll":
 			return "%d / %d" % [mini(_count, int(_need(id))), int(_need(id))]
+		"shove", "kick":
+			return "%d / %d" % [clampi(_close_now - _base_close, 0, int(_need(id))), int(_need(id))]
 		"strike":
 			return "%d / %d" % [clampi(_hits_now - _base_hits, 0, int(_f("hits_needed"))), int(_f("hits_needed"))]
 		"aim":
@@ -133,6 +146,8 @@ func update(obs: Dictionary, delta: float) -> Array:
 	step_time += delta
 	_hits_now = int(obs.get("hits", 0))
 	_fin_now = int(obs.get("finishers", 0))
+	if STEP_IDS[index] == "shove" or STEP_IDS[index] == "kick":
+		_close_now = int(obs.get(STEP_IDS[index] + "s", 0))
 	var tip: float = float(obs.get("tip_speed", 0.0))
 	best_tip = maxf(best_tip, tip)
 	var min_speed: float = maxf(float(obs.get("min_speed", 3.0)), 0.01)
@@ -179,6 +194,11 @@ func update(obs: Dictionary, delta: float) -> Array:
 			ok = _count >= int(_need("thrust"))
 		"strike":
 			ok = _hits_now - _base_hits >= int(_f("hits_needed"))
+		"shove", "kick":
+			ok = _close_now - _base_close >= int(_need(STEP_IDS[index]))
+		"hold":
+			_held_t = _held_t + delta if bool(obs.get("holding", false)) else 0.0  # one unbroken hold
+			ok = _held_t >= _f("hold_s")
 		"roll":
 			var r: bool = bool(obs.get("rolling", false))
 			if r and not _roll_prev:
@@ -212,6 +232,10 @@ func _enter(obs: Dictionary, ev: Array) -> void:
 	_base_hits = int(obs.get("hits", 0))
 	_base_fin = int(obs.get("finishers", 0))
 	_seen_unarmed_t = 0.0
+	_held_t = 0.0
+	if STEP_IDS[index] == "shove" or STEP_IDS[index] == "kick":
+		_base_close = int(obs.get(STEP_IDS[index] + "s", 0))
+		_close_now = _base_close
 	ev.append("enter:" + STEP_IDS[index])
 
 
@@ -239,4 +263,8 @@ func _need(id: String) -> float:
 			return _f("thrusts_needed")
 		"roll":
 			return _f("rolls_needed")
+		"shove":
+			return _f("shoves_needed")
+		"kick":
+			return _f("kicks_needed")
 	return 1.0
