@@ -5,7 +5,8 @@ extends RefCounted
 ## materials are dropped (Houdini's glTF exporter makes every material alpha BLEND); their base colours are baked
 ## into vertex colours relative to the piece's main colour, so the instance colour (the fighter's blood palette)
 ## sets the main tone and fat, torn ends and vessels keep their shade against it. Built once per process and
-## shared, read-only, by every BloodFx. A missing file falls back to a sphere, so the spill never disappears.
+## shared, read-only, by every BloodFx. A missing file falls back to a sphere, so the spill never disappears. The
+## textured copies (TexturedArt) keep their UVs, and `material` lays the organic library maps under those tints.
 
 const DIR: String = "res://assets/gore/"
 const FILES: PackedStringArray = ["gut_rope", "gut_torn", "gut_cluster", "gut_coil", "liver", "stomach", "heart"]
@@ -18,12 +19,45 @@ const ROT_Y_TO_Z: Basis = Basis(Vector3(1, 0, 0), Vector3(0, 0, 1), Vector3(0, -
 static var _meshes: Array = []  ## by GutSim kind: Mesh
 static var _floors: PackedFloat32Array = PackedFloat32Array()
 static var _sizes: PackedFloat32Array = PackedFloat32Array()  ## authored half width, m (organs keep their size)
+static var _textured: bool = false  ## every piece loaded from a textured copy with UVs
+
+## Wet tissue: roughness over the flat colour, or the factor over the organic ORM map (its mean green is ~0.85, so the
+## textured spill keeps the same mean gloss); the albedo, normal and ORM maps come from the texture library.
+const ROUGHNESS: float = 0.3
+const ROUGHNESS_ORM: float = 0.353
+const SPECULAR: float = 0.35
+const LIB_ALBEDO: String = "organic_albedo"
+const LIB_ORM: String = "organic_orm"
+const LIB_NORMAL: String = "organic_normal"
 
 
 ## The mesh for GutSim kind `kind`.
 static func mesh(kind: int) -> Mesh:
 	_ensure()
 	return _meshes[clampi(kind, 0, GutSim.KINDS - 1)] as Mesh
+
+
+## The spill's shared material: vertex colours (each piece's tints) times the instance colour (the blood palette), over
+## the organic library maps when the textured pieces loaded.
+static func material() -> BaseMaterial3D:
+	_ensure()
+	var m: ORMMaterial3D = ORMMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	m.roughness = ROUGHNESS
+	m.metallic_specular = SPECULAR
+	var alb: Texture2D = TexturedArt.library(LIB_ALBEDO) if _textured else null
+	var orm: Texture2D = TexturedArt.library(LIB_ORM) if _textured else null
+	var nrm: Texture2D = TexturedArt.library(LIB_NORMAL) if _textured else null
+	if alb != null and orm != null and nrm != null:
+		m.albedo_texture = alb
+		m.orm_texture = orm
+		m.roughness = ROUGHNESS_ORM
+		m.metallic = 0.0
+		m.ao_enabled = true
+		m.normal_enabled = true
+		m.normal_texture = nrm
+	return m
 
 
 ## How high the piece's centre sits above the sand when it rests, as a share of its size.
@@ -43,6 +77,7 @@ static func _ensure() -> void:
 		return
 	_floors.resize(GutSim.KINDS)
 	_sizes.resize(GutSim.KINDS)
+	_textured = true
 	for k: int in GutSim.KINDS:
 		var d: Dictionary = _build(k)
 		_meshes.append(d["mesh"])
@@ -52,11 +87,13 @@ static func _ensure() -> void:
 
 ## Loads and normalises one kind: {"mesh", "floor", "size"}.
 static func _build(kind: int) -> Dictionary:
-	var src: Dictionary = _load_merged(DIR + FILES[kind] + ".glb")
+	var path: String = TexturedArt.path(DIR + FILES[kind] + ".glb")
+	var src: Dictionary = _load_merged(path)
 	if src.is_empty():
 		src = _sphere()
 	elif kind == GutSim.K_LINK:
 		src = _crop_y(src, LINK_CROP)
+	_textured = _textured and path.begins_with(TexturedArt.DIR) and src.has("uv")
 	var verts: PackedVector3Array = src["v"]
 	var norms: PackedVector3Array = src["n"]
 	var rot: Basis = ROT_Y_TO_Z if kind == GutSim.K_LINK or kind == GutSim.K_TORN else Basis.IDENTITY
@@ -105,12 +142,20 @@ static func _build(kind: int) -> Dictionary:
 	arrays[Mesh.ARRAY_COLOR] = src["c"]
 	arrays[Mesh.ARRAY_INDEX] = src["i"]
 	var am: ArrayMesh = ArrayMesh.new()
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	if src.has("uv"):
+		# Normal maps need tangents, built from the UVs after the normalising scale.
+		arrays[Mesh.ARRAY_TEX_UV] = src["uv"]
+		var st: SurfaceTool = SurfaceTool.new()
+		st.create_from_arrays(arrays)
+		st.generate_tangents()
+		am = st.commit()
+	else:
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return {"mesh": am, "floor": floor_s, "size": wide}
 
 
-## Every surface of the first mesh in a glb merged into one: {"v", "n", "c", "i"}, colours relative to the largest
-## surface's base colour. {} when the file is missing or holds no mesh.
+## Every surface of the first mesh in a glb merged into one: {"v", "n", "c", "i"} and "uv" when every surface has UVs,
+## colours relative to the largest surface's base colour. {} when the file is missing or holds no mesh.
 static func _load_merged(path: String) -> Dictionary:
 	if not ResourceLoader.exists(path):
 		return {}
@@ -135,9 +180,15 @@ static func _load_merged(path: String) -> Dictionary:
 		var nn: PackedVector3Array = PackedVector3Array()
 		var c: PackedColorArray = PackedColorArray()
 		var ix: PackedInt32Array = PackedInt32Array()
+		var uv: PackedVector2Array = PackedVector2Array()
+		var has_uv: bool = true
 		for s: int in m.get_surface_count():
 			var arr: Array = m.surface_get_arrays(s)
 			var sv: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var su: Variant = arr[Mesh.ARRAY_TEX_UV]
+			has_uv = has_uv and su is PackedVector2Array and (su as PackedVector2Array).size() == sv.size()
+			if has_uv:
+				uv.append_array(su as PackedVector2Array)
 			var sn: Variant = arr[Mesh.ARRAY_NORMAL]
 			var si: Variant = arr[Mesh.ARRAY_INDEX]
 			var tint: Color = _ratio(_albedo(m.surface_get_material(s)), main_c)
@@ -153,6 +204,8 @@ static func _load_merged(path: String) -> Dictionary:
 				for k: int in sv.size():
 					ix.append(base + k)
 		out = {"v": v, "n": nn, "c": c, "i": ix}
+		if has_uv:
+			out["uv"] = uv
 	root.free()
 	return out
 
