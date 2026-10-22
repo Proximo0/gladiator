@@ -52,7 +52,7 @@ func test_outfits_change_no_stats() -> void:
 	assert_eq(LoadoutRules.sanitize(OutfitRules.with_outfit(base, "junk")), base, "unknown outfits are dropped")
 	for id: String in OutfitRules.ids():
 		for k: Variant in OutfitRules.def(id):
-			assert_true(["name", "blurb", "premium", "product_id", "fallback_price", "palette"].has(str(k)), "no stat key %s" % str(k))
+			assert_true(["name", "blurb", "premium", "product_id", "fallback_price", "palette", "blood"].has(str(k)), "no stat key %s" % str(k))
 
 
 func test_palette_and_covers() -> void:
@@ -67,3 +67,24 @@ func test_palette_and_covers() -> void:
 		var covered: Array = OutfitRules.palette(id)["covered"]
 		for part: String in covered:
 			assert_true(FighterRig.names().has(part), "%s covers a real part: %s" % [id, part])
+
+
+func test_blood_palettes_red_by_default_ichor_for_alien() -> void:
+	var red: BloodPalette = OutfitRules.blood_palette("default")
+	assert_true(red.fresh.r > 0.6 and red.fresh.g < 0.1 and red.fresh.b < 0.1, "default bleeds red")
+	assert_near(red.emission, 0.0)
+	assert_eq(OutfitRules.blood_palette("samurai").fresh, red.fresh)
+	var ichor: BloodPalette = OutfitRules.blood_palette("alien")
+	assert_true(ichor.fresh.g > 0.7 and ichor.fresh.b > 0.45 and ichor.fresh.r < 0.2, "ichor is cyan-green")
+	assert_true(ichor.dried.g > ichor.dried.r * 3.0 and ichor.dried.g < 0.35, "dries to dark teal")
+	assert_true(ichor.emission > 0.0, "ichor glows a little")
+	assert_true(ichor.flesh != red.flesh and ichor.bone != red.bone, "alien insides differ")
+	assert_eq(OutfitRules.blood_palette("bogus").fresh, red.fresh, "unknown outfit bleeds red")
+
+
+func test_blood_palette_follows_the_loadout_outfit() -> void:
+	var base: Dictionary = LoadoutRules.default_loadout()
+	var alien: Dictionary = OutfitRules.with_outfit(base, "alien")
+	assert_eq(OutfitRules.blood_palette_of(alien).fresh, OutfitRules.blood_palette("alien").fresh)
+	assert_eq(OutfitRules.blood_palette_of(base).fresh, BloodPalette.red().fresh)
+	assert_eq(OutfitRules.blood_palette_of({"outfit": "junk"}).fresh, BloodPalette.red().fresh)

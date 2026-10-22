@@ -80,3 +80,16 @@ func test_quality_sizes_the_grain_pool() -> void:
 	assert_eq(s._fx.capacity, GfxQuality.SAND_GRAINS[0])
 	s.free()
 	GfxQuality.set_level(old)
+
+
+func test_red_and_ichor_share_the_sand() -> void:
+	var s: SandSurface = _make()
+	s.add_blood(Vector3(-1.0, 0, 0.5), 0.15, 0.2, 0)
+	s.add_blood(Vector3(1.0, 0, 0.5), 0.15, 0.2, 1)
+	assert_eq(s.blood_slot_at(Vector3(-1.0, 0, 0.5)), 0)
+	assert_eq(s.blood_slot_at(Vector3(1.0, 0, 0.5)), 1)
+	s.flush()
+	s.set_blood_palette(1, Color(0.1, 0.5, 0.4), Color(0.03, 0.2, 0.15), 0.3)
+	s.clear()
+	assert_eq(s.blood_slot_at(Vector3(1.0, 0, 0.5)), 0, "clear resets the colour map")
+	s.free()

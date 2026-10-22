@@ -97,6 +97,18 @@ static func palette(id: String) -> Dictionary:
 	return (def(id).get("palette", {}) as Dictionary).duplicate(true)
 
 
+## The blood an outfit's wearer bleeds: fresh and dried colour, glow, and the inner colours of wounds and severed parts
+## (data/outfits.json "blood" block). Red when the block is missing, so every other outfit bleeds red.
+static func blood_palette(id: String) -> BloodPalette:
+	return BloodPalette.from_dict(def(id).get("blood", {}) as Dictionary)
+
+
+## The blood palette of whoever wears the outfit a loadout carries (what an online client draws for the other side,
+## from the loadout it already has: no extra network field).
+static func blood_palette_of(loadout: Dictionary) -> BloodPalette:
+	return blood_palette(outfit_of(loadout))
+
+
 ## A palette colour by key, `fallback` when missing or empty.
 static func color(pal: Dictionary, key: String, fallback: Color) -> Color:
 	var v: String = str(pal.get(key, ""))

@@ -1,7 +1,7 @@
 class_name BloodMist
 extends RefCounted
 ## Short-lived mist sprites for impact spray. Buffer stride 16: transform (origin at 3, 7, 11), custom
-## (size, alpha, rotation, tint) at 12..15. Rendered as billboards by blood_mist.gdshader.
+## (size, alpha, rotation, palette slot) at 12..15. Rendered as billboards by blood_mist.gdshader.
 
 const STRIDE: int = 16
 
@@ -38,7 +38,8 @@ func resize(cap: int) -> void:
 		buf[o + 10] = 1.0
 
 
-func emit(p: Vector3, v: Vector3, s0: float, s1: float, lifetime: float, alpha: float, rot: float) -> bool:
+func emit(p: Vector3, v: Vector3, s0: float, s1: float, lifetime: float, alpha: float, rot: float,
+		slot: int = 0) -> bool:
 	if count >= capacity:
 		return false
 	var o: int = count * STRIDE
@@ -48,7 +49,7 @@ func emit(p: Vector3, v: Vector3, s0: float, s1: float, lifetime: float, alpha: 
 	buf[o + 12] = s0
 	buf[o + 13] = 0.0
 	buf[o + 14] = rot
-	buf[o + 15] = 0.0
+	buf[o + 15] = float(slot)
 	vel[count] = v
 	age[count] = 0.0
 	life[count] = lifetime

@@ -115,3 +115,17 @@ func test_mist_fades_and_expires() -> void:
 	m.step(0.3)
 	assert_eq(m.count, 0)
 	assert_near(BloodMist.alpha_at(1.0, 0.4), 0.0)
+
+
+func test_droplet_keeps_its_palette_slot_through_impact_and_compaction() -> void:
+	var s: BloodSim = BloodSim.new(4)
+	s.emit(Vector3(0, 5, 0), Vector3.ZERO, 0.004, 1.0, 5.0, 0.0, 0)
+	s.emit(Vector3(1, 0.05, 0), Vector3(0, -3, 0), 0.004, 1.0, 5.0, 0.0, 1)
+	assert_eq(s.slot_of(0), 0)
+	assert_eq(s.slot_of(1), 1)
+	s.step(0.05, 9.8, Callable(), PackedVector3Array(), 1.0, 0.05)
+	assert_eq(s.imp_slot.size(), 1)
+	assert_eq(s.imp_slot[0], 1)
+	s.compact()
+	assert_eq(s.count, 1)
+	assert_eq(s.slot_of(0), 0)

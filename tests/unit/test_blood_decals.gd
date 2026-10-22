@@ -65,3 +65,19 @@ func test_feed_keeps_one_growing_pool() -> void:
 	assert_near(d.target[slot], BloodMath.pool_radius(2.0), 0.001)
 	var other: int = d.feed(slot, Vector3(3, 0, 0), 0.05, 0.3)
 	assert_true(other != slot)
+
+
+func test_other_blood_does_not_merge_and_keeps_its_slot() -> void:
+	var d: BloodDecals = BloodDecals.new(8)
+	var red: int = d.add(Vector3(0, 0, 0), 0.01, 0.2, 0)
+	var ichor: int = d.add(Vector3(0.01, 0, 0), 0.01, 0.2, 1)
+	assert_true(red != ichor, "a different blood colour starts its own decal")
+	assert_eq(d.add(Vector3(0.005, 0, 0), 0.01, 0.2, 1), ichor, "same colour merges")
+	d.step(0.1)
+	d._write(ichor)
+	assert_near(d.buf[ichor * BloodDecals.STRIDE + 15], 2.0, 0.0001)
+	assert_near(d.buf[red * BloodDecals.STRIDE + 15], 0.0, 0.0001)
+	var pool: int = d.feed(-1, Vector3(3, 0, 0), 0.1, 0.4, 1)
+	d._write(pool)
+	assert_near(d.buf[pool * BloodDecals.STRIDE + 15] - 2.0, 1.0, 0.0001)
+	assert_true(d.feed(pool, Vector3(3, 0, 0), 0.1, 0.4, 0) != pool, "another colour does not feed this pool")

@@ -1,7 +1,7 @@
 class_name BloodSim
 extends RefCounted
 ## Pooled CPU droplet sim. State lives directly in a MultiMesh buffer (stride 20 floats per instance):
-## 0..11 transform (identity basis + origin at 3, 7, 11), 12..15 colour (r stretch factor, g shade),
+## 0..11 transform (identity basis + origin at 3, 7, 11), 12..15 colour (r stretch factor, g shade, b palette slot),
 ## 16..19 custom (velocity xyz, radius). The buffer is uploaded as is; no per-frame copy loop.
 
 const STRIDE: int = 20
@@ -10,6 +10,7 @@ const O_Y: int = 7
 const O_Z: int = 11
 const C_STRETCH: int = 12
 const C_SHADE: int = 13
+const C_SLOT: int = 14  ## palette slot (0 or 1): whose blood this droplet is
 const C_VX: int = 16
 const C_VY: int = 17
 const C_VZ: int = 18
@@ -26,6 +27,7 @@ var dead: PackedByteArray = PackedByteArray()
 var imp_pos: PackedVector3Array = PackedVector3Array()
 var imp_vel: PackedVector3Array = PackedVector3Array()
 var imp_rad: PackedFloat32Array = PackedFloat32Array()
+var imp_slot: PackedByteArray = PackedByteArray()
 ## Droplets near a registered body in the last step, with where they were at the step start.
 var near_idx: PackedInt32Array = PackedInt32Array()
 var near_from: PackedVector3Array = PackedVector3Array()
@@ -56,7 +58,7 @@ func free_slots() -> int:
 	return capacity - count
 
 
-func emit(p: Vector3, v: Vector3, r: float, stretch: float, lifetime: float, shade: float) -> bool:
+func emit(p: Vector3, v: Vector3, r: float, stretch: float, lifetime: float, shade: float, slot: int = 0) -> bool:
 	if count >= capacity:
 		return false
 	var o: int = count * STRIDE
@@ -65,6 +67,7 @@ func emit(p: Vector3, v: Vector3, r: float, stretch: float, lifetime: float, sha
 	buf[o + O_Z] = p.z
 	buf[o + C_STRETCH] = stretch
 	buf[o + C_SHADE] = shade
+	buf[o + C_SLOT] = float(slot)
 	buf[o + C_VX] = v.x
 	buf[o + C_VY] = v.y
 	buf[o + C_VZ] = v.z
@@ -90,6 +93,10 @@ func radius_of(i: int) -> float:
 	return buf[i * STRIDE + C_R]
 
 
+func slot_of(i: int) -> int:
+	return int(buf[i * STRIDE + C_SLOT])
+
+
 func kill(i: int) -> void:
 	dead[i] = 1
 
@@ -98,6 +105,7 @@ func _clear_events() -> void:
 	imp_pos.clear()
 	imp_vel.clear()
 	imp_rad.clear()
+	imp_slot.clear()
 	near_idx.clear()
 	near_from.clear()
 
@@ -137,6 +145,7 @@ func step(dt: float, gravity: float, height_fn: Callable, reach: PackedVector3Ar
 			imp_pos.append(Vector3(px, gh, pz))
 			imp_vel.append(Vector3(vx, vy, vz))
 			imp_rad.append(r)
+			imp_slot.append(int(b[o + C_SLOT]))
 			dead[i] = 1
 		elif a > life[i]:
 			dead[i] = 1

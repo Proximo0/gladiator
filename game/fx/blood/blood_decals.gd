@@ -2,7 +2,7 @@ class_name BloodDecals
 extends RefCounted
 ## Blood lying on the sand: small spots from landed droplets and pools that spread under bleeding or fallen
 ## fighters. Pooled, with state kept directly in a MultiMesh buffer (stride 16: transform with the quad scaled
-## to the radius, custom = dryness, alpha, shape seed, pool flag). Visual only; litres here are a presentation
+## to the radius, custom = dryness, alpha, shape seed, pool flag + 2 x palette slot). Visual only; litres here are a presentation
 ## number and never feed back into any fighter's blood. Pure logic: no nodes, no RNG (callers pass a seed).
 
 const STRIDE: int = 16
@@ -22,6 +22,7 @@ var target: PackedFloat32Array = PackedFloat32Array()
 var litres: PackedFloat32Array = PackedFloat32Array()
 var age: PackedFloat32Array = PackedFloat32Array()
 var seeds: PackedFloat32Array = PackedFloat32Array()
+var slots: PackedByteArray = PackedByteArray()  ## palette slot (0 or 1): whose blood lies here
 var _cells: Dictionary = {}  ## Vector2i -> slot
 var _tick: int = 0
 var _next: int = 0  ## ring pointer for recycling when full
@@ -44,6 +45,8 @@ func resize(cap: int) -> void:
 	litres.resize(capacity)
 	age.resize(capacity)
 	seeds.resize(capacity)
+	slots.resize(capacity)
+	slots.fill(0)
 	for i: int in capacity:
 		var o: int = i * STRIDE
 		buf[o] = 0.001
@@ -58,12 +61,14 @@ func is_pool(i: int) -> bool:
 ## Adds blood at a world position (y is the surface height). Merges into a decal in the same cell or a
 ## neighbouring pool whose radius covers the point; otherwise starts a new one (recycling the oldest when full).
 ## Returns the slot used.
-func add(p: Vector3, l: float, seed_value: float) -> int:
+## `pal` is the palette slot of the bleeding fighter: only a decal of the same slot is merged into, so red and
+## ichor lying next to each other stay two colours.
+func add(p: Vector3, l: float, seed_value: float, pal: int = 0) -> int:
 	if l <= 0.0:
 		return -1
-	var slot: int = _find_near(p)
+	var slot: int = _find_near(p, pal)
 	if slot < 0:
-		slot = _alloc(p, seed_value)
+		slot = _alloc(p, seed_value, pal)
 	litres[slot] += l
 	target[slot] = BloodMath.pool_radius(litres[slot])
 	age[slot] = minf(age[slot], 8.0 * (1.0 - clampf(l * 20.0, 0.0, 0.9)))  ## fresh blood refreshes the colour
@@ -72,16 +77,16 @@ func add(p: Vector3, l: float, seed_value: float) -> int:
 
 ## Feeds a long-lived pool: `slot` (from an earlier call, or -1) keeps growing while its centre is within 0.6 m
 ## of `p`; otherwise a new decal starts at `p`. Returns the slot to pass next time.
-func feed(slot: int, p: Vector3, l: float, seed_value: float) -> int:
-	if slot >= 0 and slot < count and Vector2(pos[slot].x - p.x, pos[slot].z - p.z).length() < 0.6:
+func feed(slot: int, p: Vector3, l: float, seed_value: float, pal: int = 0) -> int:
+	if slot >= 0 and slot < count and slots[slot] == pal and Vector2(pos[slot].x - p.x, pos[slot].z - p.z).length() < 0.6:
 		litres[slot] += l
 		target[slot] = BloodMath.pool_radius(litres[slot])
 		age[slot] = minf(age[slot], 8.0)
 		return slot
-	return add(p, l, seed_value)
+	return add(p, l, seed_value, pal)
 
 
-func _find_near(p: Vector3) -> int:
+func _find_near(p: Vector3, pal: int) -> int:
 	var c: Vector2i = BloodMath.splat_cell(p.x, p.z, CELL)
 	for dx: int in range(-1, 2):
 		for dz: int in range(-1, 2):
@@ -93,12 +98,12 @@ func _find_near(p: Vector3) -> int:
 				_cells.erase(k)
 				continue
 			var d: float = Vector2(pos[s].x - p.x, pos[s].z - p.z).length()
-			if d < maxf(radius[s] * 0.8, CELL * 0.5):
+			if slots[s] == pal and d < maxf(radius[s] * 0.8, CELL * 0.5):
 				return s
 	return -1
 
 
-func _alloc(p: Vector3, seed_value: float) -> int:
+func _alloc(p: Vector3, seed_value: float, pal: int) -> int:
 	var slot: int
 	if count < capacity:
 		slot = count
@@ -113,6 +118,7 @@ func _alloc(p: Vector3, seed_value: float) -> int:
 	litres[slot] = 0.0
 	age[slot] = 0.0
 	seeds[slot] = seed_value - floorf(seed_value)
+	slots[slot] = pal
 	_cells[BloodMath.splat_cell(p.x, p.z, CELL)] = slot
 	buf[slot * STRIDE] = radius[slot]
 	buf[slot * STRIDE + 10] = radius[slot]
@@ -128,7 +134,7 @@ func _write(i: int) -> void:
 	buf[o + 12] = BloodMath.dryness(age[i])
 	buf[o + 13] = alpha_of(i)
 	buf[o + 14] = seeds[i]
-	buf[o + 15] = 1.0 if is_pool(i) else 0.0
+	buf[o + 15] = (1.0 if is_pool(i) else 0.0) + 2.0 * float(slots[i])
 
 
 ## Alpha of decal i: pools keep a crust, spots fade as the sand soaks them up.

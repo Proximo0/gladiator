@@ -3,7 +3,7 @@ extends Node3D
 ## The arena floor's visual sand: a deformable heightmap plus a blood/wetness map, both CPU side and uploaded in
 ## dirty tiles, drawn by a subdivided disc with a vertex-displacing shader. Presentation only: never part of the
 ## simulation state, the collider stays flat at y = 0.
-## Maps: height R16F (metres), blood RGBA8 (R blood, G damp, B dryness).
+## Maps: height R16F (metres), blood RGBA8 (R blood, G damp, B dryness, A blood palette slot 0 or 1: whose blood).
 
 const TILE: int = 16
 const SWEEP_TILES_PER_FRAME: int = 4
@@ -33,6 +33,7 @@ var _base: PackedFloat32Array = PackedFloat32Array()  ## permanent piles (wall d
 var _blood: PackedFloat32Array = PackedFloat32Array()
 var _wet: PackedFloat32Array = PackedFloat32Array()
 var _dry: PackedFloat32Array = PackedFloat32Array()
+var _pal: PackedByteArray = PackedByteArray()  ## blood palette slot per texel (0 or 1)
 var _h_img: Image
 var _b_img: Image
 var _h_tex: ImageTexture
@@ -91,6 +92,8 @@ func setup(arena_radius: float = 11.0, tpm: float = -1.0, mesh_cell: float = -1.
 	_blood.resize(count)
 	_wet.resize(count)
 	_dry.resize(count)
+	_pal.resize(count)
+	_pal.fill(0)
 	_h.fill(0.0)
 	_blood.fill(0.0)
 	_wet.fill(0.0)
@@ -104,7 +107,7 @@ func setup(arena_radius: float = 11.0, tpm: float = -1.0, mesh_cell: float = -1.
 	_b_tile_time.fill(0.0)
 	_h_img = Image.create(n, n, false, Image.FORMAT_RH)
 	_b_img = Image.create(n, n, false, Image.FORMAT_RGBA8)
-	_b_img.fill(Color(0.0, 0.0, 0.0, 1.0))
+	_b_img.fill(Color(0.0, 0.0, 0.0, 0.0))
 	_h_tex = ImageTexture.create_from_image(_h_img)
 	_b_tex = ImageTexture.create_from_image(_b_img)
 	_material = ShaderMaterial.new()
@@ -169,19 +172,30 @@ func drag(from: Vector3, to: Vector3, radius_m: float, depth: float) -> void:
 	_drag_fx(a, b, dir, radius_m, depth)
 
 
-## Soaks blood in: pools spread a little, small amounts leave dark clumps.
-func add_blood(pos: Vector3, radius_m: float, litres: float) -> void:
+## Sets the look of blood palette slot 0 or 1 (the two fighters): fresh and dried soak colours and a glow strength.
+func set_blood_palette(slot: int, fresh: Color, dried: Color, glow: float) -> void:
+	if _material == null:
+		return
+	var sfx: String = "" if slot <= 0 else "1"
+	_material.set_shader_parameter("blood_fresh" + sfx, fresh)
+	_material.set_shader_parameter("blood_dried" + sfx, dried)
+	_material.set_shader_parameter("blood_glow" + sfx, glow)
+
+
+## Soaks blood in: pools spread a little, small amounts leave dark clumps. `slot` is the bleeding fighter's blood
+## palette slot (0 or 1), so red and ichor can lie on the same sand.
+func add_blood(pos: Vector3, radius_m: float, litres: float, slot: int = 0) -> void:
 	if n == 0:
 		return
 	var r: float = SandMap.blood_spread_radius(litres, radius_m)
 	var strength: float = SandMap.blood_strength(litres, r)
 	var c: Vector2 = SandMap.world_to_texel(pos.x, pos.z, extent, n)
 	var seed_v: float = _rng.randf_range(0.0, TAU)
-	var rect: Rect2i = SandMap.apply_blood(_blood, _wet, _dry, n, c, r * texels_per_m, strength, seed_v, true)
+	var rect: Rect2i = SandMap.apply_blood(_blood, _wet, _dry, n, c, r * texels_per_m, strength, seed_v, true, _pal, slot)
 	_mark_b(rect)
 	if r > 0.05 and _pools.size() < 8:
 		_pools.append({"c": c, "r0": r * texels_per_m, "r1": r * texels_per_m * 1.3, "t": 0.0, "dur": 2.5,
-				"s": strength * 0.8, "seed": seed_v})
+				"s": strength * 0.8, "seed": seed_v, "slot": slot})
 
 
 ## Kicks up a dust puff and a burst of grains. vel = initial direction and speed (m/s), amount 0..1.
@@ -272,6 +286,18 @@ func base_height_at(pos: Vector3) -> float:
 	return SandMap.sample_base(_base, extent, pos.x, pos.z)
 
 
+## Blood palette slot (0 or 1) of the blood at a point.
+func blood_slot_at(pos: Vector3) -> int:
+	if n == 0:
+		return 0
+	var t: Vector2 = SandMap.world_to_texel(pos.x, pos.z, extent, n)
+	var x: int = int(t.x)
+	var y: int = int(t.y)
+	if x < 0 or y < 0 or x >= n or y >= n:
+		return 0
+	return _pal[y * n + x]
+
+
 ## Blood amount 0..1 at a point (for feet and decals).
 func blood_at(pos: Vector3) -> float:
 	if n == 0:
@@ -292,8 +318,9 @@ func clear() -> void:
 	_blood.fill(0.0)
 	_wet.fill(0.0)
 	_dry.fill(0.0)
+	_pal.fill(0)
 	_h_img.fill(Color(0.0, 0.0, 0.0, 1.0))
-	_b_img.fill(Color(0.0, 0.0, 0.0, 1.0))
+	_b_img.fill(Color(0.0, 0.0, 0.0, 0.0))
 	_h_dirty.fill(0)
 	_b_dirty.fill(0)
 	_b_active.fill(0)
@@ -413,7 +440,7 @@ func _write_b_tile(t: int) -> void:
 		var row: int = y * n
 		for x in range(r.position.x, r.end.x):
 			var i: int = row + x
-			_b_img.set_pixel(x, y, Color(_blood[i], _wet[i], _dry[i], 1.0))
+			_b_img.set_pixel(x, y, Color(_blood[i], _wet[i], _dry[i], float(_pal[i])))
 
 
 func _mark_h(rect: Rect2i) -> void:
@@ -457,7 +484,7 @@ func _spread_pools(delta: float) -> void:
 		p["t"] = t
 		var k: float = clampf(t / float(p["dur"]), 0.0, 1.0)
 		var r: float = lerpf(float(p["r0"]), float(p["r1"]), 1.0 - (1.0 - k) * (1.0 - k))
-		var rect: Rect2i = SandMap.apply_blood(_blood, _wet, _dry, n, p["c"], r, float(p["s"]), float(p["seed"]), false)
+		var rect: Rect2i = SandMap.apply_blood(_blood, _wet, _dry, n, p["c"], r, float(p["s"]), float(p["seed"]), false, _pal, int(p["slot"]))
 		_mark_b(rect)
 		if k >= 1.0:
 			_pools.remove_at(i)
@@ -504,7 +531,7 @@ func _sweep_tile(t: int) -> bool:
 			if nw != w or nd != d:
 				_wet[i] = nw
 				_dry[i] = nd
-				_b_img.set_pixel(x, y, Color(b, nw, nd, 1.0))
+				_b_img.set_pixel(x, y, Color(b, nw, nd, float(_pal[i])))
 				_b_upload_pending = true
 			if nd < 1.0 or nw > floor_w + 0.002:
 				settled = false

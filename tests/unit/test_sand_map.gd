@@ -180,3 +180,24 @@ func test_drift_profile_falls_off_inward() -> void:
 	assert_near(SandMap.drift_profile(-0.5, 1.0), 1.0)
 	assert_true(SandMap.drift_profile(0.2, 1.0) > SandMap.drift_profile(0.6, 1.0))
 	assert_near(SandMap.drift_profile(1.0, 1.0), 0.0)
+
+
+func test_apply_blood_palette_slots_coexist() -> void:
+	var n: int = 64
+	var b: PackedFloat32Array = _flat(n)
+	var w: PackedFloat32Array = _flat(n)
+	var d: PackedFloat32Array = _flat(n)
+	var pal: PackedByteArray = PackedByteArray()
+	pal.resize(n * n)
+	SandMap.apply_blood(b, w, d, n, Vector2(20.0, 32.0), 6.0, 0.8, 1.0, true, pal, 0)
+	SandMap.apply_blood(b, w, d, n, Vector2(44.0, 32.0), 6.0, 0.8, 2.0, true, pal, 1)
+	assert_eq(pal[32 * n + 20], 0)
+	assert_eq(pal[32 * n + 44], 1)
+	assert_true(b[32 * n + 20] > 0.5 and b[32 * n + 44] > 0.5)
+	# Wet halo texels with no blood take the colour too (no stray red rim around ichor).
+	assert_eq(pal[32 * n + 51], 1)
+	# A weaker spread pass of the other colour does not repaint a stronger pool.
+	SandMap.apply_blood(b, w, d, n, Vector2(20.0, 32.0), 6.0, 0.3, 3.0, false, pal, 1)
+	assert_eq(pal[32 * n + 20], 0)
+	# No pal array: unchanged behaviour.
+	SandMap.apply_blood(b, w, d, n, Vector2(32.0, 10.0), 4.0, 0.8, 1.0, true)

@@ -1,18 +1,27 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_disabled, diffuse_burley, specular_disabled, shadows_disabled;
 // Blood spots and pools lying on the sand. One MultiMesh quad per decal facing up. Instance custom:
-// x dryness (0 fresh .. 1 dried), y alpha, z shape seed, w 1 for a pool (bigger lobes, glossier).
+// x dryness (0 fresh .. 1 dried), y alpha, z shape seed, w = (1 for a pool: bigger lobes, glossier) + 2 x palette slot.
+// Palette slot 0 / 1 are the two fighters' blood colours (BloodFx sets them from the outfit blood palettes).
+uniform vec3 fresh_c0 : source_color = vec3(0.48, 0.007, 0.017);
+uniform vec3 old_c0 : source_color = vec3(0.17, 0.025, 0.021);
+uniform float glow0 = 0.0;
+uniform vec3 fresh_c1 : source_color = vec3(0.48, 0.007, 0.017);
+uniform vec3 old_c1 : source_color = vec3(0.17, 0.025, 0.021);
+uniform float glow1 = 0.0;
 
 varying float v_dry;
 varying float v_alpha;
 varying float v_seed;
 varying float v_pool;
+varying float v_pal;
 
 void vertex() {
 	v_dry = clamp(INSTANCE_CUSTOM.x, 0.0, 1.0);
 	v_alpha = clamp(INSTANCE_CUSTOM.y, 0.0, 1.0);
 	v_seed = INSTANCE_CUSTOM.z;
-	v_pool = INSTANCE_CUSTOM.w;
+	v_pal = step(1.5, INSTANCE_CUSTOM.w);
+	v_pool = INSTANCE_CUSTOM.w - 2.0 * v_pal;
 }
 
 float h21(vec2 q) {
@@ -38,12 +47,14 @@ void fragment() {
 	float wob = 0.86 - rim + rim * 2.0 * n;
 	float a = smoothstep(wob, wob - 0.10, d);
 	float fresh = 1.0 - v_dry;
-	vec3 fresh_c = vec3(0.48, 0.016, 0.028);
-	vec3 old_c = vec3(0.17, 0.035, 0.028);
+	bool second = v_pal > 0.5;
+	vec3 fresh_c = second ? fresh_c1 : fresh_c0;
+	vec3 old_c = second ? old_c1 : old_c0;
+	float glow = second ? glow1 : glow0;
 	vec3 col = mix(fresh_c, old_c, smoothstep(0.0, 1.0, v_dry));
 	ALBEDO = col;
 	ROUGHNESS = mix(0.3, 0.7, v_dry);
 	SPECULAR = 0.0;
-	EMISSION = col * (0.04 * fresh);
+	EMISSION = col * (0.04 * fresh + glow * fresh);
 	ALPHA = a * v_alpha;
 }

@@ -3,7 +3,15 @@
 		"name": "Gladiator",
 		"blurb": "The plain arena kit. Free.",
 		"premium": false,
-		"palette": {}
+		"palette": {},
+		"blood": {
+			"fresh": "#cc0307",
+			"dried": "#3d0908",
+			"emission": 0.0,
+			"flesh": "#bf0a0a",
+			"fat": "#e6cc66",
+			"bone": "#d9d1b3"
+		}
 	},
 	"samurai": {
 		"name": "Samurai",
@@ -16,7 +24,25 @@
 			"armor": "#8a1c14",
 			"metal": 0.35,
 			"rough": 0.45,
-			"covered": ["head", "torso", "pelvis", "upper_arm_l", "upper_arm_r", "thigh_l", "thigh_r", "shin_l", "shin_r"]
+			"covered": [
+				"head",
+				"torso",
+				"pelvis",
+				"upper_arm_l",
+				"upper_arm_r",
+				"thigh_l",
+				"thigh_r",
+				"shin_l",
+				"shin_r"
+			]
+		},
+		"blood": {
+			"fresh": "#cc0307",
+			"dried": "#3d0908",
+			"emission": 0.0,
+			"flesh": "#bf0a0a",
+			"fat": "#e6cc66",
+			"bone": "#d9d1b3"
 		}
 	},
 	"alien": {
@@ -31,7 +57,27 @@
 			"armor": "#58b88a",
 			"metal": 0.1,
 			"rough": 0.3,
-			"covered": ["head", "torso", "pelvis", "upper_arm_l", "upper_arm_r", "forearm_l", "forearm_r", "thigh_l", "thigh_r", "shin_l", "shin_r"]
+			"covered": [
+				"head",
+				"torso",
+				"pelvis",
+				"upper_arm_l",
+				"upper_arm_r",
+				"forearm_l",
+				"forearm_r",
+				"thigh_l",
+				"thigh_r",
+				"shin_l",
+				"shin_r"
+			]
+		},
+		"blood": {
+			"fresh": "#14d1b8",
+			"dried": "#06403d",
+			"emission": 0.35,
+			"flesh": "#14a678",
+			"fat": "#b3eb8c",
+			"bone": "#8cb8a8"
 		}
 	}
 }

@@ -22,6 +22,12 @@ uniform vec3 sand_buff : source_color = vec3(0.68, 0.62, 0.50);
 uniform vec3 sand_ochre : source_color = vec3(0.58, 0.45, 0.31);
 uniform vec3 blood_fresh : source_color = vec3(0.45, 0.02, 0.03);
 uniform vec3 blood_dried : source_color = vec3(0.20, 0.04, 0.03);
+// Second blood palette (the other fighter's blood); the blood map's alpha says which one a texel holds. blood_glow is
+// the self-light of fresh ichor (0 for red).
+uniform vec3 blood_fresh1 : source_color = vec3(0.45, 0.02, 0.03);
+uniform vec3 blood_dried1 : source_color = vec3(0.20, 0.04, 0.03);
+uniform float blood_glow = 0.0;
+uniform float blood_glow1 = 0.0;
 uniform float grain_gain = 1.0;
 uniform float sparkle_gain = 1.0;
 uniform float pebble_gain = 1.0;
@@ -78,7 +84,10 @@ void fragment() {
 	float hb = bs.r;
 	vec2 bgrad = bs.gb;
 
-	vec3 bt = texture(blood_tex, uv).rgb;
+	vec4 bt4 = texture(blood_tex, uv);
+	vec3 bt = bt4.rgb;
+	// Which blood: sharpened so the seam between a red and an ichor pool stays a seam, not a grey blend.
+	float bpal = smoothstep(0.35, 0.65, bt4.a);
 	float dist = length(VERTEX);
 	float fade = 1.0 - smoothstep(7.0, 20.0, dist);
 
@@ -178,14 +187,17 @@ void fragment() {
 	sand = mix(sand, sand * vec3(0.62, 0.48, 0.37), wet * 0.85 * (1.0 - stain));
 	// Soaked stain, then pooled blood on top. The stain is the blood colour itself, lit by the sand's grain
 	// (a multiplier on a red, never sand * orange: that read brown-olive and pink).
-	vec3 bcol = mix(blood_fresh, blood_dried, smoothstep(0.0, 1.0, dry));
+	vec3 bfresh = mix(blood_fresh, blood_fresh1, bpal);
+	vec3 bdried = mix(blood_dried, blood_dried1, bpal);
+	float bglow = mix(blood_glow, blood_glow1, bpal) * (1.0 - dry);
+	vec3 bcol = mix(bfresh, bdried, smoothstep(0.0, 1.0, dry));
 	float sand_lum = dot(sand, vec3(0.35, 0.45, 0.2));
 	vec3 soaked = bcol * (0.55 + 0.9 * sand_lum);
 	vec3 col = mix(sand, soaked, stain * (0.4 + 0.55 * smoothstep(0.05, 0.5, b)));
 	bcol *= 0.9 + 0.2 * n2.r;
 	col = mix(col, bcol, cov);
 	ALBEDO = col;
-	EMISSION = col * sand_ambient;
+	EMISSION = col * sand_ambient + bcol * bglow * cov;
 
 	float gloss = cov * (1.0 - dry * 0.75) + wet * 0.2;
 	ROUGHNESS = 1.0;

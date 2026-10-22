@@ -91,6 +91,8 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 	_tip_valid = [false, false]
 	_drags = 0
 	for f: Fighter in fighters:
+		# Blood colour follows the outfit in the fighter's loadout (online it is the loadout both sides already have).
+		blood.set_palette(f.side, OutfitRules.blood_palette_of(f.loadout))
 		blood.track(f)
 		sfx.track(f)
 	var human: int = clampi(player_side, 0, 1)

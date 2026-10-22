@@ -157,8 +157,11 @@ static func blood_strength(litres: float, r: float) -> float:
 
 ## Soaks blood into the maps around c (texel coords, radius r_texel). R: blood, wet: damp halo, dry: 0 fresh .. 1
 ## dried. additive adds to existing blood, otherwise takes the max (used for slow spreading). Returns touched rect.
+## `pal` (optional, one byte per texel) is the blood palette slot map: a texel the new blood owns (it adds to it, or is
+## stronger than what was there) takes `slot`, so red and ichor can lie on the same sand; empty pal = no palette.
 static func apply_blood(blood: PackedFloat32Array, wet: PackedFloat32Array, dry: PackedFloat32Array, n: int,
-		c: Vector2, r_texel: float, strength: float, seed_v: float, additive: bool) -> Rect2i:
+		c: Vector2, r_texel: float, strength: float, seed_v: float, additive: bool,
+		pal: PackedByteArray = PackedByteArray(), slot: int = 0) -> Rect2i:
 	if r_texel < 0.8:
 		strength *= (r_texel / 0.8) * (r_texel / 0.8)
 		r_texel = 0.8
@@ -169,6 +172,7 @@ static func apply_blood(blood: PackedFloat32Array, wet: PackedFloat32Array, dry:
 	var y1: int = mini(n - 1, int(ceil(c.y + ext)))
 	if x1 < x0 or y1 < y0:
 		return Rect2i()
+	var has_pal: bool = pal.size() == blood.size()
 	for y in range(y0, y1 + 1):
 		var dz: float = float(y) + 0.5 - c.y
 		for x in range(x0, x1 + 1):
@@ -183,6 +187,8 @@ static func apply_blood(blood: PackedFloat32Array, wet: PackedFloat32Array, dry:
 			if val <= 0.0 and wv <= 0.0:
 				continue
 			var i: int = y * n + x
+			if has_pal and ((val > 0.0 and (additive or val >= blood[i])) or (blood[i] < 0.002 and wv > 0.0)):
+				pal[i] = slot
 			if val > 0.0:
 				blood[i] = minf(1.0, blood[i] + val) if additive else maxf(blood[i], val)
 				dry[i] = dry[i] * (1.0 - minf(1.0, val * 3.0))
