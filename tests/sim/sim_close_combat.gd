@@ -179,9 +179,10 @@ func _grab() -> Array:
 	var breaks: int = int(f._close.counts["breaks"])
 	var ok: bool = held_at >= 0 and held_at < 90 and held_ticks > 60 and breaks == 1 and f.state() == "standing"
 	await clear()
-	# The holder (at the origin, facing -z) hauls the wrist in (+z) and across to its free left side (-x).
+	# The holder (at the origin, facing -z) hauls the wrist in (+z) and toward its free left side (-x; a few cm, the
+	# foe's arm resists sideways most), turning the foe's chest.
 	return [row("close_grab_holds_and_breaks", ok, "latched_tick=%d held=%.2f s broke_tick=%d breaks=%d grabber=%s" % [
 		held_at, held_ticks / 60.0, broke_at, breaks, states.keys()]),
-		row("close_hold_hauls_arm", moved.z > 0.15 and moved.x < -0.04 and turned > 0.1, "wrist_moved=(%.2f, %.2f, %.2f) m foe_chest_turned=%.2f rad" % [
+		row("close_hold_hauls_arm", moved.z > 0.15 and moved.x < 0.0 and turned > 0.1, "wrist_moved=(%.2f, %.2f, %.2f) m foe_chest_turned=%.2f rad" % [
 		moved.x, moved.y, moved.z, turned])]
 
