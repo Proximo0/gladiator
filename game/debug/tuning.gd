@@ -173,6 +173,10 @@ const FIELDS: Array = [
 	["match_pause_s", 4.0, 1.0, 15.0, 0.5, "Match", "Pause after a match before the next bot match starts, s."],
 	["match_slowmo_scale", 0.4, 0.1, 1.0, 0.05, "Match", "Time scale during the finisher slow motion."],
 	["match_slowmo_s", 1.0, 0.0, 5.0, 0.1, "Match", "Length of the finisher slow motion, game seconds."],
+	["intro_s", 2.3, 0.0, 8.0, 0.1, "Match", "Pre-fight intro: name plates up and fighters held before FIGHT!, s (0 = no intro)."],
+	["intro_fight_s", 0.8, 0.2, 3.0, 0.1, "Match", "FIGHT! stinger on screen (the fighters are free from its first frame), s."],
+	["combo_gap_s", 1.5, 0.3, 5.0, 0.1, "Match", "Results' longest combo: most time between one fighter's blows with no blow back, s."],
+	["combo_merge_s", 0.15, 0.0, 0.5, 0.01, "Match", "Results: contacts closer than this to the last blow are the same swing, s."],
 	["feel_shake_scale", 1.0, 0.0, 2.0, 0.05, "Feel", "Master scale of camera kick, shake and zoom punch. 0 turns them all off (reduced motion forces 0)."],
 	["feel_impact_energy_ref", 90.0, 10.0, 400.0, 5.0, "Feel", "Hit energy (J) at which the impact reads about 63 percent."],
 	["feel_impact_total_ref", 25.0, 5.0, 100.0, 1.0, "Feel", "Damage points at which the impact reads about 63 percent."],
@@ -474,6 +478,10 @@ var knockback_scale: float
 var match_pause_s: float
 var match_slowmo_scale: float
 var match_slowmo_s: float
+var intro_s: float
+var intro_fight_s: float
+var combo_gap_s: float
+var combo_merge_s: float
 var feel_shake_scale: float
 var feel_impact_energy_ref: float
 var feel_impact_total_ref: float
