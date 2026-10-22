@@ -60,7 +60,8 @@ func test_stream_stop_extrapolates_then_holds() -> void:
 	for local: int in range(100, 140):
 		b.advance(local)
 	var x: float = b.sample().fighters[0].pos[0].x
-	assert_near(x, 98.0 + NetConfig.MAX_EXTRAPOLATE, 0.01)
+	var tau: float = NetConfig.EXTRAP_TAU_S * float(Engine.physics_ticks_per_second)  ## fade constant in ticks
+	assert_near(x, 98.0 + tau * (1.0 - exp(-NetConfig.MAX_EXTRAPOLATE / tau)), 0.01)
 	assert_true(b.held_ticks > 0)
 
 
