@@ -18,9 +18,6 @@ enum Screen { TITLE, LOADOUT, OPTIONS, FIGHT, PAUSED, RESULT, ONLINE, LEADERBOAR
 const LAYER: int = 60
 const RESULT_DELAY_S: float = 3.4
 const PORTRAIT_UNITS: float = 1000.0  ## layout width on a portrait screen
-const ORBIT_RATE: float = 0.1
-const ORBIT_RADIUS: float = 9.0
-const ORBIT_HEIGHT: float = 3.4
 const ONLINE_MODE: String = "online"
 
 const PAUSE_MIN_PX: float = 56.0  ## Smallest touch pause button on screen.
@@ -50,9 +47,10 @@ var _hint: ControlsHint
 var _practice: PracticeSession = null
 var _practice_panel: PracticePanel = null
 var _pause_btn: Button
-var _backdrop: Node3D = null
-var _cam: Camera3D = null
-var _orbit: float = 0.6
+var _backdrop: TitleBackdrop = null
+var _sounds: MenuSounds
+var _nav: MenuNav
+var _veil: ColorRect  ## fades up from black after a scene change (MenuFx.veil); never takes input
 var _next_seed: int = 0
 var _fight_token: int = 0
 var _recorded_token: int = -1  ## the fight whose result already went into PlayerProgress
@@ -135,16 +133,26 @@ func _build_ui() -> void:
 	_pause_btn.pressed.connect(_pause_game)
 	_pause_btn.visible = false
 	_root.add_child(_pause_btn)
+	_veil = ColorRect.new()
+	_veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_veil.visible = false
+	_root.add_child(_veil)
+	_sounds = MenuSounds.new()
+	add_child(_sounds)
+	_nav = MenuNav.new()
+	add_child(_nav)
 	_hide_screens()
 	_layout()
 
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	_layout()
-	if _cam != null and is_instance_valid(_cam):
-		_orbit += delta * ORBIT_RATE
-		_cam.position = Vector3(cos(_orbit) * ORBIT_RADIUS, ORBIT_HEIGHT, sin(_orbit) * ORBIT_RADIUS)
-		_cam.look_at(Vector3(0.0, 1.6, 0.0))
+	if _backdrop != null:
+		_backdrop.frame_x = _title.backdrop_frame_x() if screen == Screen.TITLE else 0.0
+	_sounds.active = screen != Screen.FIGHT
+	_sounds.back_ok = screen != Screen.TITLE
+	_nav.active = screen != Screen.FIGHT
+	_nav.root = _screen_root()
 
 
 ## Scales the layer so a landscape screen keeps design units and a portrait one gets ~1000 units across.
@@ -156,6 +164,7 @@ func _layout() -> void:
 	_layer.scale = Vector2(s, s)
 	_root.position = Vector2.ZERO
 	_root.size = vp / s
+	_veil.size = _root.size
 	var k: float = maxf(get_viewport().get_final_transform().get_scale().x, 0.01)
 	var ppu: float = k * s  # on-screen px per layout unit
 	var pause_pos: Vector2 = Vector2(_root.size.x - 96.0 - 18.0, 18.0)
@@ -206,6 +215,7 @@ func _hide_screens() -> void:
 
 
 func _show_title() -> void:
+	var from_fight: bool = current_match != null
 	_close_match()
 	_end_session()
 	_hide_screens()
@@ -213,6 +223,9 @@ func _show_title() -> void:
 	screen = Screen.TITLE
 	_title.visible = true
 	_title.focus_first.call_deferred()
+	_title.play_intro.call_deferred()
+	if from_fight:
+		MenuFx.veil(_veil)
 
 
 func _open_loadout(mode: String) -> void:
@@ -222,6 +235,7 @@ func _open_loadout(mode: String) -> void:
 	screen = Screen.LOADOUT
 	_loadout.visible = true
 	_loadout.open(mode)
+	MenuFx.reveal(_loadout)
 
 
 func _on_title(id: String) -> void:
@@ -250,6 +264,7 @@ func _on_title(id: String) -> void:
 			screen = Screen.OPTIONS
 			_options.visible = true
 			_options.open()
+			MenuFx.reveal(_options)
 		"quit":
 			get_tree().quit()
 
@@ -294,6 +309,7 @@ func _begin_practice() -> void:
 	_practice.quick_match_requested.connect(_open_online.bind(true))
 	_enter_fight()
 	_practice_panel.visible = true
+	MenuFx.veil(_veil)
 
 
 func _end_practice() -> void:
@@ -307,16 +323,8 @@ func _end_practice() -> void:
 func _ensure_backdrop() -> void:
 	if _backdrop != null or _host == null:
 		return
-	_backdrop = Node3D.new()
-	_backdrop.name = "MenuBackdrop"
-	var arena := Arena.new()
-	arena.name = "Arena"
-	_backdrop.add_child(arena)
-	_cam = Camera3D.new()
-	_cam.fov = 50.0
-	_backdrop.add_child(_cam)
+	_backdrop = TitleBackdrop.new(not Flags.args.has("no-title-fighters"))
 	_host.add_child(_backdrop)
-	_cam.current = true
 
 
 func _free_backdrop() -> void:
@@ -325,7 +333,6 @@ func _free_backdrop() -> void:
 	_host.remove_child(_backdrop)
 	_backdrop.free()
 	_backdrop = null
-	_cam = null
 
 
 # --- the match ---------------------------------------------------------------------------------------------------
@@ -356,6 +363,7 @@ func _begin_fight(mode: String) -> void:
 	_attach_show(m, mode, true)
 	match_started.emit(m)
 	_enter_fight()
+	MenuFx.veil(_veil)
 
 
 ## A human side never fights with a weapon it has not unlocked (premium outfit or play milestone; --unlock-all opens
@@ -463,6 +471,7 @@ func _open_online(quick: bool = false) -> void:
 		_net.closed.connect(_on_net_closed)
 	screen = Screen.ONLINE
 	_online.visible = true
+	MenuFx.reveal(_online)
 	if quick:
 		_ensure_service()
 		_online.open_quick(_net, _service)
@@ -506,6 +515,7 @@ func _open_leaderboard() -> void:
 		_service.login(_online.player_name)
 	screen = Screen.LEADERBOARD
 	_leaderboard.visible = true
+	MenuFx.reveal(_leaderboard)
 	_leaderboard.open(_service)
 
 
@@ -516,6 +526,7 @@ func _open_shop(from_loadout: bool) -> void:
 	screen = Screen.SHOP
 	_shop.visible = true
 	_shop.open()
+	MenuFx.reveal(_shop)
 
 
 func _on_shop_back() -> void:
@@ -524,6 +535,7 @@ func _on_shop_back() -> void:
 		screen = Screen.LOADOUT
 		_loadout.visible = true
 		_loadout.open(_loadout.mode)
+		MenuFx.reveal(_loadout)
 	else:
 		_show_title()
 
@@ -574,6 +586,7 @@ func _begin_online(start: Dictionary) -> void:
 	_attach_show(m, ONLINE_MODE, true)
 	match_started.emit(m)
 	_enter_fight()
+	MenuFx.veil(_veil)
 
 
 func _on_net_closed(reason: String) -> void:
@@ -809,7 +822,9 @@ func _show_panel(latin: String, english: String, body: String, entries: Array) -
 	_pause.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_pause.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_root.add_child(_pause)
+	_root.move_child(_veil, -1)
 	_pause.focus_first.call_deferred()
+	MenuFx.pop.call_deferred(_pause)
 
 
 func _on_panel(id: String) -> void:
@@ -837,6 +852,10 @@ func _on_panel(id: String) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if screen != Screen.FIGHT and _menu_nav(event) and get_viewport().gui_get_focus_owner() == null:
+		_refocus()  # the mouse clicked off every control: the pad and keys pick up where the screen starts
+		get_viewport().set_input_as_handled()
+		return
 	var pressed_pause: bool = event.is_action_pressed("pause") \
 			or (event is InputEventJoypadButton and (event as InputEventJoypadButton).pressed and (event as InputEventJoypadButton).button_index == JOY_BUTTON_START)
 	if not pressed_pause:
@@ -847,6 +866,58 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif screen == Screen.PAUSED:
 		_resume()
 		get_viewport().set_input_as_handled()
+
+
+## The control holding the open screen (or the card over it), for MenuNav.
+func _screen_root() -> Control:
+	if _pause != null:
+		return _pause
+	match screen:
+		Screen.TITLE:
+			return _title
+		Screen.LOADOUT:
+			return _loadout
+		Screen.OPTIONS:
+			return _options
+		Screen.ONLINE:
+			return _online
+		Screen.LEADERBOARD:
+			return _leaderboard
+		Screen.SHOP:
+			return _shop
+	return null
+
+
+static func _menu_nav(event: InputEvent) -> bool:
+	for a: String in ["ui_up", "ui_down", "ui_left", "ui_right", "ui_accept", "ui_focus_next", "ui_focus_prev"]:
+		if event.is_action_pressed(a):
+			return true
+	return false
+
+
+## Focus back on the open screen's first control.
+func _refocus() -> void:
+	var scr: Control = null
+	match screen:
+		Screen.TITLE:
+			_title.focus_first()
+		Screen.LOADOUT:
+			_loadout.focus_default()
+		Screen.SHOP:
+			scr = _shop
+		Screen.LEADERBOARD:
+			scr = _leaderboard
+		Screen.ONLINE:
+			scr = _online
+		Screen.OPTIONS:
+			scr = _options
+		_:
+			if _pause != null:
+				_pause.focus_first()
+	if scr != null:
+		var c: Control = scr.find_next_valid_focus()
+		if c != null:
+			c.grab_focus()
 
 
 func _notification(what: int) -> void:

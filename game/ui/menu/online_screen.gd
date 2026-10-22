@@ -68,6 +68,7 @@ var _confirm_box: VBoxContainer
 var _arms: Label
 var _ready_btn: Button
 var _remote_line: Label
+var _link_queued: bool = false
 
 
 func _init(p_state: MenuState) -> void:
@@ -94,6 +95,7 @@ func _init(p_state: MenuState) -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
 	root.add_child(scroll)
 	_body = BoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -516,6 +518,7 @@ func _refresh_quick() -> void:
 		_panel_locked = lock
 		_panel.set_locked(lock)  # ready: the arms are what the opponent already got
 	_spinner.queue_redraw()
+	_queue_link()
 
 
 ## "12 W - 7 L   W3" for the search card ("" before the first rated fight).
@@ -718,6 +721,7 @@ func refresh() -> void:
 	_start.disabled = not (session.role == NetSession.ROLE_HOST and session.remote_joined)
 	if session.role == NetSession.ROLE_CLIENT and session.remote_joined:
 		_status.text = "%s\nWaiting for %s to start the fight" % [_status.text, session.remote_name]
+	_queue_link()
 
 
 func _describe(l: Dictionary) -> String:
@@ -788,3 +792,19 @@ func _relayout() -> void:
 	_start.custom_minimum_size.x = 440.0 if portrait else 420.0
 	_ready_btn.custom_minimum_size.x = 560.0 if portrait else 420.0
 	_spinner.custom_minimum_size.y = 190.0 if portrait else 170.0
+	_queue_link()
+
+
+## Pad and keyboard routes by hand (the columns scroll, which Godot's own search sees through): the connection column
+## wraps through Back, your arms through FIGHT; portrait runs them as one column. Re-linked as rows come and go.
+func _link_focus() -> void:
+	_link_queued = false
+	var left: Array[Control] = MenuNav.focusables(_left)
+	var arms: Array[Control] = MenuNav.focusables(_panel)
+	MenuNav.link_screen([left, arms], _back, _start, _body.vertical)
+
+
+func _queue_link() -> void:
+	if not _link_queued:
+		_link_queued = true
+		_link_focus.call_deferred()
