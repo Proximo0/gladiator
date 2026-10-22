@@ -12,6 +12,8 @@ func _ready() -> void:
 	for a: String in OS.get_cmdline_user_args():
 		var kv: PackedStringArray = a.trim_prefix("--").split("=", true, 1)
 		args[kv[0]] = kv[1] if kv.size() > 1 else "1"
+	if OS.has_feature("android_ci"):  # emulator CI APK (docs/android.md): one presented bot fight, then quit
+		args.merge({"mode": "bot_vs_bot", "android_ci": "1", "scripted": "1"})
 
 
 func _physics_process(_delta: float) -> void:

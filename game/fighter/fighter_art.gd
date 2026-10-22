@@ -424,6 +424,48 @@ static func armor_fit(pn: String) -> Dictionary:
 	return {"mesh": mesh, "pos": f["pos"]}
 
 
+const ARMOR_ART_DIR: String = "res://assets/armor/"
+static var _armor_art: Dictionary = {}  ## id -> opaque Mesh (or null when the asset is missing)
+
+
+## Houdini armor piece `id` (res://assets/armor/<id>.glb, built in its body part's frame by
+## tools/houdini/build_props.py, so it sits at the part's origin) as one opaque mesh with its own materials, or null.
+## Loaded once per id; every caller gets its own duplicate of the mesh (the materials are shared and never changed).
+static func armor_art(id: String) -> Mesh:
+	if id == "":
+		return null
+	if not _armor_art.has(id):
+		_armor_art[id] = _load_armor_art(ARMOR_ART_DIR + id + ".glb")
+	var m: Mesh = _armor_art[id]
+	return m.duplicate() as Mesh if m != null else null
+
+
+static func _load_armor_art(path: String) -> Mesh:
+	if not ResourceLoader.exists(path):
+		return null
+	var sc: PackedScene = load(path) as PackedScene
+	if sc == null:
+		return null
+	var root: Node = sc.instantiate()
+	var src: MeshInstance3D = root as MeshInstance3D
+	if src == null:
+		var found: Array[Node] = root.find_children("*", "MeshInstance3D", true, false)
+		src = found[0] as MeshInstance3D if not found.is_empty() else null
+	var out: ArrayMesh = null
+	if src != null and src.mesh is ArrayMesh:
+		out = src.mesh.duplicate() as ArrayMesh
+		# Houdini's glTF exporter marks every material alpha-blend: force opaque so it neither sorts nor flickers.
+		for s: int in out.get_surface_count():
+			var bm: BaseMaterial3D = out.surface_get_material(s) as BaseMaterial3D
+			if bm != null:
+				var o: BaseMaterial3D = bm.duplicate() as BaseMaterial3D
+				o.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+				o.albedo_color.a = 1.0
+				out.surface_set_material(s, o)
+	root.free()
+	return out
+
+
 ## Helmet shell: the head collider's rings (`Fighter.HEAD_PROFILE`) pushed out by `clear`, from the ring at `bottom` up
 ## over the crown, closed underneath. Part frame, so it hugs the collider and a blow that clips it also hits the head.
 static func helm_mesh(clear: float, bottom: float) -> Mesh:

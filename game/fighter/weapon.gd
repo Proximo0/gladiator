@@ -107,6 +107,13 @@ func build(d: Dictionary, physical_mass: float = -1.0) -> void:
 			_add_box(Vector3(0.26, 0.04, 0.04), Vector3(0, tip - 0.02, 0), steel * 0.7)
 			for i: int in range(5):
 				_add_box(Vector3(0.012, 0.012, 0.09), Vector3(-0.1 + 0.05 * i, tip - 0.03, 0.06), steel * 0.7)
+		"scutum":
+			# Tall curved board (assets/armor/scutum.glb, grip at the boss): one box collider over the face.
+			var half_h: float = length * 0.5
+			tip_local = Vector3(0, half_h, 0.06)
+			com_local = Vector3(0, 0, 0.05)
+			_add_box(Vector3(float(d.get("width", 0.68)) - 0.02, length - 0.02, 0.06), Vector3(0, 0, 0.06), col)
+			_add_box(Vector3(0.14, 0.03, 0.03), Vector3.ZERO, wood)
 		"shield":
 			var r: float = length * 0.5
 			tip_local = Vector3(0, r, 0.05)
@@ -125,10 +132,10 @@ func build(d: Dictionary, physical_mass: float = -1.0) -> void:
 	_use_art_mesh()
 
 
-## Art slot: res://assets/weapons/<id>.glb (built in Houdini by tools/houdini/build_weapons.py: +Y along the weapon,
+## Art slot: res://assets/weapons/<id>.glb, or the def's "art" path (built in Houdini by tools/houdini/build_weapons.py: +Y along the weapon,
 ## origin at the grip, edges toward +-X) replaces the primitive meshes. Visual only: the collision shapes stay.
 func _use_art_mesh() -> void:
-	var path: String = "res://assets/weapons/%s.glb" % weapon_id
+	var path: String = str(def.get("art", "res://assets/weapons/%s.glb" % weapon_id))
 	if not ResourceLoader.exists(path):
 		return
 	var scene: PackedScene = load(path) as PackedScene

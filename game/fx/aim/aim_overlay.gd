@@ -18,6 +18,11 @@ const TIP_COLOR: Color = Color(1.0, 0.86, 0.45)
 const RETICLE_COLOR: Color = Color(0.55, 0.9, 1.0)
 const LOST_COLOR: Color = Color(1.0, 0.55, 0.25)
 const SHADOW: Color = Color(0.05, 0.03, 0.02, 0.7)
+## Plate baseline, as a share of the viewport height. Landscape: over the crowd, between the controls hint (top) and the
+## HUD banner (top at 0.24). Portrait: under the banner (it ends near 0.31) and above the fighters, clear of the
+## meters, the pause button and the practice card.
+const PROMPT_Y_LAND: float = 0.17
+const PROMPT_Y_PORTRAIT: float = 0.355
 const MIN_SHAFT_M: float = 0.25
 
 var fighter: Fighter = null
@@ -86,7 +91,7 @@ func _process(delta: float) -> void:
 
 
 func _fighter_down() -> bool:
-	var st: String = str(fighter.get("_state"))
+	var st: String = fighter.state_name()
 	return st == "dead" or st == "ko"
 
 
@@ -144,7 +149,7 @@ func _draw_weapon_aid(u: float, a: float) -> void:
 	_canvas.draw_arc(tip, TIP_R_PX * u, 0.0, TAU, 20, Color(TIP_COLOR, a), 2.5 * u, true)
 	_canvas.draw_circle(tip, 2.5 * u, Color(TIP_COLOR, a))
 	# Hand reticle: where the hand is being steered (the target), a line from the hand when it lags behind.
-	var target: Vector3 = fighter.get("_hand_target") as Vector3
+	var target: Vector3 = fighter.hand_target()
 	if target != Vector3.ZERO and not camera.is_position_behind(target):
 		var tp: Vector2 = _project(target)
 		var r: float = RETICLE_R_PX * u
@@ -175,7 +180,7 @@ func _draw_lost(u: float, vp: Vector2, a: float) -> void:
 	var title: String = "WEAPON LOST"
 	var tf: int = roundi(PROMPT_PX * u)
 	var sf: int = roundi(PROMPT_SUB_PX * u)
-	var y: float = vp.y * 0.30
+	var y: float = vp.y * (PROMPT_Y_PORTRAIT if vp.x < vp.y else PROMPT_Y_LAND)
 	var sub: String = AimLogic.pickup_hint(dev)
 	var plate_w: float = maxf(font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1.0, sf).x, font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1.0, tf).x) + 36.0 * u
 	var plate: Rect2 = Rect2(vp.x * 0.5 - plate_w * 0.5, y - float(tf) * 1.05, plate_w, float(tf + sf) * 1.35 + 20.0 * u)

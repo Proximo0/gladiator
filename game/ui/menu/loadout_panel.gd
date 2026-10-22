@@ -124,6 +124,8 @@ func loadout() -> Dictionary:
 		if id != "":
 			armor[slot] = id
 	var off: String = "" if LoadoutRules.offhand_blocked(_usable_weapon) else offhand_picker.current_id()
+	if off != "" and offhand_picker.is_locked():
+		off = LoadoutRules.DEFAULT_OFFHAND
 	return {"weapon": _usable_weapon, "offhand": off, "armor": armor}
 
 
@@ -192,7 +194,7 @@ func _refresh_offhand(wanted: String) -> void:
 	else:
 		var ol: Array = []
 		for id: String in LoadoutRules.offhands():
-			ol.append([id, LoadoutRules.display_name(id)])
+			ol.append([id, LoadoutRules.display_name(id), not LoadoutRules.weapon_unlocked(id, _access)])
 		offhand_picker.items = ol
 		offhand_picker.enabled = true
 		offhand_picker.select(wanted, false)
