@@ -21,7 +21,7 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 		return {}
 	var t: int = int(bytes[0])
 	if not [NetConfig.MSG_HELLO, NetConfig.MSG_LOBBY, NetConfig.MSG_START, NetConfig.MSG_OVER, NetConfig.MSG_LEAVE,
-			NetConfig.MSG_LOADOUT].has(t):
+			NetConfig.MSG_LOADOUT, NetConfig.MSG_NOTE].has(t):
 		return {}
 	var v: Variant = bytes_to_var(bytes.slice(1))
 	if not (v is Dictionary):

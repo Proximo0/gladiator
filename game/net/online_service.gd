@@ -16,7 +16,7 @@ signal status_changed(text: String)  ## short progress text for the search scree
 signal matched(info: Dictionary)  ## see match_info()
 signal match_failed(reason: String)  ## search ended without a match (not for a cancel)
 signal result_recorded(summary: Dictionary)  ## see result_summary()
-signal leaderboard_ready(data: Dictionary)  ## {top: [row], around: [row], me: row or {}, total: int, source: String}
+signal leaderboard_ready(data: Dictionary)  ## {top: [row], around: [row], me: row or {}, total, offset, source, error?}
 
 const ROLE_HOST: String = "host"
 const ROLE_CLIENT: String = "client"
@@ -72,17 +72,38 @@ func report_result(_match_id: String, _report: Dictionary, _signature: String) -
 	result_recorded.emit(result_summary("", "voided", "", 0, 0, "This backend does not rate matches"))
 
 
-## Ask for the leaderboard: the best `top_n` and `around_me` rows either side of the player. Emits leaderboard_ready.
-func request_leaderboard(_top_n: int = 20, _around_me: int = 3) -> void:
-	leaderboard_ready.emit({"top": [], "around": [], "me": {}, "total": 0, "source": backend_name()})
+## Ask for the leaderboard: one page of `top_n` rows from rank `offset` + 1, and `around_me` rows either side of the
+## player when they are not on that page. Emits leaderboard_ready; `error` is set ("offline", "unavailable") when the
+## backend could not get the board (the rows are then empty).
+func request_leaderboard(_top_n: int = 20, _around_me: int = 3, _offset: int = 0) -> void:
+	leaderboard_ready.emit({"top": [], "around": [], "me": {}, "total": 0, "offset": 0, "source": backend_name(),
+		"error": "unavailable"})
 
 
-## {rating, games, wins, losses, provisional, tier} of the signed-in player (the cached copy; updated by results).
+## Typical seconds a Quick Match search takes on this backend, or -1 when it does not know (the screen then learns
+## from this session's own searches).
+func expected_wait_s() -> float:
+	return -1.0
+
+
+## The match info for the `n`-th rematch (1, 2, ...) of `info` with the same opponent over the same connection, rated
+## like a new match (both sides derive the same id and key), or {} when this backend cannot rate a rematch: the
+## rematch is then a friendly, unrated fight.
+func rematch_info(_info: Dictionary, _n: int) -> Dictionary:
+	return {}
+
+
+## The id both players derive for the `n`-th rematch of match `mid`.
+static func rematch_id(mid: String, n: int) -> String:
+	return "%s-r%d" % [mid, n]
+
+
+## {rating, games, wins, losses, streak, provisional, tier} of the signed-in player (the cached copy; updated by results).
 func my_rating() -> Dictionary:
 	var r: int = int(profile.get("rating", Rating.START_RATING))
 	var g: int = int(profile.get("games", 0))
 	return {"rating": r, "games": g, "wins": int(profile.get("wins", 0)), "losses": int(profile.get("losses", 0)),
-		"provisional": Rating.is_provisional(g), "tier": Rating.tier(r)}
+		"streak": int(profile.get("streak", 0)), "provisional": Rating.is_provisional(g), "tier": Rating.tier(r)}
 
 
 ## The one shape every backend uses for `matched`.

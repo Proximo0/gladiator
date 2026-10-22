@@ -132,3 +132,24 @@ func test_dropped_alone_is_never_rated_before_the_grace_period() -> void:
 func test_no_reports_at_all() -> void:
 	assert_eq(Rating.reconcile("A", {}, "B", {}, false)["status"], "pending")
 	assert_eq(Rating.reconcile("A", {}, "B", {}, true)["status"], "voided")
+
+
+func test_roman_tiers_ladder() -> void:
+	assert_eq(Rating.tier(1700), "Rudiarius")
+	assert_eq(Rating.tier(1800), Rating.TOP_TIER)
+	assert_eq(Rating.tier_index(500), 0)
+	assert_eq(Rating.tier_index(1000), 1)
+	assert_eq(Rating.tier_index(5000), Rating.TIERS.size())
+	var names: PackedStringArray = Rating.tier_names()
+	assert_eq(names.size(), Rating.TIERS.size() + 1)
+	assert_eq(names[0], "Tiro")
+	assert_eq(names[names.size() - 1], Rating.TOP_TIER)
+	assert_true(names.has("Primus Palus") and names.has("Rudiarius") and names.has("Gladiator"))
+
+
+func test_next_tier() -> void:
+	var n: Dictionary = Rating.next_tier(1150)
+	assert_eq(n["name"], "Veteranus")
+	assert_eq(n["at"], 1200)
+	assert_eq(n["need"], 50)
+	assert_eq(Rating.next_tier(1999), {})

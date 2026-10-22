@@ -21,6 +21,7 @@ const CANDIDATE_STALE: float = 2.0
 const SEARCH_TIMEOUT: float = 120.0
 const MAX_PACKET: int = 1024
 const ACCEPT_REPEATS: int = 3
+const EXPECTED_WAIT_S: float = 15.0  ## shown as the usual wait until this session has its own searches
 
 var store_path: String = "user://online_local.json"
 var device_id: String = ""  ## empty: generated from `entropy` (and stored) on login
@@ -261,6 +262,23 @@ static func match_key(mid: String) -> String:
 	return "lan-" + mid
 
 
+func expected_wait_s() -> float:
+	return EXPECTED_WAIT_S
+
+
+## A LAN rematch is rated like a new match: both sides derive the id and the key from the last one.
+func rematch_info(info: Dictionary, n: int) -> Dictionary:
+	if _current.is_empty() or str(info.get("match_id", "")).is_empty():
+		return {}
+	var base_mid: String = str(info["match_id"]).get_slice("-r", 0)
+	var mid: String = OnlineService.rematch_id(base_mid, n)
+	_current = {"mid": mid, "key": match_key(mid), "opp_id": str(_current["opp_id"]), "opp_name": str(_current["opp_name"])}
+	var out: Dictionary = info.duplicate()
+	out["match_id"] = mid
+	out["match_key"] = str(_current["key"])
+	return out
+
+
 func report_result(match_id: String, report: Dictionary, signature: String) -> void:
 	if _current.is_empty() or match_id != str(_current["mid"]) or _reported.has(match_id):
 		return
@@ -280,8 +298,8 @@ func report_result(match_id: String, report: Dictionary, signature: String) -> v
 	result_recorded.emit(OnlineService.result_summary(match_id, str(v["status"]), str(v["winner"]), before, int(_me()["rating"]), str(v["why"])))
 
 
-func request_leaderboard(top_n: int = 20, around_me: int = 3) -> void:
-	var data: Dictionary = board.leaderboard(device_id, top_n, around_me)
+func request_leaderboard(top_n: int = 20, around_me: int = 3, offset: int = 0) -> void:
+	var data: Dictionary = board.leaderboard(device_id, top_n, around_me, offset)
 	data["source"] = "LAN: players met on this device"
 	leaderboard_ready.emit(data)
 
@@ -292,6 +310,7 @@ func _refresh_profile() -> void:
 	profile["games"] = int(e.get("games", 0))
 	profile["wins"] = int(e.get("wins", 0))
 	profile["losses"] = int(e.get("losses", 0))
+	profile["streak"] = int(e.get("streak", 0))
 	profile["name"] = str(e.get("name", profile.get("name", "")))
 
 
