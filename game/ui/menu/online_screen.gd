@@ -47,6 +47,7 @@ var _quick_box: VBoxContainer
 var _headline: Label
 var _spinner: Control
 var _card: Label
+var _link_queued: bool = false
 
 
 func _init(p_state: MenuState) -> void:
@@ -73,6 +74,7 @@ func _init(p_state: MenuState) -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
 	root.add_child(scroll)
 	_body = BoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -363,6 +365,7 @@ func _refresh_quick() -> void:
 	_name_edit.editable = _phase == Phase.SEARCHING or _phase == Phase.IDLE
 	_spinner.queue_redraw()
 	_try_start()
+	_queue_link()
 
 
 func _on_back() -> void:
@@ -461,6 +464,7 @@ func refresh() -> void:
 	_start.disabled = not (session.role == NetSession.ROLE_HOST and session.remote_joined)
 	if session.role == NetSession.ROLE_CLIENT and session.remote_joined:
 		_status.text = "%s\nWaiting for %s to start the fight" % [_status.text, session.remote_name]
+	_queue_link()
 
 
 func _describe(l: Dictionary) -> String:
@@ -523,3 +527,19 @@ func _relayout() -> void:
 	var portrait: bool = size.x < size.y * 1.05
 	_body.vertical = portrait
 	_title.add_theme_font_size_override("font_size", 40 if portrait else 52)
+	_queue_link()
+
+
+## Pad and keyboard routes by hand (the columns scroll, which Godot's own search sees through): the connection column
+## wraps through Back, your arms through FIGHT; portrait runs them as one column. Re-linked as rows come and go.
+func _link_focus() -> void:
+	_link_queued = false
+	var left: Array[Control] = MenuNav.focusables(_left)
+	var arms: Array[Control] = MenuNav.focusables(_panel)
+	MenuNav.link_screen([left, arms], _back, _start, _body.vertical)
+
+
+func _queue_link() -> void:
+	if not _link_queued:
+		_link_queued = true
+		_link_focus.call_deferred()

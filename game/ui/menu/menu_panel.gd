@@ -35,6 +35,13 @@ func build(latin: String, english: String, body: String, entries: Array) -> void
 		btn.pressed.connect(func() -> void: chosen.emit(str(entry[0])))
 		v.add_child(btn)
 		_buttons.append(btn)
+	# Up from the first button wraps to the last and down from the last to the first; left and right stay put.
+	for i: int in _buttons.size():
+		var b: Button = _buttons[i]
+		b.focus_neighbor_top = b.get_path_to(_buttons[posmod(i - 1, _buttons.size())])
+		b.focus_neighbor_bottom = b.get_path_to(_buttons[posmod(i + 1, _buttons.size())])
+		b.focus_neighbor_left = b.get_path_to(b)
+		b.focus_neighbor_right = b.get_path_to(b)
 
 
 func focus_first() -> void:
