@@ -45,6 +45,8 @@ var getup_fails: int = 0
 var armor_dislodged: int = 0
 var self_hits: int = 0
 var knockdowns: int = 0
+var rolls: int = 0  ## dodge rolls started (both fighters)
+var _prev_rolling: Array[bool] = [false, false]
 var time_down_s: float = 0.0
 var stuck_s: float = 0.0
 var explosions: int = 0
@@ -124,6 +126,10 @@ func on_frames(frames: Array, dt: float) -> void:
 			if state == "down" and prev == "getting_up":
 				getup_fails += 1
 			_prev_state[side] = state
+			var rl: bool = bool(fr.get("rolling", false))
+			if rl and not _prev_rolling[side]:
+				rolls += 1
+			_prev_rolling[side] = rl
 			var wl: Variant = fr.get("weapon_log", null)
 			if wl is Dictionary:
 				_weapon_log[side] = (wl as Dictionary).duplicate()
@@ -222,7 +228,7 @@ func to_dict() -> Dictionary:
 		"max_tip_speed": max_tip_speed, "mean_tip_speed": mean_tip_speed(), "severs": severs, "finisher": finisher,
 		"disarms": disarms, "arm_drops": _log_sum("arm_drops"), "rearms": _log_sum("rearms"),
 		"rearms_after_disarm": _log_sum("rearms_after_disarm"),
-		"stamina0_max_s": stamina0_max_s, "getup_fails": getup_fails, "armor_dislodged": armor_dislodged, "self_hits": self_hits, "knockdowns": knockdowns,
+		"stamina0_max_s": stamina0_max_s, "getup_fails": getup_fails, "armor_dislodged": armor_dislodged, "self_hits": self_hits, "knockdowns": knockdowns, "rolls": rolls,
 		"time_down_s": time_down_s, "stuck_s": stuck_s, "explosions": explosions, "wall_time_s": wall_time_s,
 		"blood_left": blood_left.duplicate(),
 		"mean_dist": mean_dist(), "strike_share": strike_share(),
