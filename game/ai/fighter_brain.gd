@@ -1540,7 +1540,8 @@ func _neutral_aim(out: FighterInput, step: float = SLEW_NEUTRAL) -> void:
 
 
 func _shield_up(me: Dictionary, out: FighterInput) -> void:
-	if str(me.get("offhand_id", "")).contains("shield") and _dist < _reach + 1.5:
+	# Any shield by shape (the scutum, buckler, parma, pelta and aspis ids have no "shield" in them).
+	if LoadoutRules.is_shield(str(me.get("offhand_id", ""))) and _dist < _reach + 1.5:
 		out.buttons |= FighterInput.OFFHAND
 
 
