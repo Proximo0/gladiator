@@ -19,7 +19,7 @@ While building:
 - [ ] Reproduce before fixing: a test, sim, bot run, replay or screenshot sampled for pixels. If it cannot be
       reproduced, ship toggles instead of guessing.
 - [ ] Fix the traced mechanism. Check git history for when a bug first appeared.
-- [ ] A row goes into `docs/lessons_learned.md` whenever something goes wrong.
+- [ ] A lesson file goes into `docs/lessons/` whenever something goes wrong (format in `docs/lessons_learned.md`).
 
 Once there is a level:
 - [ ] A play-bot (`tests/bot/bot.tscn`, shardable with `--shard=i --nshards=n`) that plays it and flags issues;

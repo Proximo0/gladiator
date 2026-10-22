@@ -1,0 +1,2 @@
+What happened: The arena build was blamed on "sand setup" as a whole; the per-step profile showed three static tables (noise, base relief, disc mesh) rebuilt from scratch on every arena, and a first build also paying a 60-80 ms GDScript compile
+Rule: Profile per step behind a flag before moving work; cache inputs-only tables per process and build them on a worker started before the steps that can overlap them
