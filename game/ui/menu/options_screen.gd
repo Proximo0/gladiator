@@ -173,7 +173,7 @@ func _build_controls() -> void:
 	var panel := _panel(grid)
 	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_controls_page.add_child(panel)
-	var touch := MenuTheme.label("Touch: left thumb moves; drag on the right side to steer the weapon hand and swing; buttons for thrust, off hand, half-sword, sprint and grab.\nTwo players: player 1 uses the keyboard and mouse, player 2 the gamepad.", 24, MenuTheme.PARCHMENT)
+	var touch := MenuTheme.label("Touch: left thumb moves; drag on the right side to steer the weapon hand and swing; buttons for thrust, sprint, roll and grab (hold GRAB to pick a weapon up); OFF, HALF and CROUCH toggle on and off.\nTwo players: player 1 uses the keyboard and mouse, player 2 the gamepad.", 24, MenuTheme.PARCHMENT)
 	touch.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	touch.custom_minimum_size = Vector2(900.0, 0.0)
 	touch.name = "TouchNote"

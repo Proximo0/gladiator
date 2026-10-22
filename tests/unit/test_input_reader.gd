@@ -142,7 +142,7 @@ func test_touch_clamp_offset() -> void:
 
 func test_touch_button_layout_lives_on_the_right() -> void:
 	var layout: Array = TouchControls.button_layout(AREA)
-	assert_eq(layout.size(), 6)
+	assert_eq(layout.size(), 7)
 	var bits: int = 0
 	for b: Dictionary in layout:
 		var c: Vector2 = b["center"]
@@ -150,7 +150,7 @@ func test_touch_button_layout_lives_on_the_right() -> void:
 		assert_true(c.y > 0.0 and c.y < AREA.y, "button %s on screen" % b["label"])
 		bits |= int(b["bit"])
 	assert_eq(bits, FighterInput.OFFHAND | FighterInput.THRUST | FighterInput.HALF_SWORD \
-		| FighterInput.SPRINT | FighterInput.GRAB | FighterInput.ROLL)
+		| FighterInput.SPRINT | FighterInput.GRAB | FighterInput.ROLL | FighterInput.CROUCH)
 
 
 func test_touch_button_hit_test() -> void:
@@ -186,3 +186,22 @@ func test_touch_buttons_leave_the_aim_area_free() -> void:
 			height_px = maxf(height_px, (area.y - c.y + float(b["radius"])) * k)
 		assert_true(width_px < area.x * k * 0.42, "buttons use under 42%% of the width at %s" % area)
 		assert_true(height_px < area.y * k * 0.55, "buttons use under 55%% of the height at %s" % area)
+
+
+func test_emulated_mouse_buttons_do_not_count() -> void:
+	# A phone's first finger is also a left mouse button; it must not read as SWING.
+	assert_false(InputReader.mouse_button_counts(true))
+	assert_true(InputReader.mouse_button_counts(false))
+
+
+func test_touch_buttons_fit_a_real_phone_by_dpi() -> void:
+	# 2400x1080 at 420 dpi: 9 to 14 mm across; a tablet's big short side no longer makes huge buttons.
+	var phone: float = TouchControls.button_radius_px(1080.0, 420.0)
+	assert_true(phone * 2.0 / 420.0 * 25.4 >= 9.0, "phone button %.0f px" % phone)
+	var tablet: float = TouchControls.button_radius_px(1600.0, 280.0)
+	assert_true(tablet * 2.0 / 280.0 * 25.4 <= 14.01, "tablet button %.0f px" % tablet)
+	assert_near(TouchControls.button_radius_px(540.0), 540.0 * TouchControls.BUTTON_RADIUS_FRAC, 0.01, "no dpi: share of the short side")
+
+
+func test_touch_toggles_are_offhand_half_sword_and_crouch() -> void:
+	assert_eq(TouchControls.TOGGLE_BITS, FighterInput.OFFHAND | FighterInput.HALF_SWORD | FighterInput.CROUCH)

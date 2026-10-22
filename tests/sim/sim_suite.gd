@@ -23,6 +23,7 @@ const SIM_FILES: Array = [
 	"sim_net_cheat",
 	"sim_killcam_net",
 	"sim_net_quick_flow",
+	"sim_touch",
 ]
 
 
