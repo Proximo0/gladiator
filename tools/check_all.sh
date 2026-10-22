@@ -2,7 +2,7 @@
 # Every check at once, in parallel: unit tests, sims, lint, and two optional hooks that are skipped when their
 # scene does not exist: the play-bot (tests/bot/bot.tscn) and the lab (tests/lab/lab.tscn).
 # JOBS (default: CPU count) caps how many Godot processes run together.
-# Usage: tools/check_all.sh. Logs go to /tmp/check/<name>.log; the last lines print one summary row per check.
+# Usage: tools/check_all.sh. Logs go to /tmp/check.<repo>.XXXXXX/<name>.log (path printed in the header); the last lines print one summary row per check.
 # Exit 1 if any check fails.
 #
 # Hook contract: a bot/lab scene prints "BOT ..." / "LAB ..." lines, any line containing " FAIL " fails the check,
@@ -11,10 +11,10 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-godot}"
 JOBS="${JOBS:-$(nproc)}"
-OUT=/tmp/check; rm -rf "$OUT"; mkdir -p "$OUT"
+OUT=$(mktemp -d "/tmp/check.$(basename "$PWD").XXXXXX")  # per run, so two check_all runs never share logs
 FILTER='^(Godot Engine v|$|WARNING: .*audio|   at: )'
 start=$(date +%s)
-(flock 9; "$GODOT" --headless --path . --import) 9>"/tmp/$(basename "$PWD")_import.lock" >"$OUT/import.log" 2>&1 || { cat "$OUT/import.log"; exit 1; }
+(flock 9; "$GODOT" --headless --path . --import) 9>"/tmp/$(basename "$PWD")_import.lock" >"$OUT/import.log" 2>&1 || { cat "$OUT/import.log"; echo "CHECK_ALL FAIL (import)"; exit 1; }
 
 # One command per line: name|command.
 BOT_SHARDS=3
@@ -42,7 +42,7 @@ wait
 
 rc=0
 row() { printf '%-10s %s\n' "$1" "$2"; }
-echo "=== check_all ($(( $(date +%s) - start )) s, $JOBS jobs) ==="
+echo "=== check_all ($(( $(date +%s) - start )) s, $JOBS jobs, logs $OUT) ==="
 u=$(grep -E '^TESTS passed=' "$OUT/unit.log" | tail -1); row unit "${u:-CRASH}"
 [[ "$u" == *"failed=0"* ]] || rc=1
 s=$(grep -E '^SIMS passed=' "$OUT/sims.log" | tail -1); row sims "${s:-CRASH}"
@@ -64,4 +64,5 @@ hook() {  # hook <label> <log glob prefix> <line prefix>
 if (( HAVE_BOT )); then hook bot bot BOT || rc=1; else row bot "skipped (no tests/bot/bot.tscn)"; fi
 if (( HAVE_LAB )); then hook lab lab LAB || rc=1; else row lab "skipped (no tests/lab/lab.tscn)"; fi
 lint=$(tail -1 "$OUT/lint.log"); row lint "$lint"; [[ "$lint" == *"problems=0"* ]] || rc=1
+if (( rc == 0 )); then echo "CHECK_ALL PASS"; else echo "CHECK_ALL FAIL (see rows above)"; fi
 exit $rc

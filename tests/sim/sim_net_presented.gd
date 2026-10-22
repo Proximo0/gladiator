@@ -8,7 +8,7 @@ func run() -> Array:
 	present = true
 	prefix = "net_presented"
 	time_limit_s = 5.0
-	port = PORT + 1
+	port = net_port(1)
 	lag_ticks = 0
 	jitter_ticks = 0
 	loss = 0.0
