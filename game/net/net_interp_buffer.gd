@@ -133,7 +133,7 @@ func sample() -> NetSnapshot:
 		if r >= float(a.tick) and r < float(b.tick):
 			return NetSnapshot.blend(a, b, (r - float(a.tick)) / float(b.tick - a.tick))
 	var last: NetSnapshot = _snaps[_snaps.size() - 1]
-	return last.extrapolated(minf(r - float(last.tick), NetConfig.MAX_EXTRAPOLATE))
+	return last.extrapolated(minf(r - float(last.tick), NetConfig.MAX_EXTRAPOLATE), _snaps[_snaps.size() - 2] if _snaps.size() > 1 else null)
 
 
 ## Events whose tick the render clock has reached, oldest first: [[tick, side, kind, ev], ...].

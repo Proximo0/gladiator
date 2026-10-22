@@ -106,7 +106,9 @@ static func read(buf: StreamPeerBuffer) -> NetFighterSnap:
 ## Between a (t = 0) and b (t = 1): bodies, hand target, facing and the meters blend; discrete fields (state, masks,
 ## flags) come from a until t reaches 1. Bodies blend over the ones both have; a body only the later snapshot has
 ## (an armor prop knocked off in between) is taken from it as it is.
-static func blend(a: NetFighterSnap, b: NetFighterSnap, t: float) -> NetFighterSnap:
+## `span_s` (seconds between a and b, 0 = unknown) turns the body positions into a cubic Hermite curve through both end
+## velocities, so a fast swing follows its arc instead of a chord.
+static func blend(a: NetFighterSnap, b: NetFighterSnap, t: float, span_s: float = 0.0) -> NetFighterSnap:
 	var take_b: bool = t >= 1.0
 	var o := NetFighterSnap.new()
 	var src: NetFighterSnap = b if take_b else a
@@ -127,7 +129,7 @@ static func blend(a: NetFighterSnap, b: NetFighterSnap, t: float) -> NetFighterS
 	o.pos.resize(n)
 	o.vel.resize(n)
 	for i: int in range(n):
-		o.pos[i] = a.pos[i].lerp(b.pos[i], t)
+		o.pos[i] = a.pos[i].lerp(b.pos[i], t) if span_s <= 0.0 else _hermite(a.pos[i], a.vel[i], b.pos[i], b.vel[i], t, span_s)
 		o.rot.append(a.rot[i].slerp(b.rot[i], t))
 		o.vel[i] = a.vel[i].lerp(b.vel[i], t)
 	for i: int in range(n, longer.body_count()):
@@ -138,11 +140,30 @@ static func blend(a: NetFighterSnap, b: NetFighterSnap, t: float) -> NetFighterS
 	return o
 
 
-## A copy moved on by `ticks` of each body's velocity (rotations held): the bridge when snapshots stop coming.
-func extrapolated(ticks: float, tick_hz: float) -> NetFighterSnap:
+static func _hermite(p0: Vector3, v0: Vector3, p1: Vector3, v1: Vector3, t: float, span_s: float) -> Vector3:
+	var t2: float = t * t
+	var t3: float = t2 * t
+	return p0 * (2.0 * t3 - 3.0 * t2 + 1.0) + v0 * (span_s * (t3 - 2.0 * t2 + t)) + p1 * (3.0 * t2 - 2.0 * t3) + v1 * (span_s * (t3 - t2))
+
+
+## A copy moved on by `ticks` of each body's velocity: the bridge when snapshots stop coming. The velocity fades with
+## time constant NetConfig.EXTRAP_TAU_S (a swing that was slowing down does not overshoot). With `prev` (the snapshot
+## before this one, `prev_ticks` earlier) each body also keeps turning at the rate it turned between the two.
+func extrapolated(ticks: float, tick_hz: float, prev: NetFighterSnap = null, prev_ticks: float = 0.0) -> NetFighterSnap:
 	var o: NetFighterSnap = NetFighterSnap.blend(self, self, 0.0)
 	var dt: float = ticks / tick_hz
+	var tau: float = NetConfig.EXTRAP_TAU_S
+	var eff: float = tau * (1.0 - exp(-dt / tau)) if tau > 0.0 else dt
+	var turn: float = 0.0
+	var can_turn: bool = prev != null and prev_ticks > 0.0 and prev.body_count() >= body_count()
+	if can_turn:
+		turn = eff / (prev_ticks / tick_hz)
 	for i: int in range(o.pos.size()):
-		o.pos[i] = o.pos[i] + o.vel[i] * dt
+		o.pos[i] = o.pos[i] + o.vel[i] * eff
+		if can_turn:
+			var d: Quaternion = (rot[i] * prev.rot[i].inverse()).normalized()
+			if d.w < 0.0:
+				d = Quaternion(-d.x, -d.y, -d.z, -d.w)
+			o.rot[i] = (Quaternion.IDENTITY.slerp(d, turn) * rot[i]).normalized()
 	o.hand_target = hand_target
 	return o

@@ -15,6 +15,7 @@ const INTERP_MIN_DELAY: float = 2.25  ## client interpolation delay floor, ticks
 const INTERP_MAX_DELAY: float = 24.0  ## ceiling, ticks (400 ms)
 const INTERP_RESYNC: float = 30.0  ## render clock this far (ticks) from its target jumps instead of easing
 const MAX_EXTRAPOLATE: float = 6.0  ## ticks of velocity extrapolation when snapshots stop, then hold
+const EXTRAP_TAU_S: float = 0.25  ## extrapolated velocity (and spin) fades with this time constant, seconds
 const BUDGET_BYTES_PER_S: int = 30000  ## per direction, packet overhead included
 const PACKET_OVERHEAD: int = 42  ## IPv4 20 + UDP 8 + ENet protocol header and command (~14), per packet
 const CONNECT_TIMEOUT_TICKS: int = 600  ## 10 s to reach the host

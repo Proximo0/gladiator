@@ -114,7 +114,8 @@ func _poses(m: Match) -> PackedVector3Array:
 	return a
 
 
-func _host_at(t: float) -> PackedVector3Array:
+func _host_at(t_in: float) -> PackedVector3Array:
+	var t: float = t_in
 	var t0: int = floori(t)
 	if not _rec.has(t0) or not _rec.has(t0 + 1):
 		return PackedVector3Array()
@@ -236,8 +237,8 @@ func _one_match(mi: int, lag: int, jit: int) -> void:
 			_drill(ht)
 			_blood_peak(_hm, "h")
 			_blood_peak(_cm, "c")
-		_rec[ht] = _poses(_hm)
-		_rec.erase(ht - 240)
+		_rec[ht + 1] = _poses(_hm)  ## read before the match steps tick ht + 1: it is the pose a snapshot stamped ht + 1 shows (checked: a one-tick shift of this key raises every error 3x)
+		_rec.erase(ht - 239)
 		for side: int in 2:
 			var rl: bool = (_hm.fighters[side] as Fighter).rolling()
 			if rl and not _roll_prev[side]:

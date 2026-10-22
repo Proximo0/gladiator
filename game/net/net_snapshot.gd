@@ -50,7 +50,7 @@ static func decode(bytes: PackedByteArray) -> NetSnapshot:
 
 
 ## Interpolated snapshot between a and b at fraction t (tick blends too, as a float rounded down).
-static func blend(a: NetSnapshot, b: NetSnapshot, t: float) -> NetSnapshot:
+static func blend(a: NetSnapshot, b: NetSnapshot, t: float, hermite: bool = true) -> NetSnapshot:
 	var o := NetSnapshot.new()
 	var src: NetSnapshot = b if t >= 1.0 else a
 	o.tick = a.tick + floori(float(b.tick - a.tick) * t)
@@ -62,16 +62,17 @@ static func blend(a: NetSnapshot, b: NetSnapshot, t: float) -> NetSnapshot:
 	o.over = src.over
 	o.time_scale = src.time_scale
 	for i: int in range(mini(a.fighters.size(), b.fighters.size())):
-		o.fighters.append(NetFighterSnap.blend(a.fighters[i], b.fighters[i], t))
+		o.fighters.append(NetFighterSnap.blend(a.fighters[i], b.fighters[i], t, float(b.tick - a.tick) / float(NetConfig.TICK_HZ) if hermite else 0.0))
 	return o
 
 
-func extrapolated(ticks: float) -> NetSnapshot:
+func extrapolated(ticks: float, prev: NetSnapshot = null) -> NetSnapshot:
 	var o := NetSnapshot.new()
 	o.tick = tick + floori(ticks)
 	o.ack_input_tick = ack_input_tick
 	o.over = over
 	o.time_scale = time_scale
-	for f: NetFighterSnap in fighters:
-		o.fighters.append(f.extrapolated(ticks, float(NetConfig.TICK_HZ)))
+	for i: int in range(fighters.size()):
+		var pf: NetFighterSnap = prev.fighters[i] if prev != null and i < prev.fighters.size() else null
+		o.fighters.append(fighters[i].extrapolated(ticks, float(NetConfig.TICK_HZ), pf, float(tick - prev.tick) if prev != null else 0.0))
 	return o

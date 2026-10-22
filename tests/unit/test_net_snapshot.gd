@@ -105,7 +105,32 @@ func test_extrapolate_moves_by_velocity() -> void:
 	var s: NetSnapshot = make_snap(10, 0.0)
 	var e: NetSnapshot = s.extrapolated(6.0)
 	assert_eq(e.tick, 16)
-	assert_near(e.fighters[0].pos[0].z, -2.0 - 1.0 * 0.1, 0.0001)
+	var tau: float = NetConfig.EXTRAP_TAU_S
+	assert_near(e.fighters[0].pos[0].z, -2.0 - 1.0 * tau * (1.0 - exp(-0.1 / tau)), 0.0001)
+
+
+func test_hermite_follows_velocity_and_is_exact_at_ends() -> void:
+	var a: NetFighterSnap = make_fighter(13, 0.0)
+	var b: NetFighterSnap = make_fighter(13, 0.0)
+	a.pos[0] = Vector3.ZERO
+	b.pos[0] = Vector3.ZERO
+	a.vel[0] = Vector3(0, 10, 0)
+	b.vel[0] = Vector3(0, -10, 0)
+	var mid: NetFighterSnap = NetFighterSnap.blend(a, b, 0.5, 0.0333)
+	assert_near(mid.pos[0].y, 10.0 * 0.0333 * 0.125 * 2.0, 0.001)  # an arc up and back, not the chord at 0
+	assert_near(NetFighterSnap.blend(a, b, 1.0, 0.0333).pos[0].y, 0.0, 0.0001)
+	assert_near(NetFighterSnap.blend(a, b, 0.5).pos[0].y, 0.0, 0.0001)
+
+
+func test_extrapolation_keeps_turning_at_the_last_rate() -> void:
+	var a: NetFighterSnap = make_fighter(13, 0.0)
+	var b: NetFighterSnap = make_fighter(13, 0.0)
+	a.rot[2] = Quaternion.IDENTITY
+	b.rot[2] = Quaternion(Vector3.UP, 0.3)
+	var e: NetFighterSnap = b.extrapolated(2.0, 60.0, a, 2.0)
+	var ang: float = e.rot[2].angle_to(b.rot[2])
+	assert_true(ang > 0.2 and ang < 0.3, "turned %.3f rad" % ang)
+	assert_near(b.extrapolated(2.0, 60.0).rot[2].angle_to(b.rot[2]), 0.0, 0.0001)
 
 
 func test_armor_props_round_trip_and_cost_one_extra_byte_each() -> void:

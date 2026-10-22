@@ -26,6 +26,25 @@ the protocol 1 vs 2 refusal.
 
 `zemitted` and `zspurts_peak` are particle counters, not events; they differ by design (particles are local) and are ignored.
 
+## Round 2: weapon-tip jumps (2026-10-22)
+
+The table above overstated every error: the soak recorded the host pose one tick off from the tick a snapshot is stamped
+with (a one-tick shift of the reference raises all errors about 3x). `sim_net_soak` now records at `ht + 1`.
+Measured on the fixed harness (3-4 matches per profile), tip err max / p95, hand max, pelvis max:
+
+| | 60 ms / 2% | 150 ms / 3% | 250 ms / 5% |
+| --- | --- | --- | --- |
+| before: tip max / p95 | 20 / 2.1 cm | 25 / 2.5 | 73 / 3.0 |
+| after: tip max / p95 | 17-23 / 2.1 | 13 / 2.2 | 22 / 2.6 |
+| before to after hand max | 6 to 6 cm | 8 to 7 | 8 to 11 (noise) |
+| pelvis max | 4 to 5 cm | 3 to 2 | 2 to 3 |
+| input to screen | 139 to 138 ms | 239 to 241 | 375 to 373 |
+
+Wire format unchanged (snapshot 522 B, protocol 2): the per-body velocities already sent were unused by interpolation.
+Mechanism (client only): bodies blend with a cubic Hermite curve through both snapshots' velocities (`NetFighterSnap.blend`
+`span_s`); extrapolation fades velocity with `NetConfig.EXTRAP_TAU_S` (0.25 s) and keeps turning each body at the rate it
+turned between the last two snapshots, so a swing missing 2 snapshots neither freezes its rotation nor overshoots.
+
 ## Defects found and fixed
 
 1. A press-once button (roll, grab) on a client tick the host skipped (lost for good, late, or dropped when the buffer shrinks)
@@ -36,5 +55,5 @@ the protocol 1 vs 2 refusal.
 ## Next net defects
 
 1. Input to screen is RTT plus 78 ms (host buffer + interpolation + 2-tick snapshot cadence); a client-side predicted own roll/dodge would hide it.
-2. Weapon-tip error peaks at 55 cm under 3-5% loss (extrapolation of a fast swing across two missed snapshots); snapshot hand/tip velocity hints or a 3-tick cadence on swings would cut it.
+2. Rare tip spikes of 20 cm remain in 4+ tick extrapolation runs at 5% loss (a swing that reverses inside the gap); a loss-triggered extra interp tick would hide them for 17 ms of latency.
 3. Particle effects (blood) are local and not covered by any parity check; a visual desync of gore volume is possible and untested.
