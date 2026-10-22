@@ -55,6 +55,26 @@ static func live_count(packed: PackedVector4Array) -> int:
 	return n
 
 
+## One circle (x, z, radius, 0) holding every live blob, so the shader can skip the blob loop outside it; zero when
+## none is live. Two fighters far apart give a wide circle, which only costs the loop on more of the sand.
+static func bound(packed: PackedVector4Array) -> Vector4:
+	var n: int = live_count(packed)
+	if n == 0:
+		return Vector4.ZERO
+	var lo: Vector2 = Vector2(INF, INF)
+	var hi: Vector2 = Vector2(-INF, -INF)
+	for i: int in n:
+		var b: Vector4 = packed[i]
+		lo = lo.min(Vector2(b.x - b.z, b.y - b.z))
+		hi = hi.max(Vector2(b.x + b.z, b.y + b.z))
+	var c: Vector2 = (lo + hi) * 0.5
+	var r: float = 0.0
+	for i: int in n:
+		var b: Vector4 = packed[i]
+		r = maxf(r, Vector2(b.x, b.y).distance_to(c) + b.z)
+	return Vector4(c.x, c.y, r, 0.0)
+
+
 ## Darkening factor the shader applies at sand point (x, z): the product of 1 - strength * falloff over the blobs
 ## (falloff (1 - d²/r²)², 1 at the centre, 0 at the radius). Mirrors sand_floor.gdshader for tests.
 static func shade_at(packed: PackedVector4Array, x: float, z: float) -> float:

@@ -44,6 +44,7 @@ uniform float rim_light = 0.3;
 // Contact shadows: dark blobs under the fighters' feet and pelvis (x, z, radius, strength), packed by ContactShadow
 // once a frame; the live ones come first and the first zero strength ends the list.
 uniform vec4 contact[8];
+uniform vec4 contact_bound = vec4(0.0);  // x, z, radius holding every live blob (ContactShadow.bound); radius 0 = none
 
 varying vec3 lpos;
 varying float v_sparkle;
@@ -216,7 +217,9 @@ void fragment() {
 	col = mix(col, bcol, cov);
 	// Contact shadows: each blob multiplies by 1 - strength * (1 - d²/r²)² (ContactShadow.shade_at mirrors this).
 	float cshade = 1.0;
-	for (int i = 0; i < 8; i++) {
+	vec2 cbd = wp - contact_bound.xy;
+	int cn = dot(cbd, cbd) < contact_bound.z * contact_bound.z ? 8 : 0;
+	for (int i = 0; i < cn; i++) {
 		vec4 cb = contact[i];
 		if (cb.w <= 0.0) {
 			break;

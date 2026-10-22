@@ -240,6 +240,7 @@ func set_contacts(blobs: PackedVector4Array) -> void:
 		blobs.resize(ContactShadow.MAX_BLOBS)
 		blobs.fill(Vector4.ZERO)
 	_material.set_shader_parameter("contact", blobs)
+	_material.set_shader_parameter("contact_bound", ContactShadow.bound(blobs))
 
 
 ## Soaks blood in: pools spread a little, small amounts leave dark clumps. `slot` is the bleeding fighter's blood

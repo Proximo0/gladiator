@@ -58,3 +58,13 @@ func test_shade_at_matches_falloff() -> void:
 	assert_near(ContactShadow.shade_at(p, 0.2, 0.0), 1.0 - 0.2 * 0.75 * 0.75)
 	assert_near(ContactShadow.shade_at(p, 1.0, 0.0), 1.0)
 	assert_near(ContactShadow.shade_at(ContactShadow.pack([] as Array[Vector4]), 0.0, 0.0), 1.0)
+
+
+func test_bound_holds_every_blob() -> void:
+	var p: PackedVector4Array = ContactShadow.pack([Vector4(-1, 0, 0.2, 0.5), Vector4(1.5, 0.5, 0.4, 0.2), Vector4(0, -0.3, 0.1, 0.3)] as Array[Vector4])
+	var b: Vector4 = ContactShadow.bound(p)
+	for i: int in ContactShadow.live_count(p):
+		var q: Vector4 = p[i]
+		assert_true(Vector2(q.x - b.x, q.y - b.y).length() + q.z <= b.z + 0.0001, "blob %d inside" % i)
+	assert_true(b.z < 1.8, "bound stays tight: %f" % b.z)
+	assert_eq(ContactShadow.bound(ContactShadow.pack([] as Array[Vector4])), Vector4.ZERO)
