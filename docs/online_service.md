@@ -93,7 +93,7 @@ server each client runs it on the two reports it can read).
 | Host reports a win it did not get | Each client reports from its own view (the client from the host's OVER message). Reports that disagree are `disputed`: **nobody is rated**, and the pair is counted for review. |
 | Forged or replayed report | Every report is HMAC-signed with the per-match key and carries match id and player id; a bad signature is `voided`. A second report for a match is ignored. |
 | Leaving (menu Leave, window closed, killing the app) before the end | `left` report: **leaver loses**, at any time, whatever the other report says (`forfeit`). Both left: `voided`. |
-| Pulling the plug when losing | A `dropped` report alone is not rated; after the grace period the silent side is treated as forfeit. Count drops per player; a high drop rate is shadow-flagged (EOS/server side). |
+| Pulling the plug when losing | A `dropped` report alone is not rated before the grace period. After it, the silent side forfeits only to a reporter that was **ahead on points** when the link died (the report's winner, `MatchJudge.leader`) after 10 s; otherwise the match is void, so blocking the traffic while losing gains nothing. A `result` report beats a `dropped` one. Count drops per player; a high drop rate is shadow-flagged (EOS/server side). See `docs/net_security.md`. |
 | Instant "wins" / collusion by quitting | Results shorter than 10 s (`MIN_RATED_TICKS`) are `voided`. |
 | Win-trading with a friend | Repeat-pair damper; optionally require a minimum number of distinct opponents for the visible leaderboard. |
 | Fake winner id | A winner that is neither player is `disputed`. |
