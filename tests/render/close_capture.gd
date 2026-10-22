@@ -3,6 +3,7 @@ extends Node
 ## The move keys on distance (an observed condition) with a tick fallback; the shot keys on the move's own state.
 ## Run in a real (xvfb) window:
 ## godot --path . --resolution 1280x720 res://tests/render/close_capture.tscn -- --out=DIR --name=wide --move=kick|shove|grab
+## [--at=U] (kick progress of the kick shot, default 0.48)
 ## Never part of the check suite; writes only the PNGs it is told to.
 
 var _out: String = "/tmp/close_capture/"
@@ -13,6 +14,7 @@ var _tick: int = 0
 var _pressed: int = -1
 var _shot: bool = false
 var _hold_ticks: int = 0
+var _at: float = 0.48  ## kick progress for the kick shot (--at=0.25 chamber, 0.5 out, 0.7 re-chamber)
 
 
 func _ready() -> void:
@@ -23,6 +25,8 @@ func _ready() -> void:
 			_name = a.substr(7)
 		elif a.begins_with("--move="):
 			_move = a.substr(7)
+		elif a.begins_with("--at="):
+			_at = float(a.substr(5))
 	DirAccess.make_dir_recursive_absolute(_out)
 	process_physics_priority = -100  # inputs go in before the match's tick
 	RenderingServer.render_loop_enabled = false  # software GL is slow: draw only the frames we save
@@ -56,7 +60,7 @@ func _physics_process(_d: float) -> void:
 	var u_kick: float = CloseCombat.progress(a._close.kick_t, a._t("kick_time"))
 	if a._close.holding():
 		_hold_ticks += 1
-	var ready: bool = (_move == "kick" and u_kick >= 0.48) or (_move == "shove" and a._close.shove_landed and a._close.shove_t > 0.2) \
+	var ready: bool = (_move == "kick" and u_kick >= _at) or (_move == "shove" and a._close.shove_landed and a._close.shove_t > 0.2) \
 		or (_move == "grab" and _hold_ticks >= 30) or _tick - _pressed > 120
 	if ready:
 		_shot = true

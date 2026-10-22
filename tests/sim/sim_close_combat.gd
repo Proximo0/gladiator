@@ -1,6 +1,6 @@
 extends "res://tests/sim/sim_base.gd"
 ## Close range: a shove pushes and staggers a standing foe and floors one already stumbling, a front kick lands with
-## real foot speed and pushes the foe back, a whiffed kick staggers the kicker, a grab of the weapon arm holds it in
+## real foot speed (the kicker leaning back over it) and pushes the foe back, a whiffed kick staggers the kicker, a grab of the weapon arm holds it in
 ## and a struggling foe breaks free. Two fighters face each other on a flat floor.
 
 const FIGHTER: String = "res://game/fighter/fighter.gd"
@@ -100,6 +100,7 @@ func _kick(gap: float) -> Array:
 	var max_push: float = 0.0
 	var foot_v: float = 0.0
 	var foot_hi: float = 0.0
+	var lean_back: float = -1.0
 	var my_states: Dictionary = {}
 	var foe_states: Dictionary = {}
 	for i: int in range(160):
@@ -112,6 +113,9 @@ func _kick(gap: float) -> Array:
 			var shin: RigidBody3D = f.parts["shin_l"]
 			foot_v = maxf(foot_v, shin.linear_velocity.length())
 			foot_hi = maxf(foot_hi, f._foot_point("shin_l").y)
+			# The torso's up axis tipped back (+z: the kicker faces -z), in radians.
+			var tu: Vector3 = (f.parts["torso"] as RigidBody3D).global_basis.y
+			lean_back = maxf(lean_back, atan2(tu.z, tu.y))
 			max_push = maxf(max_push, z0 - (foe.parts["pelvis"] as RigidBody3D).global_position.z)
 			my_states[f.state()] = true
 			foe_states[foe.state()] = true
@@ -121,22 +125,23 @@ func _kick(gap: float) -> Array:
 		if bool(ev.get("kick", false)):
 			kick_hits += 1
 			dmg += float(ev.get("total", 0.0))
-	var detail: String = "kick_hits=%d damage=%.1f foot_speed_max=%.1f m/s foot_high=%.2f m pushed=%.2f m kicker=%s foe=%s" % [
-		kick_hits, dmg, foot_v, foot_hi, max_push, my_states.keys(), foe_states.keys()]
+	var detail: String = "kick_hits=%d damage=%.1f foot_speed_max=%.1f m/s foot_high=%.2f m lean_back=%.2f rad pushed=%.2f m kicker=%s foe=%s" % [
+		kick_hits, dmg, foot_v, foot_hi, lean_back, max_push, my_states.keys(), foe_states.keys()]
 	var ok: bool
 	var nm: String
 	if gap < 2.0:
 		nm = "close_kick_lands"
-		ok = kick_hits == 1 and dmg > 0.0 and max_push > 0.1 and foot_hi > 0.35 and f.state() == "standing"
+		ok = kick_hits == 1 and dmg > 0.0 and max_push > 0.1 and foot_hi > 0.35 and lean_back > 0.1 and f.state() == "standing"
 	else:
 		nm = "close_kick_whiff_staggers"
-		ok = kick_hits == 0 and my_states.has("stumbling") and foot_hi > 0.35 and not my_states.has("down")
+		ok = kick_hits == 0 and my_states.has("stumbling") and foot_hi > 0.35 and lean_back > 0.1 and not my_states.has("down")
 	await clear()
 	return [row(nm, ok, detail)]
 
 
-## CLINCH held from tick 60 with the aim low: the free hand latches on the foe's weapon forearm, holds it; the foe
-## pulls back and swings, and breaks free within a few seconds.
+## CLINCH held from tick 60 with the aim low: the free hand latches on the foe's weapon forearm and hauls it in and
+## across (turning the foe's chest) for a second; then the foe pulls back and swings, and breaks free within a few
+## seconds.
 func _grab() -> Array:
 	await sandbox()
 	_floor()
@@ -147,20 +152,36 @@ func _grab() -> Array:
 	var broke_at: int = -1
 	var held_ticks: int = 0
 	var states: Dictionary = {}
+	var p0: Vector3 = Vector3.ZERO
+	var yaw0: float = 0.0
+	var moved: Vector3 = Vector3.ZERO
+	var turned: float = 0.0
 	for i: int in range(360):
 		await step(1)
 		f.apply_input(_inp(FighterInput.CLINCH) if i >= 60 else _inp())
 		# The foe fights the hold from a second in: pulls away and swings.
 		foe.apply_input(_inp(FighterInput.SWING, -1000) if held_at >= 0 and i >= held_at + 60 else _inp())
+		# The haul: where the held weapon wrist and the foe's chest go in the second before the foe fights back.
+		var wrist: Vector3 = (foe.parts["forearm_r"] as RigidBody3D).global_transform * FighterRig.HAND_LOCAL
+		var fz: Vector3 = (foe.parts["torso"] as RigidBody3D).global_basis.z
+		if held_at >= 0 and i == held_at + 59 and f._close.holding():
+			moved = wrist - p0
+			turned = absf(wrapf(atan2(fz.x, fz.z) - yaw0, -PI, PI))
 		if f._close.holding():
 			held_ticks += 1
 			if held_at < 0:
 				held_at = i
+				p0 = wrist
+				yaw0 = atan2(fz.x, fz.z)
 		elif held_at >= 0 and broke_at < 0:
 			broke_at = i
 		states[f.state()] = true
 	var breaks: int = int(f._close.counts["breaks"])
 	var ok: bool = held_at >= 0 and held_at < 90 and held_ticks > 60 and breaks == 1 and f.state() == "standing"
 	await clear()
+	# The holder (at the origin, facing -z) hauls the wrist in (+z) and across to its free left side (-x).
 	return [row("close_grab_holds_and_breaks", ok, "latched_tick=%d held=%.2f s broke_tick=%d breaks=%d grabber=%s" % [
-		held_at, held_ticks / 60.0, broke_at, breaks, states.keys()])]
+		held_at, held_ticks / 60.0, broke_at, breaks, states.keys()]),
+		row("close_hold_hauls_arm", moved.z > 0.15 and moved.x < -0.04 and turned > 0.1, "wrist_moved=(%.2f, %.2f, %.2f) m foe_chest_turned=%.2f rad" % [
+		moved.x, moved.y, moved.z, turned])]
+
