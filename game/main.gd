@@ -30,6 +30,10 @@ func _ready() -> void:
 			cfg["loadouts"] = loadouts
 		_match.setup(cfg)
 		_rec.attach(_match)
+		if Flags.args.has("android_ci"):
+			var ci := AndroidCi.new()
+			add_child(ci)
+			ci.watch(_match)
 		if mode != "bot_vs_bot" and not Flags.is_scripted_run():
 			# Keep Esc pause and the end-of-match menu for command-line player matches.
 			_flow = _new_flow()
