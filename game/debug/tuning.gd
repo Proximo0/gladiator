@@ -142,6 +142,40 @@ const FIELDS: Array = [
 	["roll_guard", 0.6, 0.0, 1.0, 0.05, "Roll", "Share of a blow's effective mass while tucked (a glancing hit on a rolling body)."],
 	["roll_guard_start", 0.3, 0.0, 1.0, 0.01, "Roll", "Roll progress where the tucked guard begins (0..1)."],
 	["roll_guard_end", 0.72, 0.0, 1.0, 0.01, "Roll", "Roll progress where the tucked guard ends (0..1)."],
+	["shove_time", 0.45, 0.2, 1.0, 0.01, "Close", "Shove length from push to drawn back, s."],
+	["shove_stamina", 0.12, 0.0, 0.5, 0.01, "Close", "Stamina spent per shove (a shove needs this much)."],
+	["shove_cooldown", 0.7, 0.0, 3.0, 0.05, "Close", "Time after a shove before the next one, s."],
+	["shove_reach", 0.62, 0.3, 0.9, 0.01, "Close", "How far ahead of the chest the shoving hand drives at full extension, m."],
+	["shove_force_frac", 1.1, 0.2, 2.0, 0.05, "Close", "Shoving hand force cap as a share of arm_force."],
+	["shove_contact", 0.3, 0.1, 0.6, 0.01, "Close", "Hand (or shoulder) distance from the foe's torso or pelvis centre that counts as a landed shove, m."],
+	["shove_impulse", 110.0, 0.0, 400.0, 5.0, "Close", "Push a landed shove gives the foe at full strength, N·s (split torso and pelvis)."],
+	["shove_stagger", 0.35, 0.0, 1.0, 0.01, "Close", "Stagger a landed shove adds (stumbling above 0.25)."],
+	["shove_stagger_off", 0.55, 0.0, 1.0, 0.01, "Close", "Extra stagger when the foe is already off balance: this floors a stumbling foe."],
+	["shove_recoil", 0.3, 0.0, 1.0, 0.05, "Close", "Share of the shove impulse pushed back on the shover."],
+	["shove_lunge", 1.2, 0.0, 3.0, 0.1, "Close", "Forward body drive while pushing, m/s."],
+	["kick_time", 0.65, 0.3, 1.2, 0.01, "Close", "Front kick length from lifting the knee to the foot down again, s."],
+	["kick_stamina", 0.18, 0.0, 0.5, 0.01, "Close", "Stamina spent per kick (a kick needs this much)."],
+	["kick_cooldown", 0.9, 0.0, 3.0, 0.05, "Close", "Time after a kick before the next one, s."],
+	["kick_reach", 0.85, 0.3, 1.0, 0.01, "Close", "How far ahead of the hip the kicking foot drives, m."],
+	["kick_height", 0.62, 0.2, 1.0, 0.01, "Close", "Height of the kicking foot at full extension, m."],
+	["kick_chamber", 0.42, 0.1, 0.7, 0.01, "Close", "Height the foot comes up to under the knee before the kick drives out, m."],
+	["kick_lunge", 1.4, 0.0, 3.0, 0.1, "Close", "Forward hip drive while the kicking leg extends, m/s."],
+	["kick_force", 1400.0, 200.0, 4000.0, 10.0, "Close", "Max leg muscle force driving the kicking foot, N (reaction on the pelvis)."],
+	["kick_mass", 4.5, 1.0, 20.0, 0.5, "Close", "Effective mass behind a landed kick in the damage model, kg."],
+	["kick_push", 80.0, 0.0, 300.0, 5.0, "Close", "Push a landed kick gives the foe on top of the contact, N·s."],
+	["kick_miss_stagger", 0.3, 0.0, 1.0, 0.01, "Close", "Stagger a kick that meets nothing leaves the kicker with (over-extended on one leg)."],
+	["kick_stagger_take", 1.6, 1.0, 3.0, 0.05, "Close", "Multiplier on stagger taken while kicking (standing on one leg)."],
+	["clinch_time", 0.4, 0.1, 1.0, 0.01, "Close", "How long the free hand reaches for the foe's weapon arm or head before it gives up, s."],
+	["clinch_latch", 0.16, 0.05, 0.4, 0.01, "Close", "Hand distance from the grabbed point that closes the grip, m."],
+	["clinch_slack", 0.03, 0.0, 0.15, 0.005, "Close", "How far the held point may move from the holding hand before the grip's joint pulls, m."],
+	["clinch_pull", 0.3, 0.1, 0.6, 0.01, "Close", "How far ahead of the chest the holding hand draws the held part, m."],
+	["clinch_break_dist", 0.3, 0.1, 0.8, 0.01, "Close", "The grip slips when the held point is pulled this far from the hand, m."],
+	["clinch_max", 3.0, 0.5, 8.0, 0.1, "Close", "Longest a hold lasts, s."],
+	["clinch_stamina", 0.1, 0.0, 0.5, 0.01, "Close", "Stamina per second a hold costs the holder."],
+	["clinch_cooldown", 1.5, 0.0, 5.0, 0.05, "Close", "Time after a hold or a missed grab before the next grab, s."],
+	["clinch_pin", 0.35, 0.0, 1.0, 0.05, "Close", "Share of its force a held weapon arm keeps (it cannot swing freely)."],
+	["clinch_head_balance", 0.5, 0.0, 1.0, 0.05, "Close", "Share of its upright torque a fighter held by the head keeps."],
+	["clinch_struggle", 0.55, 0.0, 3.0, 0.05, "Close", "Break-free progress per second at full effort against an equal holder (1 = free)."],
 	["pelvis_inertia", 2.0, 1.0, 5.0, 0.1, "Stability", "Pelvis inertia boost for stable PD."],
 	["torso_inertia", 2.5, 1.0, 5.0, 0.1, "Stability", "Torso inertia boost for stable PD."],
 	["balance_inertia", 3.0, 0.5, 8.0, 0.1, "Stability", "Inertia the upright controller gains assume, kg·m²."],
@@ -173,6 +207,19 @@ const FIELDS: Array = [
 	["match_pause_s", 4.0, 1.0, 15.0, 0.5, "Match", "Pause after a match before the next bot match starts, s."],
 	["match_slowmo_scale", 0.4, 0.1, 1.0, 0.05, "Match", "Time scale during the finisher slow motion."],
 	["match_slowmo_s", 1.0, 0.0, 5.0, 0.1, "Match", "Length of the finisher slow motion, game seconds."],
+	["intro_s", 2.3, 0.0, 8.0, 0.1, "Match", "Pre-fight intro: name plates up and fighters held before FIGHT!, s (0 = no intro)."],
+	["intro_fight_s", 0.8, 0.2, 3.0, 0.1, "Match", "FIGHT! stinger on screen (the fighters are free from its first frame), s."],
+	["combo_gap_s", 1.5, 0.3, 5.0, 0.1, "Match", "Results' longest combo: most time between one fighter's blows with no blow back, s."],
+	["combo_merge_s", 0.15, 0.0, 0.5, 0.01, "Match", "Results: contacts closer than this to the last blow are the same swing, s."],
+	["killcam_on", 1.0, 0.0, 1.0, 1.0, "Replay", "1 = instant replay of the finishing blow before the result panel, 0 = off."],
+	["killcam_buffer_s", 8.0, 5.0, 20.0, 0.5, "Replay", "Seconds of shown fight kept for the replay (ring buffer)."],
+	["killcam_lead_s", 3.5, 1.0, 6.0, 0.1, "Replay", "Game seconds replayed before the killing blow."],
+	["killcam_tail_s", 1.6, 0.3, 3.0, 0.1, "Replay", "Game seconds replayed after the killing blow."],
+	["killcam_slow_rate", 0.25, 0.05, 1.0, 0.05, "Replay", "Playback speed of the slow motion at the impact."],
+	["killcam_slow_pre_s", 0.2, 0.0, 1.0, 0.05, "Replay", "Game seconds of slow motion before the impact."],
+	["killcam_slow_post_s", 0.5, 0.1, 2.0, 0.05, "Replay", "Game seconds of slow motion after the impact."],
+	["killcam_tail_rate", 0.6, 0.1, 1.0, 0.05, "Replay", "Playback speed after the slow motion."],
+	["killcam_ramp_s", 0.25, 0.05, 1.0, 0.05, "Replay", "Game seconds the speed takes to ease in and out of slow motion."],
 	["feel_shake_scale", 1.0, 0.0, 2.0, 0.05, "Feel", "Master scale of camera kick, shake and zoom punch. 0 turns them all off (reduced motion forces 0)."],
 	["feel_impact_energy_ref", 90.0, 10.0, 400.0, 5.0, "Feel", "Hit energy (J) at which the impact reads about 63 percent."],
 	["feel_impact_total_ref", 25.0, 5.0, 100.0, 1.0, "Feel", "Damage points at which the impact reads about 63 percent."],
@@ -192,6 +239,28 @@ const FIELDS: Array = [
 	["feel_rumble_scale", 1.0, 0.0, 1.0, 0.05, "Feel", "Gamepad rumble and phone vibration strength (the options toggle also gates it)."],
 	["feel_rumble_s", 0.3, 0.0, 1.0, 0.02, "Feel", "Rumble length at full impact, s."],
 	["feel_rumble_min", 0.2, 0.0, 0.8, 0.01, "Feel", "Impact below which a hit does not rumble."],
+	["feel_hitstop_min", 0.2, 0.0, 0.9, 0.01, "Feel", "Impact below which a hit has no hit-stop (presentation only; physics never pauses)."],
+	["feel_hitstop_light_s", 0.035, 0.0, 0.2, 0.005, "Feel", "Hit-stop of a hit just over the floor, real s."],
+	["feel_hitstop_heavy_s", 0.095, 0.0, 0.3, 0.005, "Feel", "Hit-stop of a full-impact hit, real s."],
+	["feel_hitstop_sever_s", 0.12, 0.0, 0.3, 0.005, "Feel", "Least hit-stop of a blow that severs or guts, real s."],
+	["feel_hitstop_finisher_s", 0.16, 0.0, 0.4, 0.005, "Feel", "Hit-stop of a finisher (behead, gut, run through, skull crush), real s."],
+	["feel_hitstop_clash_mult", 0.7, 0.0, 1.5, 0.05, "Feel", "Hit-stop share for weapon on weapon (a crisp clang, not a stall)."],
+	["feel_hitstop_rate", 0.06, 0.0, 0.5, 0.01, "Feel", "Presentation speed while a hit-stop holds (0 = frozen)."],
+	["feel_hitstop_catchup", 1.6, 0.3, 6.0, 0.1, "Feel", "Extra presentation speed while it catches back up to physics after a hold (1.6 = 2.6x)."],
+	["feel_hitstop_lag_max", 0.15, 0.02, 0.4, 0.01, "Feel", "Most the shown pose may trail physics, s: the hard cap against stacked stalls."],
+	["feel_hitstop_budget_s", 0.3, 0.05, 1.5, 0.01, "Feel", "Hit-stop debt at which further stops shrink to nothing (a flurry does not stall)."],
+	["feel_hitstop_budget_tau", 0.8, 0.1, 4.0, 0.05, "Feel", "Time constant over which hit-stop debt drains, s."],
+	["feel_punch_min", 0.45, 0.0, 1.0, 0.01, "Feel", "Impact below which a hit does no screen punch (radial blur, colour split, flash)."],
+	["feel_punch_s", 0.16, 0.02, 0.6, 0.01, "Feel", "Length of a screen punch, real s."],
+	["feel_punch_blur", 0.045, 0.0, 0.15, 0.005, "Feel", "Radial blur reach of a full screen punch (share of the distance to the impact point)."],
+	["feel_punch_chroma", 0.006, 0.0, 0.03, 0.001, "Feel", "Colour split of a full screen punch (share of the distance to the impact point)."],
+	["feel_punch_flash", 0.22, 0.0, 0.8, 0.01, "Feel", "Screen flash alpha of a full screen punch."],
+	["feel_cine_scale", 0.2, 0.05, 1.0, 0.01, "Feel", "Time scale of the finisher slow motion on a behead, gut or run through."],
+	["feel_cine_hold_s", 0.9, 0.0, 3.0, 0.05, "Feel", "How long that slow motion holds, real s."],
+	["feel_cine_ramp_s", 0.7, 0.05, 3.0, 0.05, "Feel", "Ease back to full speed after the hold, real s (the crowd roars as it starts)."],
+	["feel_cine_lpf_hz", 900.0, 200.0, 8000.0, 50.0, "Feel", "Low-pass cutoff on crowd and effects during the finisher slow motion, Hz."],
+	["feel_cine_bass_db", -2.0, -30.0, 6.0, 0.5, "Feel", "Gain of the finisher bass hit, dB."],
+	["feel_bass_min", 0.6, 0.0, 1.0, 0.01, "Feel", "Impact above which an ordinary heavy hit gets a short sub-bass thump."],
 	["aim_trail_s", 0.3, 0.05, 1.0, 0.05, "Feel", "Length of the player's own weapon-tip trail (aim aid), s."],
 	["aim_alpha", 0.8, 0.1, 1.0, 0.05, "Feel", "Opacity of the aim aid (tip marker, trail, hand reticle)."],
 	["aim_lost_delay_s", 0.4, 0.0, 3.0, 0.1, "Feel", "Disarmed for this long before the weapon-lost prompt shows, s."],
@@ -255,7 +324,7 @@ const FIELDS: Array = [
 	["gut_ropes", 4.0, 0.0, 8.0, 1.0, "Blood", "Gut spill: intestine strings that slide out of a gutting or run-through at normal quality."],
 	["gut_segs", 9.0, 4.0, 14.0, 1.0, "Blood", "Gut spill: points per intestine string at normal quality (low uses a third fewer)."],
 	["gut_seg_len", 0.15, 0.03, 0.4, 0.005, "Blood", "Gut spill: length of one intestine link when fully paid out, m."],
-	["gut_radius", 0.055, 0.01, 0.12, 0.002, "Blood", "Gut spill: thickness (radius) of the intestine sausage, m."],
+	["gut_radius", 0.038, 0.01, 0.12, 0.002, "Blood", "Gut spill: thickness (radius) of the intestine sausage, m."],
 	["gut_pay_time", 0.9, 0.1, 3.0, 0.05, "Blood", "Gut spill: seconds for a string to slide fully out of the wound."],
 	["gut_eject", 3.4, 0.0, 8.0, 0.1, "Blood", "Gut spill: speed the guts are flung out of the wound, m/s."],
 	["gut_push", 12.0, 0.0, 30.0, 0.5, "Blood", "Gut spill: acceleration that shoves the guts out while they pay out, m/s^2."],
@@ -284,10 +353,10 @@ const FIELDS: Array = [
 	["gut_exit_v_scale", 1.3, 0.2, 3.0, 0.05, "Blood", "Run-through: exit-wound gush speed relative to the entry gush."],
 	["gut_cluster_size", 0.13, 0.0, 0.4, 0.01, "Blood", "Gut spill: half width of the tangle of guts bulging out of the wound, m."],
 	["gut_organ_points", 40.0, 0.0, 200.0, 1.0, "Blood", "Gut spill: cut or pierce points of a gutting at which whole organs fall out (a run-through always)."],
-	["gut_organs", 2.0, 0.0, 3.0, 1.0, "Blood", "Gut spill: organs (liver, stomach) that fall out of a big gut wound at normal quality."],
+	["gut_organs", 2.0, 0.0, 2.0, 1.0, "Blood", "Gut spill: organs (liver, stomach) that fall out of a big gut wound at normal quality."],
 	["gut_max_organs", 6.0, 0.0, 20.0, 1.0, "Blood", "Gut spill: most organs on the sand at normal quality (low is half, high is double)."],
-	["gut_organ_eject", 2.2, 0.0, 6.0, 0.1, "Blood", "Gut spill: speed an organ slides out of the wound, m/s."],
-	["gut_organ_friction", 0.94, 0.5, 1.0, 0.01, "Blood", "Gut spill: an organ's grip on the sand per 60th of a second (higher slides further)."],
+	["gut_organ_eject", 1.5, 0.0, 6.0, 0.1, "Blood", "Gut spill: speed an organ slides out of the wound, m/s."],
+	["gut_organ_friction", 0.92, 0.5, 1.0, 0.01, "Blood", "Gut spill: an organ's grip on the sand per 60th of a second (higher slides further)."],
 	["gut_organ_smear_step", 0.12, 0.03, 1.0, 0.01, "Blood", "Gut spill: an organ sliding on the sand leaves a smear every this many metres."],
 	["sand_depth_scale", 2.2, 0.5, 6.0, 0.1, "Sand", "Visual sand: multiplier on every footprint, furrow and body press depth (the collider stays flat)."],
 	["sand_deep_from", 0.03, 0.0, 0.2, 0.005, "Sand", "Requested depth (m) beyond which a press counts as a fall and gains sand_deep_gain extra."],
@@ -443,6 +512,40 @@ var roll_cooldown: float
 var roll_guard: float
 var roll_guard_start: float
 var roll_guard_end: float
+var shove_time: float
+var shove_stamina: float
+var shove_cooldown: float
+var shove_reach: float
+var shove_force_frac: float
+var shove_contact: float
+var shove_impulse: float
+var shove_stagger: float
+var shove_stagger_off: float
+var shove_recoil: float
+var shove_lunge: float
+var kick_time: float
+var kick_stamina: float
+var kick_cooldown: float
+var kick_reach: float
+var kick_height: float
+var kick_chamber: float
+var kick_lunge: float
+var kick_force: float
+var kick_mass: float
+var kick_push: float
+var kick_miss_stagger: float
+var kick_stagger_take: float
+var clinch_time: float
+var clinch_latch: float
+var clinch_slack: float
+var clinch_pull: float
+var clinch_break_dist: float
+var clinch_max: float
+var clinch_stamina: float
+var clinch_cooldown: float
+var clinch_pin: float
+var clinch_head_balance: float
+var clinch_struggle: float
 var pelvis_inertia: float
 var torso_inertia: float
 var balance_inertia: float
@@ -474,6 +577,19 @@ var knockback_scale: float
 var match_pause_s: float
 var match_slowmo_scale: float
 var match_slowmo_s: float
+var intro_s: float
+var intro_fight_s: float
+var combo_gap_s: float
+var combo_merge_s: float
+var killcam_on: float
+var killcam_buffer_s: float
+var killcam_lead_s: float
+var killcam_tail_s: float
+var killcam_slow_rate: float
+var killcam_slow_pre_s: float
+var killcam_slow_post_s: float
+var killcam_tail_rate: float
+var killcam_ramp_s: float
 var feel_shake_scale: float
 var feel_impact_energy_ref: float
 var feel_impact_total_ref: float
@@ -511,6 +627,28 @@ var feel_spark_min: float
 var feel_rumble_scale: float
 var feel_rumble_s: float
 var feel_rumble_min: float
+var feel_hitstop_min: float
+var feel_hitstop_light_s: float
+var feel_hitstop_heavy_s: float
+var feel_hitstop_sever_s: float
+var feel_hitstop_finisher_s: float
+var feel_hitstop_clash_mult: float
+var feel_hitstop_rate: float
+var feel_hitstop_catchup: float
+var feel_hitstop_lag_max: float
+var feel_hitstop_budget_s: float
+var feel_hitstop_budget_tau: float
+var feel_punch_min: float
+var feel_punch_s: float
+var feel_punch_blur: float
+var feel_punch_chroma: float
+var feel_punch_flash: float
+var feel_cine_scale: float
+var feel_cine_hold_s: float
+var feel_cine_ramp_s: float
+var feel_cine_lpf_hz: float
+var feel_cine_bass_db: float
+var feel_bass_min: float
 var aim_trail_s: float
 var aim_alpha: float
 var aim_lost_delay_s: float

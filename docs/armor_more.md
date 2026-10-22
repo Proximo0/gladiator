@@ -65,7 +65,7 @@ shield so a player can see what they are playing for. The stat card line now nam
 ("2.4 kg | plate | left arm"). `--unlock-all` opens them; ranked Quick Match ignores it, as for weapons.
 
 ## Renders
-`tests/render/armor_capture.tscn` (see its header for the command) saves two armored gladiators and each one's front
+`tests/render/armor_more_capture.tscn` (see its header for the command) saves two armored gladiators and each one's front
 and back. Three sets cover every new helmet, torso piece, arm piece and shield, at 1280x720 (`land_*`) and 540x960
 (`port_*`) in `docs/renders/armor_more_game/`.
 

@@ -64,8 +64,8 @@ func test_spray_scales_with_contact_and_damage() -> void:
 
 func test_budgets() -> void:
 	assert_eq(BloodMath.budget(0), 600)
-	assert_eq(BloodMath.budget(2), 5000)
-	assert_eq(BloodMath.budget(9), 5000)
+	assert_eq(BloodMath.budget(2), 3600)
+	assert_eq(BloodMath.budget(9), 3600)
 	assert_true(BloodMath.rate_mult(2) > BloodMath.rate_mult(0))
 
 

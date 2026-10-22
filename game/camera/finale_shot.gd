@@ -27,6 +27,10 @@ var _bias_s: float = 2.0
 var _reach: float = 5.0
 var _dist_max: float = 7.5
 var _high_h: float = 3.2
+var _look_y: float = 0.8  ## held look height for a standing victim
+var _look_low: float = 0.35  ## lowest the look point sinks to as the victim goes down
+var _head_hold_s: float = 2.5
+var _reaim_rate: float = 2.5
 
 
 ## Unit ground vector perpendicular to the blow line (attacker -> victim), pointing to the side nearer the arena centre
@@ -132,6 +136,10 @@ func start(attacker: Vector3, victim: Vector3, hit: Vector3, tun: Tuning, arena_
 	_reach = tun.feel_finale_head_reach
 	_dist_max = tun.feel_finale_dist_max
 	_high_h = tun.feel_finale_high
+	_look_y = tun.feel_finale_look_y
+	_look_low = minf(FightCamera.tuned(tun, "feel_finale_look_low", 0.35), _look_y)
+	_head_hold_s = FightCamera.tuned(tun, "feel_finale_head_hold_s", 2.5)
+	_reaim_rate = FightCamera.tuned(tun, "feel_finale_reaim_rate", 2.5)
 	_head = NO_HEAD
 	_head_t = 0.0
 	_point = inside_wall(hold_point(victim, hit, tun.feel_finale_look_y), arena_r, wall_margin)
@@ -141,6 +149,56 @@ func start(attacker: Vector3, victim: Vector3, hit: Vector3, tun: Tuning, arena_
 	_age = 0.0
 	active = true
 	weight = 0.0
+
+
+## Age on the ease-in curve whose weight is `w` (inverse of the smoothstep, bisected).
+static func ease_age_for(w: float, ease_s: float) -> float:
+	var lo: float = 0.0
+	var hi: float = 1.0
+	var target: float = clampf(w, 0.0, 1.0)
+	for _i: int in 16:
+		var m: float = (lo + hi) * 0.5
+		if ease01(m) < target:
+			lo = m
+		else:
+			hi = m
+	return hi * maxf(ease_s, 0.0)
+
+
+## Ground side direction for filming a body at `body` and its head at `head` side-on to the line between them: the
+## perpendicular nearest `current`. Returns `current` while they are under 0.4 m apart (no line yet).
+static func head_side(body: Vector3, head: Vector3, current: Vector3) -> Vector3:
+	var line := Vector3(head.x - body.x, 0.0, head.z - body.z)
+	if line.length() < 0.4:
+		return current
+	var s: Vector3 = line.normalized().cross(Vector3.UP)
+	return s if s.dot(current) >= 0.0 else -s
+
+
+## Turns the unit ground vector `from` toward `to` by at most `max_rad` radians.
+static func turn_toward(from: Vector3, to: Vector3, max_rad: float) -> Vector3:
+	var a0: float = atan2(from.x, from.z)
+	var da: float = wrapf(atan2(to.x, to.z) - a0, -PI, PI)
+	var a: float = a0 + clampf(da, -max_rad, max_rad)
+	return Vector3(sin(a), 0.0, cos(a))
+
+
+## The victim's head came free after the shot began, or after it ended: re-aim on the body and head. The weight
+## rises again from where it is (no cut), and the hold runs at least `head_hold_s` from now. `victim` is the body's
+## current position (used when the shot had already ended).
+func head_free(victim: Vector3) -> void:
+	var t0: float = 0.0
+	if active:
+		t0 = _age if _age < _ease_s else ease_age_for(weight, _ease_s)
+		_hold_s = maxf(_hold_s - _age + t0, maxf(t0, _ease_s) + _head_hold_s)
+	else:
+		if is_finite(victim.x) and is_finite(victim.z):
+			_point = inside_wall(Vector3(victim.x, _point.y, victim.z), _arena_r, _wall_margin)
+		_hold_s = _ease_s + _head_hold_s
+		active = true
+	_age = t0
+	_head_t = 0.0
+	weight = weight_at(_age, _ease_s, _hold_s, _release_s)
 
 
 func clear() -> void:
@@ -161,9 +219,18 @@ func update(delta: float, victim: Vector3, head: Vector3 = NO_HEAD) -> void:
 		var np: Vector3 = inside_wall(Vector3(victim.x, _point.y, victim.z), _arena_r, _wall_margin)
 		_point.x = lerpf(_point.x, np.x, k)
 		_point.z = lerpf(_point.z, np.z, k)
+		# A body on the sand pulls the look down from chest height (so it is not framed in the top half).
+		if is_finite(victim.y):
+			_point.y = lerpf(_point.y, clampf(victim.y + 0.15, _look_low, _look_y), 1.0 - exp(-1.5 * maxf(delta, 0.0)))
 	if is_finite(head.x) and is_finite(head.y) and is_finite(head.z):
 		_head = clamp_head(_point, inside_wall(head, _arena_r, 0.2), _reach)
 		_head_t += maxf(delta, 0.0)
+		# Swing round to film the body and the flying head side-on, as far as the wall allows.
+		if not _high:
+			var want: Vector3 = head_side(_point, _head, _side)
+			var cam_r: float = Vector2(_point.x + want.x * distance(), _point.z + want.z * distance()).length()
+			if _arena_r <= 0.0 or cam_r <= _arena_r - _wall_margin:
+				_side = turn_toward(_side, want, _reaim_rate * maxf(delta, 0.0))
 	else:
 		_head = NO_HEAD
 	weight = weight_at(_age, _ease_s, _hold_s, _release_s)

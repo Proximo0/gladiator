@@ -18,8 +18,13 @@ the test double.
 | `game/net/service_stub.gd` | Scriptable fake for tests; also models the server rules (two reports, `Rating.reconcile`). |
 | `game/net/service_board.gd` | Pure rating table + leaderboard views (used by Local and Stub; a custom server could reuse it). |
 | `game/logic/rating.gd` | Pure Elo with provisional K, matchmaking window, tiers, report signing and `reconcile`. |
-| `game/ui/menu/online_screen.gd` | Direct-IP lobby, and Quick Match mode (`open_quick`): spinner, opponent card, connect, report. |
-| `game/ui/menu/leaderboard_screen.gd` | The ranking screen. |
+| `game/ui/menu/online_screen.gd` | Direct-IP lobby, and Quick Match mode (`open_quick`): search, found, loadout confirm, connect, report; the online part of the result panel (rating change, rematch). |
+| `game/logic/quick_match_flow.gd` | `QuickMatchFlow`: the Quick Match screen's phases and clocks (search timer, usual wait, confirm countdown, ready notes, join timeout). |
+| `game/logic/rematch_handshake.gd` | `RematchHandshake`: both players must ask; answer window, words for the panel. |
+| `game/logic/online_text.gd` | `OnlineText`: raw network / service reasons in plain words, clock and wait lines. |
+| `game/ui/menu/rating_change_view.gd` | `RatingChangeView`: the rating counting to its new value, tier promotion, bar to the next tier. |
+| `game/ui/menu/leaderboard_screen.gd` | The ranking screen: top 100 in pages of 20, your row highlighted and pinned, tiers, W - L, streak, loading and offline states. |
+| `game/ui/menu/online_capture.gd` (+ `.tscn`) | Dev capture of every online screen state against the stub (`--resolution 720x1280` for a phone). |
 | `tests/unit/test_rating.gd`, `test_online_service_board.gd`, `test_online_service_stub.gd` | Unit tests. |
 | `tests/unit/test_net_service_eos.gd`, `test_eos_config.gd`, `test_net_session_adopt.gd` | EOS helpers without the plugin, the credentials parser, NetSession over a relay peer. |
 | `tests/sim/sim_net_quick.gd` (+ `_peer`, `_peer_node`) | Two engine processes quick-match over loopback, play, report; plus the menu against the stub. |
@@ -31,13 +36,15 @@ login(display_name)            -> logged_in(profile) | login_failed(reason)
 quick_match(loadout)           -> status_changed(text)..., matched(info) | match_failed(reason)
 cancel()                       (no signal)
 report_result(match_id, report, signature) -> result_recorded(summary)
-request_leaderboard(top_n, around_me)      -> leaderboard_ready({top, around, me, total, source})
-my_rating()                    -> {rating, games, wins, losses, provisional, tier}
+request_leaderboard(top_n, around_me, offset) -> leaderboard_ready({top, around, me, total, offset, source, error?})
+my_rating()                    -> {rating, games, wins, losses, streak, provisional, tier}
+expected_wait_s()              usual search time for the "usual wait" line (-1: unknown, the screen learns it)
+rematch_info(info, n)          the n-th rematch's info (derived match id and key: rated), or {} (a friendly rematch)
 is_logged_in() / is_searching() / backend_name() / features() / logout()
 build_id                       only equal build ids are matched (the UI sets NetSession.content_hash())
 ```
 
-`profile` = `{id, name, rating, games, wins, losses}`; `id` is the backend's stable player id (EOS ProductUserId, SteamID,
+`profile` = `{id, name, rating, games, wins, losses, streak}` (streak: +n wins / -n losses in a row); `id` is the backend's stable player id (EOS ProductUserId, SteamID,
 server GUID, LAN device id).
 
 `matched(info)` (built by `OnlineService.match_info`):
@@ -54,6 +61,11 @@ server GUID, LAN device id).
 `Rating.reconcile` status (`agree`, `single`, `forfeit`, `disputed`, `voided`, `pending`). A `report` is
 `Rating.make_report(match_id, player_id, kind, winner_id, reason, ticks)` with `kind` `result`, `left` or `dropped`, signed
 with `Rating.sign_report(match_key, report)` (HMAC-SHA256).
+A report's `ticks` is **fight time**: match ticks from the pre-fight intro's release (`Match.fight_ticks()`, result key
+`fight_ticks`), not from the match start. The host puts the release tick in START (`fight_tick`, capped at
+`NetLobby.MAX_FIGHT_TICK`), so both peers count from the same tick and their reports carry the same number; the 180 s time
+limit counts from there too. A peer whose build predates `fight_tick` ignores it and reports ticks from the match start
+(about 138 more): harmless, since `reconcile` only checks `ticks` against `MIN_RATED_TICKS`, so no protocol bump.
 
 ### Running NetSession over the peer the service gives
 
@@ -78,9 +90,33 @@ with `Rating.sign_report(match_key, report)` (HMAC-SHA256).
 Elo, 400-point scale, start 1000, floor 100. K = 40 for the first 10 rated games (shown with "?"), 24 until 40 games, then 16.
 A repeat-pair damper multiplies K by 1, 1, 0.5, 0.25, 0.1 for the n-th game against the same opponent within the last 12
 games (stops farming one friend). Matchmaking window: 100 points, widening 25 per second searched; either player's
-waiting time counts. Tiers (Roman): Tiro < 1000, Gladiator < 1200, Veteranus < 1400, Primus Palus < 1600, Summa Rudis.
+waiting time counts. Tiers (Roman): Tiro < 1000, Gladiator < 1200, Veteranus < 1400, Primus Palus < 1600, Rudiarius < 1800,
+Summa Rudis.
 Glicko-2 would model uncertainty better, but Elo with provisional K is enough for one mode and trivial to run on a server or
 inside an EOS stat.
+
+## The Quick Match flow (what the player sees)
+
+1. **Search**: a spinning comet with the search time inside, "Usual wait about 0:20" (this session's last searches, else
+   `expected_wait_s()`, else 30 s; past it: "Longer than usual. Widening the search..."), the rating range being
+   searched (`Rating.search_window`), the player's tier, rating, W - L and streak. Cancel, big.
+2. **Found -> confirm**: "Opponent found!" with their name, tier and rating for `QuickMatchFlow.FOUND_S`, then "Ready
+   your arms": the loadout stays editable, a READY button counts down `CONFIRM_S` (10 s) and readies by itself. Each
+   side sends a NetSession **NOTE** `{t: "ready"}` (`NetConfig.MSG_NOTE`) once ready and connected; the host starts
+   when both are ready, or `READY_GRACE_S` after its own ready (an older build without notes still plays). The
+   client's LOADOUT goes out before its ready note, so the host fights the arms the client confirmed.
+3. **Before the fight** a failure that is about that opponent (left, dropped, no answer within `JOIN_TIMEOUT_S`,
+   refused) puts the player straight back in the search with one line ("Verus left the arena. Back in the queue.");
+   a version mismatch, an offline service or a blocked port stops with a plain explanation and Search again.
+4. **Results screen** (MenuFlow's `MatchResults`, `game/ui/match/`, the same screen as offline fights: verdict, how
+   it ended, both fighters' numbers; its buttons are `OnlineScreen.result_entries()`, its note `result_body()`, and
+   `make_result_view()`'s RatingChangeView sits under the heading, redrawn on `result_changed`):
+   the rating counts to its new value (promotion flash, bar and points to the next tier, streak), or why the fight
+   was not rated. **Rematch**: either side asks (`{t: "rematch"}` note), the other sees "Verus wants a rematch!" and
+   Accept; the host starts once both asked; the question lapses after 30 s; leaving gives "Verus left. No rematch."
+   The rematch is rated when the backend derives a match id and key for it (`rematch_info`: Local and Stub do,
+   `<match id>-r<n>`; the pair damper keeps repeats cheap), else it is a friendly ("Friendly rematch: not rated").
+   "Find another opponent" goes back to the queue on a fresh connection.
 
 ## Resisting cheating
 
@@ -93,7 +129,7 @@ server each client runs it on the two reports it can read).
 | Host reports a win it did not get | Each client reports from its own view (the client from the host's OVER message). Reports that disagree are `disputed`: **nobody is rated**, and the pair is counted for review. |
 | Forged or replayed report | Every report is HMAC-signed with the per-match key and carries match id and player id; a bad signature is `voided`. A second report for a match is ignored. |
 | Leaving (menu Leave, window closed, killing the app) before the end | `left` report: **leaver loses**, at any time, whatever the other report says (`forfeit`). Both left: `voided`. |
-| Pulling the plug when losing | A `dropped` report alone is not rated; after the grace period the silent side is treated as forfeit. Count drops per player; a high drop rate is shadow-flagged (EOS/server side). |
+| Pulling the plug when losing | A `dropped` report alone is not rated before the grace period. After it, the silent side forfeits only to a reporter that was **ahead on points** when the link died (the report's winner, `MatchJudge.leader`) after 10 s; otherwise the match is void, so blocking the traffic while losing gains nothing. A `result` report beats a `dropped` one. Count drops per player; a high drop rate is shadow-flagged (EOS/server side). See `docs/net_security.md`. |
 | Instant "wins" / collusion by quitting | Results shorter than 10 s (`MIN_RATED_TICKS`) are `voided`. |
 | Win-trading with a friend | Repeat-pair damper; optionally require a minimum number of distinct opponents for the visible leaderboard. |
 | Fake winner id | A winner that is neither player is `disputed`. |
@@ -196,6 +232,34 @@ the **server client credentials**, takes both players' signed reports, runs `Rat
 (`POST /stats/v1/{deploymentId}/ingest/{accountId}`) with a server access token. That also lets it keep display names.
 Cost: one small VPS or a free-tier function.
 
+### Rematch on EOS (today unrated)
+
+A ranked (Quick Match) fight ends with no Rematch button: after the result both clients settle (`_settle`: each writes
+its signed report as a lobby member attribute, reads the other's, runs `Rating.reconcile`, lingers `REPORT_LINGER`) and
+then **leave the match lobby** (`_close_match(true, false)`). The lobby is what carries everything a rated fight needs:
+the match id (`lobby_id`), the per-match signing key (`ATTR_KEY`), both members (player ids) and the report channel. A
+NetSession rematch after that is a direct-lobby fight: no match id, no key, no reports, so it cannot be rated. The direct
+(IP) lobby's Rematch is unrated by design. What a **rated rematch** needs, in order of effort:
+
+1. **Keep the lobby (Tier 0, client-only).** After `_settle` do not close the match lobby; offer Rematch on both screens.
+   When both members set a `sb_rematch` member attribute (a nonce each), the lobby owner (the host) writes a new
+   `sb_mid` lobby attribute (`lobby_id + "#" + n`, n = rematch count) and a new `ATTR_KEY` derived from both nonces
+   (`HMAC(old_key, nonce_a + nonce_b)`, so neither side picks it alone), then sends START. Both sides clear their
+   `ATTR_REPORT` attribute before the fight and report under the new match id; `report_result` and `_reported` key on
+   it, so the existing duplicate rule still holds. The repeat-pair damper (K x 1, 1, 0.5, 0.25, 0.1 within 12 games)
+   already stops rematch farming. Leaving between fights is a plain leave (no report open, nobody rated). Cost: a
+   state in `ServiceEos` (matched, settled, rematch offered), a `match_info` refresh signal for OnlineScreen, and
+   the same P2P peer kept open (it is, until `_close_match(..., close_peer)`). Trust stays Tier 0: a modified client
+   can still lie in its own report, as in the first fight.
+2. **A verifier (Tier 1).** The small web service from "Tiers" above takes both signed reports per match id, runs
+   `Rating.reconcile`, and ingests the stats with server credentials. A rematch is then just a new match id the
+   verifier issues to the same pair (the host asks, the verifier answers both players with a new key), so the
+   lobby can be left or kept. This is the version a public leaderboard should use.
+
+Without one of these, an EOS rematch must stay unrated; the results screen already says so (no Rematch on ranked). Nothing
+here needs EOS calls from the cloud box: (1) is testable with `ServiceStub` (two reports per match id) and a `sim_net_quick`
+row that plays two fights in one lobby.
+
 ## Steam (alternative `ServiceSteam`)
 
 | `OnlineService` | Steamworks (via GodotSteam) |
@@ -247,3 +311,9 @@ guest Wi-Fi networks; that is what the real backend is for.
   loopback, take opposite roles, play a match over ENet and report; both must name the same winner and the ratings must move
   by exactly +/-20. Then the Quick Match menu against the stub: search, found + host listening, cancel, result line,
   leaving mid-fight loses.
+- `test_online_text`, `test_quick_match_flow`, `test_rematch_handshake`, `test_rating_change_view`: the plain-language
+  reasons, the screen's phases and clocks, the rematch handshake, the count-up and the leaderboard page helpers.
+- `sim_net_quick_flow`: two MenuFlows in one process, each with a ServiceStub, over a localhost ENet port: search,
+  found -> confirm (the client changes arms and readies, the host waits for its own ready) -> fight -> result with the
+  rating change -> rated rematch by handshake -> the client walks out and the host reads "Bo left the arena" -> back
+  to the queue; a confirm the other side abandons and a client that never connects both requeue with a plain line.

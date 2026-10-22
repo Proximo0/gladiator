@@ -7,7 +7,11 @@ extends Node3D
 ## robust for bot runs); with it on, the MatchPresenter adds arena visuals, sand, blood, sound, HUD and camera.
 ## Bot vs bot loops with a new seed after a pause when `loop` is on (default for presented bot vs bot).
 ##
-## setup(config) keys (all optional): mode, seed, loadouts, personalities, presentation, time_limit_s, loop.
+## setup(config) keys (all optional): mode, seed, loadouts, personalities, presentation, time_limit_s, loop,
+## fight_start_tick.
+## The fight clock (time limit, result "fight_ticks", ranked reports) runs from `fight_start_tick`, the tick the
+## pre-fight intro releases the fighters: fixed by the host's START online, set by `start_fight_clock` offline, and
+## held at 0 between `hold_fight_clock` and that call. Result "ticks" stays the match tick (replays, net sync).
 ## Pure helpers: MatchConfig (setup), MatchJudge (end rules), MatchStats (numbers).
 
 signal inputs_applied(tick: int, inputs: Array)
@@ -18,8 +22,6 @@ const WALL_SIDES: int = 48
 const WALL_DEPTH: float = 1.0
 const WALL_HEIGHT: float = 3.0
 const DEFAULT_PAUSE_S: float = 4.0
-const DEFAULT_SLOWMO_SCALE: float = 0.4
-const DEFAULT_SLOWMO_S: float = 1.0
 const VICTORY_DELAY_S: float = 1.4
 const PLAYER_DEVICE: String = "kbm"
 const PLAYER2_DEVICE: String = "pad1"
@@ -35,6 +37,7 @@ var presenter: MatchPresenter = null
 var result: Dictionary = {}
 var over: bool = false
 var names: Array = ["", ""]
+var fight_start_tick: int = 0  ## the tick the fight clock starts from (the intro's release); 0 with no intro
 
 var _judge: MatchJudge = null
 var _built: bool = false
@@ -45,7 +48,10 @@ var _pause_ticks: int = 0
 var _victory_at: int = -1
 var _start_msec: int = 0
 var _slowmo_until: int = -1
+var _slowmo_from: int = -1  ## tick the end slow motion started; its curve is FinisherCine's
+var _slowmo_kind: String = ""
 var _finisher_seen: String = ""
+var _clock_held: bool = false
 
 
 func _init() -> void:
@@ -173,6 +179,10 @@ func _start_match() -> void:
 	over = false
 	result = {}
 	stats = MatchStats.new()
+	stats.combo_gap_s = Tuning.shared().combo_gap_s
+	stats.combo_merge_s = Tuning.shared().combo_merge_s
+	fight_start_tick = int(config.get("fight_start_tick", 0))
+	_clock_held = false
 	_pause_ticks = 0
 	_victory_at = -1
 	_slowmo_until = -1
@@ -255,7 +265,7 @@ func _physics_process(delta: float) -> void:
 	stats.on_frames(frames, delta)
 	if presenter != null:
 		presenter.tick(frames, delta)
-	var verdict: Dictionary = {} if is_practice() else _judge.update(frames, tick, delta)
+	var verdict: Dictionary = {} if is_practice() else _judge.update(frames, fight_ticks(), delta)
 	if not verdict.is_empty():
 		_finish(verdict, frames)
 		_apply_idle()
@@ -266,6 +276,22 @@ func _physics_process(delta: float) -> void:
 	for i: int in 2:
 		(fighters[i] as Fighter).apply_input(inputs[i])
 	tick += 1
+
+
+## Ticks of fighting so far: from `fight_start_tick`, 0 before it and while the clock is held.
+func fight_ticks() -> int:
+	return 0 if _clock_held else maxi(tick - fight_start_tick, 0)
+
+
+## Offline intro: the fight clock waits (fight_ticks() stays 0) until `start_fight_clock`.
+func hold_fight_clock() -> void:
+	_clock_held = true
+
+
+## Offline intro release: the fight clock counts from this tick.
+func start_fight_clock() -> void:
+	_clock_held = false
+	fight_start_tick = tick
 
 
 func _collect_inputs(frames: Array, delta: float) -> Array:
@@ -297,7 +323,7 @@ func _finish(verdict: Dictionary, frames: Array) -> void:
 	for i: int in 2:
 		stats.blood_left[i] = (fighters[i] as Fighter).health.blood
 	result = {
-		"winner": int(verdict["winner"]), "reason": str(verdict["reason"]), "ticks": tick, "seed": seed,
+		"winner": int(verdict["winner"]), "reason": str(verdict["reason"]), "ticks": tick, "fight_ticks": fight_ticks(), "seed": seed,
 		"loadouts": (config["loadouts"] as Array).duplicate(true),
 		"personalities": (config["personalities"] as Array).duplicate(true), "stats": stats.to_dict(),
 	}
@@ -306,8 +332,10 @@ func _finish(verdict: Dictionary, frames: Array) -> void:
 	if presenter != null:
 		var slow: bool = _finisher_seen != "" or str(verdict["reason"]) == "ko"
 		if slow:
-			_slowmo_until = tick + roundi(_t("match_slowmo_s", DEFAULT_SLOWMO_S) / delta)
-			Engine.time_scale = _t("match_slowmo_scale", DEFAULT_SLOWMO_SCALE)
+			_slowmo_kind = _finisher_seen
+			_slowmo_from = tick
+			_slowmo_until = tick + roundi(FinisherCine.length_s(_slowmo_kind, Tuning.shared()) / delta)
+			Engine.time_scale = FinisherCine.time_scale_at(_slowmo_kind, 0.0, Tuning.shared())
 		if str(verdict["reason"]) == "ko":
 			presenter.announce("SOPITVS / Knocked out")
 		_victory_at = tick + roundi(VICTORY_DELAY_S / delta)
@@ -323,6 +351,9 @@ func _tick_after() -> void:
 	if _slowmo_until >= 0 and tick >= _slowmo_until:
 		_slowmo_until = -1
 		Engine.time_scale = 1.0
+	elif _slowmo_until >= 0:
+		# Ticks are real time (the physics step shrinks, the tick rate does not).
+		Engine.time_scale = FinisherCine.time_scale_at(_slowmo_kind, float(tick - _slowmo_from) / float(Engine.physics_ticks_per_second), Tuning.shared())
 	if _victory_at >= 0 and tick >= _victory_at:
 		_victory_at = -1
 		presenter.announce(MatchJudge.result_banner(result, names))
@@ -346,7 +377,7 @@ func _restart() -> void:
 # --- events ------------------------------------------------------------------------------------------------------
 
 func _on_hit(ev: Dictionary) -> void:
-	stats.on_hit(ev)
+	stats.on_hit(ev, float(tick) / float(Engine.physics_ticks_per_second))
 	var fin: String = str(ev.get("finisher", ""))
 	var tgt: int = int(ev.get("target", -1))
 	if tgt >= 0 and tgt < 2 and fighters.size() == 2:

@@ -2,12 +2,13 @@ extends "res://tests/sim/sim_base.gd"
 ## Online 1v1 over real ENet sockets on localhost, host and client in one process: the host match in the sim world,
 ## the client match in a SubViewport with its own World3D (own physics space). Both sides send through a fake link
 ## (50 ms one way, 0-33 ms jitter, 5% loss of unreliable packets). The host's side 0 is a CPU brain, the client's
-## side 1 is scripted: idle, walk forward, then swing. A 10 s time limit ends the match.
+## side 1 is scripted: idle, walk forward, then swing. A 10 s time limit, counted from START's fight tick (the intro
+## release, FIGHT_TICK), ends the match.
 ## Checks: lobby completes, the client gets snapshots, its inputs reach the host and move its fighter, both
 ## directions stay in the byte budget, both sides end with the same result, the client's last snapshot matches the
-## host's state at that tick within quantisation, and every hit/gore event arrives.
+## host's state at that tick within quantisation, every hit/gore event arrives, and both sides' fight clocks (result
+## "fight_ticks", what a ranked report sends) agree and start at the fight tick.
 
-const PORT: int = 17931
 const SEED: int = 4711
 const TIME_LIMIT_S: float = 10.0
 const LAG_TICKS: int = 3
@@ -17,6 +18,7 @@ const WALK_FROM: int = 60
 const WALK_TO: int = 240
 const CAP_TICKS: int = 1200
 const DISLODGE_TICK: int = 100
+const FIGHT_TICK: int = 138  ## the default 2.3 s intro at 60 Hz
 
 var _host: NetSession
 var _client: NetSession
@@ -29,7 +31,7 @@ var _sent_inputs: int = 0
 var present: bool = false  ## build both matches with presentation (arena, blood, sound, HUD, camera)
 var prefix: String = "net"
 var time_limit_s: float = TIME_LIMIT_S
-var port: int = PORT
+var port: int = net_port(0)
 var lag_ticks: int = LAG_TICKS
 var jitter_ticks: int = JITTER_TICKS
 var loss: float = LOSS
@@ -113,7 +115,7 @@ func run() -> Array:
 	if not lobby_ok:
 		await _teardown()
 		return rows
-	_host.start_match(SEED, time_limit_s)
+	_host.start_match(SEED, time_limit_s, FIGHT_TICK)
 	n = 0
 	var budget_ok: bool = true
 	var peak_out: float = 0.0
@@ -169,9 +171,11 @@ func run() -> Array:
 	var cr: Dictionary = _client_match.result if _client_match != null else {}
 	var same: bool = _host_match != null and _host_match.over and _client_match != null and _client_match.over \
 		and int(hr.get("winner", -9)) == int(cr.get("winner", -8)) and str(hr.get("reason", "a")) == str(cr.get("reason", "b")) \
-		and int(hr.get("ticks", -1)) == int(cr.get("ticks", -2))
-	rows.append(row(prefix + "_same_result", same, "host winner=%s reason=%s ticks=%s, client winner=%s reason=%s ticks=%s" % [
-		hr.get("winner"), hr.get("reason"), hr.get("ticks"), cr.get("winner"), cr.get("reason"), cr.get("ticks")]))
+		and int(hr.get("ticks", -1)) == int(cr.get("ticks", -2)) and not cr.has("suspect")
+	rows.append(row(prefix + "_same_result", same, "host winner=%s reason=%s ticks=%s, client winner=%s reason=%s ticks=%s%s" % [
+		hr.get("winner"), hr.get("reason"), hr.get("ticks"), cr.get("winner"), cr.get("reason"), cr.get("ticks"),
+		" SUSPECT " + str(cr["suspect"]) if cr.has("suspect") else ""]))
+	rows.append(_fight_clock_row(hr, cr))
 	# The client's newest snapshot against the host's state at that tick (quantisation only).
 	var worst: float = -1.0
 	var newest: int = -1
@@ -226,6 +230,22 @@ func _mismatch_row() -> Array:
 	h.queue_free()
 	await host.get_tree().physics_frame
 	return row(prefix + "_version_mismatch", ok, line)
+
+
+## Host and client count the same fight ticks from START's fight tick, and a time-limit end comes time_limit_s after
+## the release, not after the match start.
+func _fight_clock_row(hr: Dictionary, cr: Dictionary) -> Array:
+	if _host_match == null or _client_match == null:
+		return row(prefix + "_fight_clock", false, "no match on one side")
+	var hf: int = int(hr.get("fight_ticks", -1))
+	var cf: int = int(cr.get("fight_ticks", -2))
+	var starts: bool = _host_match.fight_start_tick == FIGHT_TICK and _client_match.fight_start_tick == FIGHT_TICK
+	var span_ok: bool = int(hr.get("ticks", 0)) - hf == FIGHT_TICK
+	var limit_ok: bool = str(hr.get("reason", "")) != "time" or hf == roundi(time_limit_s * float(NetConfig.TICK_HZ))
+	return row(prefix + "_fight_clock", hf == cf and hf > 0 and starts and span_ok and limit_ok,
+		"fight ticks host %d client %d (match ticks %s, fight start host %d client %d, reason %s, limit %.0f s = %d ticks)" % [
+		hf, cf, hr.get("ticks"), _host_match.fight_start_tick, _client_match.fight_start_tick, hr.get("reason"),
+		time_limit_s, roundi(time_limit_s * float(NetConfig.TICK_HZ))])
 
 
 ## Knocked-off armor flies as props on the client too: same count, same place (both have come to rest by now).

@@ -91,7 +91,25 @@ const MAX_LEN: Dictionary = {
 	"impact/leather_slap": 0.3, "gore/blood_spatter_sand": 0.4,
 }
 const CUT_FADE: float = 0.08
+## Voice stealing. A sound's priority is its tier x PRIO_TIER_DB plus how loud it starts (base + gain, dB) plus a
+## per-event boost, so a higher tier always outranks a lower one and within a tier the louder sound wins. A playing
+## sound loses PRIO_DECAY_DB_S per second of age (its attack is what matters; a tail can give way).
+## Tiers: 3 kill moments (gore stingers, death, finisher hits), 2 impacts and heavy pain, 1 movement and minor
+## voices, 0 the LOW_PRIORITY beds.
+const PRIO_TIER_DB: float = 40.0
+const PRIO_DECAY_DB_S: float = 24.0
+const TOP_TIER_KEYS: PackedStringArray = ["gore/sever", "gore/behead", "gore/gut", "gore/run_through", "voice/death_gurgle",
+	"crowd/finisher_roar", "crowd/chant"]
+## A finisher hit's layers are lifted one tier; heavy blunt weapon contacts get a few dB.
+const FINISHER_BOOST_DB: float = 40.0
+const HEAVY_BOOST_DB: float = 6.0
+## A sound at or above this priority must never be dropped (and is "important" in the sim's lost counts):
+## any tier 3 sound, or a tier 2 sound starting within 8 dB of full scale (a clang, a hard armor hit).
+const IMPORTANT_PRIO: float = 2.0 * PRIO_TIER_DB - 8.0
 const SPLATTER_MIN_TOTAL: float = 4.0
+## Bleed rate (L/s, the gore event's amount) a "bleed" wound needs to spurt like an artery. Below it (a split lip,
+## a shallow cut) there is no hiss: only severs and deep wounds spurt.
+const SPURT_MIN_BLEED: float = 0.06
 
 const ARMOR_RANK: Dictionary = {"": 0, "cloth": 1, "leather": 2, "mail": 3, "plate": 4}
 
@@ -440,6 +458,11 @@ static func whoosh_key_for(speed: float, weapon_id: String) -> String:
 	return base
 
 
+## True when a gore event should start an arterial spurt (a sever always; a bleed only when deep).
+static func spurts_for(kind: String, amount: float) -> bool:
+	return kind == "sever" or (kind == "bleed" and amount >= SPURT_MIN_BLEED)
+
+
 ## Seconds between arterial spurt pulses: faster when blood is high, slowing as it runs out.
 static func spurt_interval(blood_frac: float) -> float:
 	return lerpf(1.4, 0.7, clampf(blood_frac, 0.0, 1.0))
@@ -494,6 +517,57 @@ static func group_cap(group: String) -> int:
 	return int(GROUP_CAPS.get(group, 8))
 
 
+## Priority tier of a key (see PRIO_TIER_DB).
+static func priority_tier(key: String) -> int:
+	if TOP_TIER_KEYS.has(key):
+		return 3
+	if is_low_priority(key):
+		return 0
+	if key == "voice/pain_heavy" or key.begins_with("impact/") or key.begins_with("synth/") or key.begins_with("gore/"):
+		return 2
+	return 1
+
+
+## Priority of a sound as it starts: tier, start loudness (base + gain, dB), and the event's boost.
+static func priority(key: String, gain_db: float, boost_db: float = 0.0) -> float:
+	return float(priority_tier(key)) * PRIO_TIER_DB + base_db(key) + gain_db + boost_db
+
+
+## Priority of a playing sound `age` seconds after it started.
+static func decayed_priority(prio: float, age: float) -> float:
+	return prio - PRIO_DECAY_DB_S * maxf(age, 0.0)
+
+
+static func is_important(prio: float) -> bool:
+	return prio >= IMPORTANT_PRIO
+
+
+## Boost for every layer of a hit: finishers jump a tier, heavy blunt weapons get a few dB.
+static func hit_boost_db(ev: Dictionary) -> float:
+	if str(ev.get("finisher", "")) != "":
+		return FINISHER_BOOST_DB
+	if weapon_class(str(ev.get("weapon_id", ""))) == "heavy":
+		return HEAVY_BOOST_DB
+	return 0.0
+
+
+## Which playing voice to steal for a new sound of priority `prio`: the index into `prios` (the voices' decayed
+## priorities; -1.0e9 or less marks a slot that is not a candidate) of the lowest one, or -1 when even the lowest
+## outranks or ties the newcomer (then the newcomer is dropped instead). Ties keep the playing sound.
+static func steal_victim(prios: PackedFloat32Array, prio: float) -> int:
+	var best: int = -1
+	var best_p: float = INF
+	for i: int in range(prios.size()):
+		if prios[i] <= -1.0e8:
+			continue
+		if prios[i] < best_p:
+			best_p = prios[i]
+			best = i
+	if best < 0 or best_p >= prio:
+		return -1
+	return best
+
+
 ## Seconds a sound may play before it is faded out; 0 means to its natural end.
 static func max_len(key: String) -> float:
 	return float(MAX_LEN.get(key, 0.0))
@@ -514,6 +588,12 @@ static func limit_layers(layers: Array[Dictionary]) -> Array[Dictionary]:
 	for i: int in keep:
 		out.append(layers[i])
 	return out
+
+
+## Real seconds a physics step of `delta` game seconds took under `time_scale` (Engine.time_scale): sound plays in
+## real time, so crowd reaction delays must not stretch in slow motion. A time scale near 0 is clamped.
+static func real_delta(delta: float, time_scale: float) -> float:
+	return delta / maxf(time_scale, 0.01)
 
 
 ## Crowd-bus duck envelope: depth (dB, negative) reached `age` seconds after a stinger, with attack, hold, release.

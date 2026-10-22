@@ -4,7 +4,7 @@ Target: 60 fps on a mid PC and on mid Android phones (Compatibility / GLES3). Me
 
 ## tools/perf.sh
 
-`tools/perf.sh [--quality=0|1|2|all] [--seed=S] [--measure=FRAMES] [--heavy] [--hide=crowd,hud,shadow,sand,blood,fighters,stands]`
+`tools/perf.sh [--quality=0|1|2|all] [--seed=S] [--measure=FRAMES] [--heavy] [--hide=crowd,hud,shadow,sand,blood,fighters,stands] [--warmup=N] [--res=WxH] [--sweep] [--start] [--legacy|--no_warm|--no_prebuild]`
 
 Runs `tests/perf/perf.tscn`: one presented bot-vs-bot match (full arena, crowd, blood, sand FX, HUD) in a real window
 (xvfb on Linux, 320x180, software GL). It fast-forwards (8x time scale) until the first state it sees from
@@ -12,8 +12,8 @@ Runs `tests/perf/perf.tscn`: one presented bot-vs-bot match (full arena, crowd, 
 
 | column | meaning |
 | --- | --- |
-| proc_ms, p95 | engine process time per frame. **Under software GL this is the renderer, not the game: do not read it.** |
-| phys_ms | physics time per frame (Jolt, fighters) |
+| frame_ms, p50, p95, max | real frame time (ticks between frames, after `--warmup=N` frames, default 30). Replaces proc_ms: `Performance.TIME_PROCESS` holds the slowest frame of the last second, so a per-frame mean of it repeats spikes |
+| phys_ms | real physics time per frame: the physics callbacks plus Jolt's step, timed between marks |
 | fx_ms | script time of the blood step plus the sand `_process`, timed apart from the renderer (the number to trust for CPU) |
 | calls | draw calls per frame (includes shadow passes and the HUD) |
 | prims | Godot's primitive counter. **It counts a MultiMesh's mesh once per draw, not once per instance**, so it ignores the crowd and the grains; use `tris_drawn` below for the crowd |
@@ -154,7 +154,10 @@ Budgets (low must stay Android-safe; numbers from this table, software GL, so tr
 | worst-case fx_ms (script, per frame) | <= 8 | <= 15 | <= 35 (desktop) | met |
 | draw calls, whole scene | <= 250 | <= 320 | <= 400 | met |
 | MultiMesh triangles incl. crowd | <= 100k | <= 300k | <= 1.6M | met |
-| droplet triangles at peak | <= 50k | <= 200k | <= 1.5M | met (new) |
+| droplet triangles at peak | <= 50k | <= 10k | <= 10k | met (impostors, second pass) |
+| live droplets (cap) | 600 | 2400 | 3600 | cap, second pass |
+| sand texels stamped per frame (blood) | <= 1.7k | <= 3.4k | <= 5.4k | met (budget + one stamp; second pass) |
+| worst blood frame on a real PC, high | | | <= 8 ms | to re-measure (was a 40 ms spike) |
 | VRAM | <= 32 MB | <= 48 MB | <= 64 MB | met (new) |
 
 Fixes, each at the traced mechanism:
@@ -173,6 +176,93 @@ Fixes, each at the traced mechanism:
 Not changed: high still draws 1.25M droplet triangles at the peak of a double gore (fine on a desktop GPU, the thing to
 watch on a weak iGPU).
 
+## Sand stamping spike, droplet impostors, droplet cap (2026-10-22, second pass)
+
+Real GPU (owner's RTX 5050 laptop, 1920x1080, heavy case, before this pass), high: frame 40.9 avg / 86.5 p95 ms,
+blood 4.5 / 8.1 ms with a 40 ms spike, flush_splats 1.3, emit 1.8, sim 0.64, flush 0.5; 2,255 droplets x 336
+triangles = 758k triangles (75 percent of all instanced ones); low: frame 35.6, fx 1.5, blood 1.2.
+
+Measured here with a headless blood bench (BloodFx at high, a stand-in sand that runs the real
+`SandMap.apply_blood` at 40 texels/m, both "fighters" beheaded, gutted, severed and cut at frame 10, 300 frames).
+Texel counts are exact and repeatable; milliseconds are not (the box ran at load 10-30 during this pass, so single
+frames stalled 100+ ms in any section): read the texels.
+
+| high, heavy bench | before | after |
+| --- | --- | --- |
+| most sand texels stamped in one frame | 80,033 | 4,685 |
+| largest single sand stamp (radius) | 1.71 m | 0.18 m |
+| most litres piled in one 7 cm splat cell | 52.8 | 26.8 (decal only) |
+| sand texels stamped over the 300 frames | 1.13M | 0.56M |
+| worst flush_splats frame (ms, loaded llvmpipe) | 93-160 | 8-24 (noise bound) |
+| flush_splats mean (ms, same) | 3.7-4.9 | 1.9-2.6 |
+| live droplet cap | 5000 | 3600 |
+| triangles per droplet (medium / high) | 160 / 336 | 2 / 2 |
+| droplet triangles at a 3,600-drop peak | 1.21M | 7.2k |
+
+Mechanisms and fixes:
+
+1. **The blood spike was one giant sand stamp.** Landed drops add their litres to a 7 cm cell, and each drop counts
+   12x (`VOLUME_BOOST`). A fountain pouring on one spot piled up to 68 L in a cell, which `_flush_splats` stamped as
+   one 1.7-2.3 m splat: 40-80k texels in a single `apply_blood` call. The old per-frame budget charged area in
+   metres and always let the first splat of a frame through, so the spike went straight past it. Now the budget is
+   in texels the stamp really walks (`BloodMath.splat_cost`: the square `apply_blood` loops over, plus the per-call
+   edge table), a stamp carries at most `SPLAT_SAND_MAX_LITRES` (0.35 L, about 0.18 m; the ground decal still gets
+   all the litres, so the pool reads as big), and a splat too big for what is left waits while smaller ones go.
+2. **Two sand stamps skipped the budget.** The fountain's pool pour (every 0.25 s per fountain) and the gut-spill
+   smears called `sand.add_blood` directly with any size. Both now go through the splat cells (`_add_splat`).
+3. **Droplet impostors on medium and high.** Droplets are a few pixels wide; the 336-triangle teardrop only cost
+   vertices. `blood_drop_quad.gdshader` lays one quad per drop along its screen-space velocity, cuts the teardrop
+   out in the fragment (round head, elliptical tail) and builds the rounded normal, so the silhouette matches the
+   mesh at any distance (compared side by side in renders). Low keeps the 84-triangle mesh: the impostor discards
+   fragments, which tile GPUs on phones pay more for. `BloodMesh.IMPOSTOR_MIN_LEVEL` picks the switch.
+4. **Live droplet cap at high 5000 -> 3600** (`BloodMath.BUDGETS`). The real-PC heavy peak was 2,255, so a normal
+   fight's spray is untouched; the cap bounds the worst case's sim and upload cost.
+
+Look change to check: the impostor's normals face the camera properly; the old mesh shader's lit normals mostly
+point up (rendered as colour), so the old drops read darker (mean drop red 128 vs 195 in the same close-up render).
+Low still uses the mesh shader and so looks darker than medium and high. If the darker look is wanted, lower
+`blood_bright` in the palettes rather than going back to the mesh.
+
+Not changed (outside game/fx/blood): `SandMap.apply_blood` builds its 256-entry edge table (768 `sin`) on every
+call, about 160 us of a 170-290 us small splat under GDScript. Caching the table per quantized seed would cut small
+stamps by 60-90 percent.
+
+## Frame sections, gore spawn and match-start hitches (2026-10-22, third pass)
+
+`tools/perf.sh` now prints a real-time breakdown per frame (`frame ms (real)`: physics callbacks, Jolt, process
+scripts, render/swap/sync; `script sections`: every script `_process` by file, the sound director, both fighters'
+steps (`f_*`, `debug_frame`), the presenter's sand tick), `gore spawn` (script ms of the injected cuts and the next
+8 frames' wall ms), rigid body counts, and two modes: `--start` (three Match starts as the menu makes them, a forearm
+cut at frame 60 of each: setup ms, first-10-frames and gore-10-frames wall ms) and `--sweep` (30 frames with each part
+hidden: render cost per part). `--legacy` / `--no_warm` / `--no_prebuild` switch the fixes below off for A/B.
+
+Cloud numbers (software GL, 320x180, `LP_NUM_THREADS=1`, 7 workers on 4 cores: read ratios). In the heavy case all
+script is small (process scripts 7.7 ms of a 331 ms frame, physics 3.1 ms of which Jolt 1.0); the rest is llvmpipe.
+
+| | before | after | ratio |
+| --- | --- | --- | --- |
+| `--heavy` gore spawn, fighter script (2 beheadings + 2 forearm cuts) | 38.6 ms | 2.1 ms | 18x |
+| `--start` gore cut, script (one forearm) | 6.7-7.8 ms | 0.7-0.9 ms | ~9x |
+| `--start` worst of the 10 frames after the first cut | 478-2726 ms | 225-591 ms | ~4x |
+| `--start` Match.setup, 2nd and 3rd match (median of 4) | ~930 ms | ~85 ms | ~11x |
+| `--start` sum of the first 10 frames, 2nd and 3rd match | 5.1-19.1 s | 1.9-5.3 s | ~4x |
+| first match of the session, first 10 frames | 29.3 s | 34.9 s | warm-up paid once, here |
+
+1. **Cut caps built in the frame of the blow** (glb cap instance and the procedural `CapMesh` face, ~10 ms per cut
+   here). `FighterArt.prebuild_step` builds every possible cap ahead, one per frame from the match start (18 per
+   fighter, presentation only, off headless); a cut attaches ready caps. Gore faces share one material per fighter.
+2. **First-use shader compiles** (first beheading, a weapon or outfit not seen before). `FighterWarmup` (started by
+   `MatchPresenter.build`, once per session) draws every outfit, armor kind, weapon and gore cap plus a BloodFx
+   beheading/gut/cut/wound for 8 frames in a 64 px off-screen SubViewport with its own world, and keeps the drawn
+   materials alive (a StandardMaterial3D shader variant dies with its last material).
+3. **Per-match rebuilds.** The tuning panel (~1,500 Controls) is built on its first toggle. The Arena (stands,
+   crowd, sand) outlives its Match: the presenter keeps it out of the tree on exit and the next Match at the same
+   quality takes it back with the sand cleared (`MatchPresenter._spare_arena`, not in headless runs).
+
+Not changed: physics. Measured in real time it is 3.1 ms per frame here (Jolt 1.0 ms with 30 bodies, 1 asleep);
+the "8-11 ms" figure came from the per-second-max monitor. Dead fighters keep their limp PD torques, so their parts
+never sleep; letting them sleep would change post-death physics and the state hashes.
+
 ## Options menu
 
 Options has one "Graphics: Low / Medium / High" picker (`MenuSettings.gfx_quality`, saved under `[graphics]
@@ -189,3 +279,18 @@ F7 MSAA toggle turns MSAA on to `GfxQuality.MSAA` for the current level, so it s
 - Do not hide geometry by scaling to zero in the vertex shader; the vertices are still processed.
 - Time script cost on its own (see `fx_ms`); software GL frame time says nothing about a phone.
 - Re-run `tools/perf.sh --quality=all` after adding an effect and put the new row in this file.
+
+## Arena look pass (2026-10-22, software GL, seed 1002, CPU contended)
+
+| | before | after |
+|---|---|---|
+| Low: draw calls | 255 | 215 |
+| Low: crowd triangles drawn | 28k | 39.7k (Houdini lod1/lod2 plus 2-triangle impostor cards) |
+| Low `--heavy`: calls / MultiMesh triangles / fx_ms (budget 250 / 100k / 8) | 216 / 77k / 7.54 | 227 / 95.9k / 5.11 |
+| High: draw calls | 341 | 317 |
+| High: crowd triangles drawn | 231k | 231.7k |
+| High: MultiMesh triangles / VRAM | - | 289k / 26.2 MB |
+
+`CROWD_TIER_LOD` level 1 now means Houdini lod2 (about 30% of the triangles, heads kept) and level 2 a 2-triangle
+impostor card. Dressing (`ArenaDressing`) costs about 20 draw calls on high and 12 on low; on low the standards and
+braziers fall back to merged code meshes and statues and the trophy are skipped (`LOW_CODE_PROPS`).

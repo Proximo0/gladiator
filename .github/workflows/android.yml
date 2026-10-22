@@ -17,10 +17,12 @@ env:
   GODOT_VERSION: 4.7.2
   BUILD_TOOLS: 35.0.1
   API_LEVEL: 30
+  EMU_MAX_LIGHTS: ""  # set to cap rendering/limits/opengl/max_renderable_lights in the CI copy only
+  EMU_GPU: swangle_indirect
 
 jobs:
   emulator:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +30,8 @@ jobs:
       - name: Cache export templates
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/godot-templates
-            ~/.local/share/godot/export_templates
-          key: godot-android-templates-${{ env.GODOT_VERSION }}
+          path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          key: godot-android-templates-only-${{ env.GODOT_VERSION }}
       - name: Android SDK pieces and JDK 17
         shell: bash
         run: |
@@ -58,7 +58,19 @@ jobs:
               assert n == 1, k
           open(p, "w").write(head + sep + block + tail)
           PY
-          git diff --stat export_presets.cfg
+          # Optional emulator-only light cap (off by default). With the old swiftshader_indirect GPU every lit scene
+          # shader failed to link (uniforms over GL_MAX_FRAGMENT_UNIFORM_VECTORS=261); swangle_indirect has none.
+          # See docs/android.md.
+          [[ -z "${EMU_MAX_LIGHTS}" ]] || python3 -I - project.godot "${EMU_MAX_LIGHTS}" <<'PY2'
+          import sys
+          p, n = sys.argv[1], sys.argv[2]
+          text = open(p).read()
+          key = "limits/opengl/max_renderable_lights="
+          assert key not in text, "project sets max_renderable_lights; update the CI patch"
+          text = text.replace("[rendering]\n", "[rendering]\n" + key + n + "\n", 1)
+          open(p, "w").write(text)
+          PY2
+          git diff --stat export_presets.cfg project.godot
       - name: Import and export APK
         shell: bash
         run: |
@@ -80,8 +92,24 @@ jobs:
           ram-size: 4096M
           cores: 4
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu ${{ env.EMU_GPU }} -no-snapshot -noaudio -no-boot-anim
           script: tools/android_ci_run.sh build/Sandblood-android.apk out/android 1500
+      - name: Show the Godot log and a small fight screenshot
+        if: always()
+        shell: bash
+        run: |
+          ls -la out/android
+          cat out/android/progress.txt 2>/dev/null || true
+          echo "--- godot logcat (first 150 lines) ---"
+          grep -vE "SceneShaderGLES3|GL_MAX_FRAGMENT|shader_gles3|Method/function failed|^.{0,40}godot +\( *[0-9]+\): *([0-9]+: *)?$" out/android/godot.txt | head -n 80 || true
+          echo "shader link failures: $(grep -c 'Program linking failed' out/android/godot.txt || true)"
+          # Artifacts are not always reachable from where the log is read, so the game's 256 px mid-fight JPEG
+          # goes into the log as base64 between markers (decode with base64 -d).
+          if [[ -s out/android/fight_small.jpg ]]; then
+            echo "FIGHT_JPG_BEGIN"; base64 -w 120 out/android/fight_small.jpg; echo "FIGHT_JPG_END"
+          else
+            echo "no fight_small.jpg"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -89,4 +117,5 @@ jobs:
           path: |
             out/android/*.txt
             out/android/*.png
+            out/android/*.jpg
           if-no-files-found: ignore

@@ -2,5 +2,5 @@
 
 [ext_resource type="Script" path="res://tests/render/armor_capture.gd" id="1"]
 
-[node name="ArmorCapture" type="Node3D"]
+[node name="ArmorCapture" type="Node"]
 script = ExtResource("1")

@@ -3,7 +3,7 @@ extends RefCounted
 ## Client side of the input stream: remembers the FighterInput of each local tick and packs the newest few into one
 ## MSG_INPUT packet (newest first), so any one packet that arrives carries the ticks lost before it. unpack() is the
 ## host side. Wire: type u8, newest tick u32, count u8, then count x (move_x, move_y, aim_x, aim_y as int16, buttons
-## u16) = 6 + 10 x count bytes.
+## u16, FighterInput bits up to CLINCH 2048) = 6 + 10 x count bytes.
 
 const HEADER_BYTES: int = 6
 const ENTRY_BYTES: int = 10

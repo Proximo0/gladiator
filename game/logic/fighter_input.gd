@@ -14,6 +14,9 @@ const CROUCH: int = 32
 const GRAB: int = 64  ## pick up / grab
 const TURN_LOCK: int = 128  ## hold facing; otherwise the body turns toward the opponent
 const ROLL: int = 256  ## dodge roll on the press, toward the move direction (backward with none)
+const SHOVE: int = 512  ## shove on the press: free hand (or shield, or shoulder) drives into the foe
+const KICK: int = 1024  ## front kick with the lead leg on the press
+const CLINCH: int = 2048  ## free hand grabs the foe's weapon arm (or head, aiming high) and holds while held
 
 var move_x: int = 0  ## strafe right, -1000..1000
 var move_y: int = 0  ## forward, -1000..1000

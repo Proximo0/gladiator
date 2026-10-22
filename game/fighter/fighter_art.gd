@@ -50,6 +50,10 @@ var _armor: StandardMaterial3D = null  ## the outfit palette's armor material (p
 var _team: StandardMaterial3D = null  ## side colour for "cloth" surfaces of outfit art (palette cloth is for the fallback)
 var _blood: BloodPalette = BloodPalette.red()  ## inner colours of cut caps (flesh, fat, bone or chitin)
 var _cap_mats: Dictionary = {}  ## cap surface kind -> tinted material, shared by every cap of this fighter
+var _face_mat: StandardMaterial3D = null  ## shared by every gore face of this fighter
+var _ready_caps: Dictionary = {}  ## key -> cap built ahead by prebuild_step, outside the tree until a cut uses it
+var _prebuild_i: int = 0
+var _prebuild_specs: Array = []
 var _alien_mats: Dictionary = {}  ## glb material name -> override (see ALIEN_SKIN_LIFT, ALIEN_EYE)
 
 
@@ -272,14 +276,26 @@ static func _plane(b: Node3D, dir: Vector3) -> Vector3:
 
 
 func _add_cap(b: Node3D, key: String, asset: String, at: Vector3, normal: Vector3) -> void:
-	var cap: Node3D = _instance(asset, "", true)
-	if cap == null:
-		return
-	cap.name = "Cap_" + key
 	var look: Node3D = b.get_node_or_null("Look") as Node3D
 	if look == null:
-		cap.free()
 		return
+	var cap: Node3D = _ready_caps.get(key) as Node3D
+	_ready_caps.erase(key)
+	if cap == null or not is_instance_valid(cap):
+		cap = _build_cap(b, key, asset, at, normal)
+	if cap == null:
+		return
+	look.add_child(cap)
+	apply_shadow(cap, str(b.name))
+	_caps[key] = cap
+
+
+## One cut cap for body `b` (glb cap, hidden, plus the gore face), positioned in the Look frame, not yet in the tree.
+func _build_cap(b: Node3D, key: String, asset: String, at: Vector3, normal: Vector3) -> Node3D:
+	var cap: Node3D = _instance(asset, "", true)
+	if cap == null:
+		return null
+	cap.name = "Cap_" + key
 	var basis := Basis(Quaternion(Vector3.UP, normal.normalized()))
 	var half_w: float = 0.0
 	for mi: Node in cap.find_children("*", "MeshInstance3D", true, false):
@@ -289,9 +305,7 @@ func _add_cap(b: Node3D, key: String, asset: String, at: Vector3, normal: Vector
 	half_w = half_w if half_w > 0.0 else 0.058
 	_cap_face(cap, half_w * CAP_WIDEN, key, _local_down(b, basis))
 	cap.transform = Transform3D(basis, at - normal.normalized() * CAP_SINK)
-	look.add_child(cap)
-	apply_shadow(cap, str(b.name))
-	_caps[key] = cap
+	return cap
 
 
 ## World down in the frame of a cap that sits on body `b` with orientation `cap_basis` (so loose strands can hang).
@@ -310,14 +324,17 @@ func _cap_face(cap: Node3D, radius: float, key: String, down: Vector3 = Vector3.
 		var k: float = float(d[3])
 		pal[str(d[0])] = Color(base.r * k, base.g * k, base.b * k, 1.0)
 	pal["skin"] = _skin.albedo_color if _skin != null else Color(0.8, 0.6, 0.5)
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.62
-	mat.metallic_specular = 0.06
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	if _blood.emission > 0.0:
-		mat.emission_enabled = true
-		mat.emission = (pal["flesh"] as Color) * _blood.emission * 0.4
+	if _face_mat == null:
+		# One material for every gore face of this fighter (its palette never changes).
+		_face_mat = StandardMaterial3D.new()
+		_face_mat.vertex_color_use_as_albedo = true
+		_face_mat.roughness = 0.62
+		_face_mat.metallic_specular = 0.06
+		_face_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		if _blood.emission > 0.0:
+			_face_mat.emission_enabled = true
+			_face_mat.emission = (pal["flesh"] as Color) * _blood.emission * 0.4
+	var mat: StandardMaterial3D = _face_mat
 	var mi: MeshInstance3D = MeshInstance3D.new()
 	mi.name = "Face"
 	mi.mesh = CapMesh.build(radius, radius / CAP_WIDEN, pal, key.hash(), down)
@@ -329,13 +346,55 @@ func _cap_face(cap: Node3D, radius: float, key: String, down: Vector3 = Vector3.
 ## Part `n` was cut from its parent: a cap on the stump (parent side, facing the piece) and one on the piece.
 ## `parts` maps names to bodies. Cap positions follow the joint pivot and the art's end faces.
 func cut(parts: Dictionary, n: String) -> void:
+	if _caps.has(n + "_piece"):
+		return
+	for sp: Array in _cut_specs(parts, n):
+		_add_cap(sp[0], sp[1], sp[2], sp[3], sp[4])
+
+
+## Builds one not-yet-built cap of a possible cut ahead of time (call once per frame from the start of a match), so a
+## sever only attaches ready caps instead of instancing art and building gore meshes in the frame of the blow (the
+## stall at a beheading). Returns false when every cap is built. Visual only.
+func prebuild_step(parts: Dictionary) -> bool:
+	while _prebuild_i < FighterRig.PARTS.size():
+		var n: String = str(FighterRig.PARTS[_prebuild_i]["name"])
+		if _prebuild_specs.is_empty():
+			if n != "torso" and not _caps.has(n + "_piece"):  # the torso is never cut off
+				_prebuild_specs = _cut_specs(parts, n)
+		if _prebuild_specs.is_empty():
+			_prebuild_i += 1
+			continue
+		var sp: Array = _prebuild_specs.pop_front()
+		if _prebuild_specs.is_empty():
+			_prebuild_i += 1
+		var key: String = sp[1]
+		if _ready_caps.has(key) or _caps.has(key):
+			continue
+		var cap: Node3D = _build_cap(sp[0], key, sp[2], sp[3], sp[4])
+		if cap != null:
+			_ready_caps[key] = cap
+		return true
+	return false
+
+
+## Frees the prebuilt caps that were never used (they are outside the tree). Call when the fighter leaves.
+func free_ready_caps() -> void:
+	for k: String in _ready_caps:
+		var c: Node = _ready_caps[k]
+		if is_instance_valid(c):
+			c.free()
+	_ready_caps.clear()
+
+
+## The two caps of a cut of part `n` as [body, key, asset, at, normal] (piece first), or [] when it has none.
+func _cut_specs(parts: Dictionary, n: String) -> Array:
 	var asset: String = BodyLook.cap_for(n, _outfit)
 	var pd: Dictionary = FighterRig.part(n)
-	if asset == "" or pd.is_empty() or _caps.has(n + "_piece"):
-		return
+	if asset == "" or pd.is_empty() or str(pd["parent"]) == "":
+		return []
 	var pn: String = str(pd["parent"])
 	if not parts.has(n) or not parts.has(pn):
-		return
+		return []
 	var pivot: Vector3 = pd["pivot"]
 	var piece_c: Vector3 = pd["center"]
 	var parent_c: Vector3 = FighterRig.part(pn)["center"]
@@ -358,8 +417,7 @@ func cut(parts: Dictionary, n: String) -> void:
 	if not has_art:
 		at_piece = pivot - piece_c
 		at_stump = pivot - parent_c
-	_add_cap(piece_b, n + "_piece", asset, at_piece, -toward_piece)
-	_add_cap(parent_b, n + "_stump", asset, at_stump, toward_piece)
+	return [[piece_b, n + "_piece", asset, at_piece, -toward_piece], [parent_b, n + "_stump", asset, at_stump, toward_piece]]
 
 
 ## Undo `cut` (a restored snapshot reattached the part).
@@ -425,6 +483,7 @@ static func armor_fit(pn: String) -> Dictionary:
 
 
 const ARMOR_ART_DIR: String = "res://assets/armor/"
+const ARMOR_ART_METALLIC: float = 0.6
 static var _armor_art: Dictionary = {}  ## id -> opaque Mesh (or null when the asset is missing)
 
 
@@ -461,6 +520,8 @@ static func _load_armor_art(path: String) -> Mesh:
 				var o: BaseMaterial3D = bm.duplicate() as BaseMaterial3D
 				o.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 				o.albedo_color.a = 1.0
+				# Fully metallic bronze mirrored the pale sky and read as silver: keep some of its own colour.
+				o.metallic = minf(o.metallic, ARMOR_ART_METALLIC)
 				out.surface_set_material(s, o)
 	root.free()
 	return out

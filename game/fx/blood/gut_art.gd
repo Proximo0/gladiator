@@ -9,6 +9,10 @@ extends RefCounted
 
 const DIR: String = "res://assets/gore/"
 const FILES: PackedStringArray = ["gut_rope", "gut_torn", "gut_cluster", "gut_coil", "liver", "stomach", "heart"]
+## A rope link uses the middle of the 0.3 m tile only (|y| <= this: full-width ends and one crease between), so a
+## 0.15 m link keeps about the authored bump spacing and neighbouring links meet at their widest, without notches.
+const LINK_CROP: float = 0.034
+const LINK_CAP: float = 0.5  ## the link's rounded end caps reach this far past its ends (unit frame, half length 1)
 const ROT_Y_TO_Z: Basis = Basis(Vector3(1, 0, 0), Vector3(0, 0, 1), Vector3(0, -1, 0))  ## columns: y -> z, z -> -y
 
 static var _meshes: Array = []  ## by GutSim kind: Mesh
@@ -51,6 +55,8 @@ static func _build(kind: int) -> Dictionary:
 	var src: Dictionary = _load_merged(DIR + FILES[kind] + ".glb")
 	if src.is_empty():
 		src = _sphere()
+	elif kind == GutSim.K_LINK:
+		src = _crop_y(src, LINK_CROP)
 	var verts: PackedVector3Array = src["v"]
 	var norms: PackedVector3Array = src["n"]
 	var rot: Basis = ROT_Y_TO_Z if kind == GutSim.K_LINK or kind == GutSim.K_TORN else Basis.IDENTITY
@@ -87,6 +93,11 @@ static func _build(kind: int) -> Dictionary:
 	for i: int in verts.size():
 		verts[i] = (verts[i] + off) * sc
 		norms[i] = (norms[i] * inv).normalized()
+	if kind == GutSim.K_LINK:  # round the open tube ends so links bend like sausages, not cut pipes
+		var capped: Dictionary = _cap_ends({"v": verts, "n": norms, "c": src["c"], "i": src["i"]}, LINK_CAP)
+		verts = capped["v"]
+		norms = capped["n"]
+		src = capped
 	var arrays: Array = []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
@@ -144,6 +155,82 @@ static func _load_merged(path: String) -> Dictionary:
 		out = {"v": v, "n": nn, "c": c, "i": ix}
 	root.free()
 	return out
+
+
+## Only the triangles of `src` whose corners all lie within |y| <= `lim`, re-indexed.
+static func _crop_y(src: Dictionary, lim: float) -> Dictionary:
+	var v: PackedVector3Array = src["v"]
+	var n: PackedVector3Array = src["n"]
+	var c: PackedColorArray = src["c"]
+	var ix: PackedInt32Array = src["i"]
+	var remap: PackedInt32Array = PackedInt32Array()
+	remap.resize(v.size())
+	remap.fill(-1)
+	var ov: PackedVector3Array = PackedVector3Array()
+	var on: PackedVector3Array = PackedVector3Array()
+	var oc: PackedColorArray = PackedColorArray()
+	var oi: PackedInt32Array = PackedInt32Array()
+	for t: int in range(0, ix.size() - 2, 3):
+		if absf(v[ix[t]].y) > lim or absf(v[ix[t + 1]].y) > lim or absf(v[ix[t + 2]].y) > lim:
+			continue
+		for k: int in 3:
+			var vi: int = ix[t + k]
+			if remap[vi] < 0:
+				remap[vi] = ov.size()
+				ov.append(v[vi])
+				on.append(n[vi])
+				oc.append(c[vi])
+			oi.append(remap[vi])
+	if oi.size() < 3:
+		return src
+	return {"v": ov, "n": on, "c": oc, "i": oi}
+
+
+## Closes each open end of a tube along Z (unit frame, ends at z -1 and 1) with a dome: a fan from every boundary edge
+## to a pole `reach` beyond the end, plus a ring halfway up so it reads round.
+static func _cap_ends(src: Dictionary, reach: float) -> Dictionary:
+	var v: PackedVector3Array = src["v"]
+	var n: PackedVector3Array = src["n"]
+	var c: PackedColorArray = src["c"]
+	var ix: PackedInt32Array = src["i"]
+	var edges: Dictionary = {}  ## Vector2i(a, b) in triangle order -> uses
+	for t: int in range(0, ix.size() - 2, 3):
+		for k: int in 3:
+			var a: int = ix[t + k]
+			var b: int = ix[t + (k + 1) % 3]
+			var key: Vector2i = Vector2i(mini(a, b), maxi(a, b))
+			if edges.has(key):
+				edges[key] = Vector2i(-1, -1)
+			else:
+				edges[key] = Vector2i(a, b)
+	var poles: Array[int] = []
+	var mids: Dictionary = {}  ## boundary vertex -> its mid-dome vertex
+	for e_sign: float in [-1.0, 1.0]:
+		var pole: int = v.size()
+		v.append(Vector3(0, 0, e_sign * (1.0 + reach)))
+		n.append(Vector3(0, 0, e_sign))
+		c.append(c[0] if c.size() > 0 else Color.WHITE)
+		poles.append(pole)
+	for key: Vector2i in edges:
+		var e: Vector2i = edges[key]
+		if e.x < 0:
+			continue
+		var side: int = 1 if v[e.x].z > 0.0 else 0
+		var pole_i: int = poles[side]
+		var sgn: float = 1.0 if side == 1 else -1.0
+		var m: Array[int] = []
+		for vi: int in [e.x, e.y]:
+			if not mids.has(vi):
+				var p: Vector3 = v[vi]
+				var r: Vector2 = Vector2(p.x, p.y) * 0.72
+				mids[vi] = v.size()
+				v.append(Vector3(r.x, r.y, sgn * (1.0 + reach * 0.7)))
+				n.append((Vector3(p.x, p.y, 0.0).normalized() + Vector3(0, 0, sgn)).normalized())
+				c.append(c[vi])
+			m.append(int(mids[vi]))
+		# the open edge runs a -> b in its triangle, so the cap uses b -> a
+		ix.append_array(PackedInt32Array([e.y, e.x, m[0], e.y, m[0], m[1], m[1], m[0], pole_i]))
+	return {"v": v, "n": n, "c": c, "i": ix}
 
 
 static func _sphere() -> Dictionary:

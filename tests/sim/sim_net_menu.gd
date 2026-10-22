@@ -4,7 +4,6 @@ extends "res://tests/sim/sim_base.gd"
 ## lobby, the host presses FIGHT and both build their match with the right driver; then the client leaves mid-fight
 ## and the host is told the connection closed.
 
-const PORT: int = 17941
 const FIGHT_TICKS: int = 180
 
 var _vp: SubViewport
@@ -40,11 +39,11 @@ func run() -> Array:
 
 	fh.call("_on_title", "online")
 	var hs: OnlineScreen = fh.get("_online")
-	hs.get("_port_edit").text = str(PORT)
+	hs.get("_port_edit").text = str(net_port(45))
 	hs.call("_on_host")
 	fc.call("_on_title", "online")
 	var cs: OnlineScreen = fc.get("_online")
-	cs.get("_addr_edit").text = "127.0.0.1:%d" % PORT
+	cs.get("_addr_edit").text = "127.0.0.1:%d" % net_port(45)
 	cs.call("_on_join")
 	var hn: NetSession = fh.get("_net")
 	var cn: NetSession = fc.get("_net")

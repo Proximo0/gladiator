@@ -103,9 +103,9 @@ func _protocol_rows() -> Array:
 	world.add_child(h)
 	var said: Array = []
 	h.status_changed.connect(func(t: String) -> void: said.append(t))
-	h.host(port + 40, "127.0.0.1")
+	h.host(net_port(40), "127.0.0.1")
 	var raw := ENetMultiplayerPeer.new()
-	raw.create_client("127.0.0.1", port + 40)
+	raw.create_client("127.0.0.1", net_port(40))
 	var reply: Dictionary = {}
 	var sent: bool = false
 	for _i: int in range(300):
@@ -138,10 +138,10 @@ func _protocol_rows() -> Array:
 ## A client that joins a protocol-1 host (raw peer answering with an accepted v1 LOBBY) leaves with the same readable line.
 func _old_host_row() -> Array:
 	var raw := ENetMultiplayerPeer.new()
-	raw.create_server(port + 41, 1)
+	raw.create_server(net_port(41), 1)
 	var c := NetSession.new()
 	world.add_child(c)
-	c.join("127.0.0.1", port + 41)
+	c.join("127.0.0.1", net_port(41))
 	var answered: bool = false
 	for _i: int in range(300):
 		await host.get_tree().physics_frame

@@ -4,8 +4,9 @@ extends Node
 ## `android_ci` boots straight into one presented bot vs bot match (Flags adds --mode=bot_vs_bot --android_ci
 ## --scripted). This node watches that match and prints to logcat (tag "godot"):
 ##   ANDROID_CI start renderer=<..> adapter=<..> size=<w>x<h>
-##   ANDROID_CI shot tick=<n>                      the workflow takes a screenshot when it sees this
+##   ANDROID_CI shot tick=<n> path=<png>           a 640 px frame saved to user:// (the workflow pulls it with run-as)
 ##   ANDROID_CI progress tick=<n> wall_s=<s> fps=<f>
+##   ANDROID_CI hitch tick=<n> wall_s=<s> ms=<frame ms>  the first HITCH_LINES frames over HITCH_MS (all are counted)
 ##   ANDROID_CI PASS|FAIL winner=.. reason=.. ticks=.. hits=.. frames=.. fps=.. frame_ms_avg/p50/p95/p99/max=..
 ##        ticks_per_s=.. why=..
 ## then quits. PASS needs match_over before the fallback limits, at least one hit and no physics explosions.
@@ -14,6 +15,12 @@ const SHOT_TICK: int = 600  ## 10 game seconds in: both fighters are engaged
 const PROGRESS_EVERY_S: float = 10.0
 const SPARE_TICKS: int = 600  ## ticks past the match time limit before it counts as hung
 const WALL_LIMIT_S: float = 900.0  ## wall-clock fallback when the emulator renders very slowly
+const HITCH_MS: float = 250.0
+const HITCH_LINES: int = 20
+const SHOT_PATH: String = "user://android_ci_fight.png"
+const SHOT_WIDTH: int = 640
+const THUMB_PATH: String = "user://android_ci_fight_small.jpg"  ## printed into the CI log as base64
+const THUMB_WIDTH: int = 256
 
 var _match: Match = null
 var _frame_ms: PackedFloat32Array = PackedFloat32Array()
@@ -22,6 +29,7 @@ var _last_us: int = 0
 var _next_progress_s: float = PROGRESS_EVERY_S
 var _shot: bool = false
 var _done: bool = false
+var _hitches: int = 0
 
 
 func watch(m: Match) -> void:
@@ -42,12 +50,24 @@ func _process(_delta: float) -> void:
 	if _done or _match == null:
 		return
 	var now: int = Time.get_ticks_usec()
-	_frame_ms.append(float(now - _last_us) / 1000.0)
+	var dt_ms: float = float(now - _last_us) / 1000.0
+	_frame_ms.append(dt_ms)
 	_last_us = now
 	var wall_s: float = float(now - _t0_us) / 1000000.0
+	if dt_ms > HITCH_MS:
+		_hitches += 1
+		if _hitches <= HITCH_LINES:
+			print("ANDROID_CI hitch tick=%d wall_s=%.1f ms=%.0f" % [_match.tick, wall_s, dt_ms])
 	if not _shot and _match.tick >= SHOT_TICK:
 		_shot = true
-		print("ANDROID_CI shot tick=%d" % _match.tick)
+		var img: Image = get_viewport().get_texture().get_image()  # null with the headless display driver
+		var err: Error = ERR_UNAVAILABLE
+		if img != null:
+			img.resize(SHOT_WIDTH, maxi(1, img.get_height() * SHOT_WIDTH / maxi(img.get_width(), 1)))
+			err = img.save_png(SHOT_PATH)
+			img.resize(THUMB_WIDTH, maxi(1, img.get_height() * THUMB_WIDTH / maxi(img.get_width(), 1)))
+			img.save_jpg(THUMB_PATH, 0.6)
+		print("ANDROID_CI shot tick=%d path=%s err=%d" % [_match.tick, ProjectSettings.globalize_path(SHOT_PATH), err])
 	if wall_s >= _next_progress_s:
 		_next_progress_s += PROGRESS_EVERY_S
 		print("ANDROID_CI progress tick=%d wall_s=%.0f fps=%.1f" % [_match.tick, wall_s, Engine.get_frames_per_second()])
@@ -81,10 +101,10 @@ func _finish(result: Dictionary, hung: String) -> void:
 	var total: float = 0.0
 	for v: float in ms:
 		total += v
-	print("ANDROID_CI %s winner=%s reason=%s ticks=%d hits=%d explosions=%d frames=%d wall_s=%.1f fps=%.1f frame_ms_avg=%.2f frame_ms_p50=%.2f frame_ms_p95=%.2f frame_ms_p99=%.2f frame_ms_max=%.2f ticks_per_s=%.1f why=%s" % [
+	print("ANDROID_CI %s winner=%s reason=%s ticks=%d hits=%d explosions=%d frames=%d wall_s=%.1f fps=%.1f frame_ms_avg=%.2f frame_ms_p50=%.2f frame_ms_p95=%.2f frame_ms_p99=%.2f frame_ms_max=%.2f hitches=%d ticks_per_s=%.1f why=%s" % [
 		"PASS" if why.is_empty() else "FAIL", str(result.get("winner", -1)), str(result.get("reason", "hang")),
 		_match.tick, hits, expl, n, wall_s, float(n) / maxf(wall_s, 0.001), total / float(maxi(n, 1)),
-		_ci_pct(ms, 0.5), _ci_pct(ms, 0.95), _ci_pct(ms, 0.99), _ci_pct(ms, 1.0), float(_match.tick) / maxf(wall_s, 0.001),
+		_ci_pct(ms, 0.5), _ci_pct(ms, 0.95), _ci_pct(ms, 0.99), _ci_pct(ms, 1.0), _hitches, float(_match.tick) / maxf(wall_s, 0.001),
 		"none" if why.is_empty() else ";".join(why).replace(" ", "_")])
 	get_tree().quit(0 if why.is_empty() else 1)
 

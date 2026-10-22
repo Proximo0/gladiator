@@ -11,7 +11,7 @@ extends RefCounted
 ## has arrived for `stale_ticks` pops the last input stops being repeated: movement and buttons go neutral (the aim
 ## stays), so a client that stalls or vanishes does not keep charging and swinging on its last input. Pure; counters for the debug line and the tests.
 
-const EDGE_BUTTONS: int = FighterInput.ROLL | FighterInput.GRAB  ## press-once buttons: a skipped tick must not swallow one
+const EDGE_BUTTONS: int = FighterInput.ROLL | FighterInput.GRAB | FighterInput.SHOVE | FighterInput.KICK | FighterInput.CLINCH  ## press-once buttons: a skipped tick must not swallow one
 const SHRINK_WINDOW: int = 90  ## pops (1.5 s) the buffer must stay deeper than `target` before it gives one tick back
 ## Bounds against a modded client (docs/net_security.md): a tick may jump at most MAX_AHEAD past the newest one held
 ## (10 s; the session drops the link after 5 s of silence anyway), at most MAX_HELD ticks wait at once, and

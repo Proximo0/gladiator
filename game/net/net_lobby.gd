@@ -8,6 +8,7 @@ const MAX_NAME: int = 24
 const MAX_BYTES: int = 4096
 const CONTENT_HASH_CHARS: int = 16
 const MAX_TIME_LIMIT_S: float = 3600.0  ## a START asking for a longer fight is capped here
+const MAX_FIGHT_TICK: int = 600  ## a START fight tick (intro length, ticks) is capped here: 10 s at 60 Hz
 
 
 static func encode(msg_type: int, body: Dictionary) -> PackedByteArray:
@@ -22,11 +23,11 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 		return {}
 	var t: int = int(bytes[0])
 	if not [NetConfig.MSG_HELLO, NetConfig.MSG_LOBBY, NetConfig.MSG_START, NetConfig.MSG_OVER, NetConfig.MSG_LEAVE,
-			NetConfig.MSG_LOADOUT].has(t):
+			NetConfig.MSG_LOADOUT, NetConfig.MSG_NOTE].has(t):
 		return {}
 	var v: Variant = bytes_to_var(bytes.slice(1))
-	if not (v is Dictionary):
-		return {}
+	if not (v is Dictionary) or (v as Dictionary).is_typed():
+		return {}  # ours are plain dictionaries; a typed one (garbled or crafted) would refuse the "_type" key
 	var d: Dictionary = (v as Dictionary).duplicate(true)
 	d["_type"] = t
 	return d
@@ -117,11 +118,13 @@ static func check_peer(d: Dictionary, own_hash: String, from_host: bool) -> Stri
 	return ""
 
 
-## START: the seed and both loadouts (host is side 0, client side 1), the time limit and the names.
-static func start(seed_value: int, loadouts: Array, time_limit_s: float, names: Array) -> PackedByteArray:
+## START: the seed and both loadouts (host is side 0, client side 1), the time limit, the names and the fight tick
+## (the match tick the pre-fight intro releases the fighters on, where the fight clock starts; 0 = no intro).
+static func start(seed_value: int, loadouts: Array, time_limit_s: float, names: Array, fight_tick: int = 0) -> PackedByteArray:
 	return encode(NetConfig.MSG_START, {"seed": seed_value,
 		"loadouts": [LoadoutRules.sanitize(loadouts[0]), LoadoutRules.sanitize(loadouts[1])],
-		"time_limit_s": time_limit_s, "names": [clean_name(str(names[0])), clean_name(str(names[1]))]})
+		"time_limit_s": time_limit_s, "names": [clean_name(str(names[0])), clean_name(str(names[1]))],
+		"fight_tick": clampi(fight_tick, 0, MAX_FIGHT_TICK)})
 
 
 ## The Match.setup() dictionary for a START, on either side. Mode player_vs_cpu gives the host its InputReader on
@@ -135,6 +138,7 @@ static func match_config(start_msg: Dictionary, presentation: bool) -> Dictionar
 	var limit: float = float_of(start_msg.get("time_limit_s"), 0.0)
 	if limit > 0.0:
 		cfg["time_limit_s"] = minf(limit, MAX_TIME_LIMIT_S)
+	cfg["fight_start_tick"] = clampi(int_of(start_msg.get("fight_tick"), 0), 0, MAX_FIGHT_TICK)
 	return cfg
 
 

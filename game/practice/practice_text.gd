@@ -49,7 +49,7 @@ const BODY: Dictionary = {
 	"grab": {
 		"kbm": "Your weapon has been dropped at your feet. Walk so it lies just ahead of you, hold Ctrl and tap E to bend down and take it.",
 		"pad": "Your weapon has been dropped at your feet. Walk so it lies just ahead of you, hold B and press A to bend down and take it.",
-		"touch": "Your weapon has been dropped at your feet. Walk onto it and tap GRAB.",
+		"touch": "Your weapon has been dropped at your feet. Walk onto it and hold GRAB to bend down and take it.",
 	},
 	"finish": {
 		"kbm": "The dummy is nearly drained. A strong hit now kills outright: swing hard at the neck, gut or head.",

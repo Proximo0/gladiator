@@ -1,29 +1,36 @@
-extends Node3D
-## Armored gladiators on a sand disc, for checking armor and shield art fit (no clipping, right scale). Run in a real
-## (xvfb) window:
-## xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 --resolution 1280x720 \
-##   res://tests/render/armor_capture.tscn -- --scripted --out=DIR --name=land
-## Writes <name>_<set>_full.png (both fighters) and <name>_<set>_armored<k>_front/back.png (each fighter) per set.
-## Never part of the check suite; writes only the PNGs it is told to.
+extends Node
+## Houdini armor renders in the real (presented) arena: a fully armored gladiator (galea, manicae, greaves, iron
+## cuirass, scutum) full length, close up and from behind, then the galea and a manica knocked off onto the sand.
+## Run in a real (xvfb) window:
+## godot --path . --resolution 1280x720 res://tests/render/armor_capture.tscn -- --out=DIR --name=land
+## Shots key on state (the fighter standing, the props at rest) with frame fallbacks. Never part of the check suite;
+## writes only the PNGs it is told to.
 
-const SETS: Array = [
-	["a", {"weapon": "gladius", "offhand": "tower_shield", "armor": {"head": "helm_murmillo", "torso": "lorica_segmentata", "upper_arm_l": "retiarius_arm", "thigh_l": "fasciae"}},
-		{"weapon": "gladius", "offhand": "aspis", "armor": {"head": "helm_thraex", "torso": "lorica_squamata", "upper_arm_l": "spaulders", "thigh_l": "greaves_iron"}}],
-	["b", {"weapon": "gladius", "offhand": "kite_shield", "armor": {"head": "helm_secutor", "torso": "balteus", "upper_arm_l": "spaulders", "thigh_l": "fasciae"}},
-		{"weapon": "gladius", "offhand": "pelta", "armor": {"head": "helm_iron", "torso": "lorica_segmentata", "upper_arm_l": "bracers_iron", "thigh_l": "fasciae"}}],
-	["c", {"weapon": "gladius", "offhand": "buckler", "armor": {"head": "helm_murmillo", "torso": "lorica_squamata", "upper_arm_l": "retiarius_arm", "thigh_l": "greaves_iron"}},
-		{"weapon": "gladius", "offhand": "parma", "armor": {"head": "helm_thraex", "torso": "balteus", "upper_arm_l": "spaulders", "thigh_l": "fasciae"}}],
+const LOADOUT: Dictionary = {"weapon": "gladius", "offhand": "scutum", "armor": {"head": "helm_iron",
+		"torso": "cuirass_iron", "upper_arm_l": "bracers_iron", "thigh_l": "greaves_iron"}}
+const SHOTS: Array = [
+	# [tag, part looked at, distance, height above the part, camera yaw from the fighter's front (rad)]
+	["front", "pelvis", 2.9, 0.25, 0.35],
+	["right", "pelvis", 2.6, 0.25, -1.4],
+	["head", "head", 1.0, 0.0, -0.9],
+	["arm", "forearm_r", 0.9, 0.0, -1.2],
+	["shin", "shin_r", 1.0, 0.1, -0.6],
 ]
-const SETTLE_FRAMES: int = 70  ## the fighters stand up into their guard pose
-const SPACING: float = 1.0
+
+const MAX_SIDE: float = 560.0
 
 var _out: String = "/tmp/armor_capture/"
 var _name: String = "shot"
-var _set: int = 0
+var _match: Match = null
+var _cam: Camera3D = null
 var _frame: int = 0
-var _stage: Node3D
-var _cam: Camera3D
-var _fighters: Array[Fighter] = []
+var _stage: String = "wait_stand"
+var _stage_at: int = 0
+var _shot: int = 0
+var _save_at: int = -1
+var _save_tag: String = ""
+var _props: Array = []
+var _prop_shot: int = 0
 
 
 func _ready() -> void:
@@ -32,101 +39,103 @@ func _ready() -> void:
 			_out = a.substr(6)
 		elif a.begins_with("--name="):
 			_name = a.substr(7)
-	if not _out.ends_with("/"):
-		_out += "/"
 	DirAccess.make_dir_recursive_absolute(_out)
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.32, 0.27, 0.22)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.62, 0.54, 0.45)
-	env.ambient_light_energy = 0.8
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
-	var sun := DirectionalLight3D.new()
-	sun.light_energy = 1.5
-	sun.light_color = Color(1.0, 0.9, 0.75)
-	sun.shadow_enabled = true
-	add_child(sun)
-	sun.look_at_from_position(Vector3(1.5, 3.0, -2.5), Vector3(0.0, 1.0, 0.0))
-	var disc := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 3.0
-	cm.bottom_radius = 3.0
-	cm.height = 0.05
-	var sand := StandardMaterial3D.new()
-	sand.albedo_color = Color(0.62, 0.48, 0.3)
-	sand.roughness = 1.0
-	cm.material = sand
-	disc.mesh = cm
-	disc.position = Vector3(0.0, -0.03, 0.0)
-	add_child(disc)
-	var floor_body := StaticBody3D.new()
-	floor_body.collision_layer = 1
-	floor_body.collision_mask = 0
-	var fcs := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(12.0, 1.0, 12.0)
-	fcs.shape = box
-	fcs.position = Vector3(0.0, -0.5, 0.0)
-	floor_body.add_child(fcs)
-	add_child(floor_body)
-	_cam = Camera3D.new()
-	_cam.keep_aspect = Camera3D.KEEP_WIDTH
-	add_child(_cam)
-	_cam.current = true
-	_stage = Node3D.new()
-	add_child(_stage)
 	RenderingServer.render_loop_enabled = false  # software GL is slow: draw only the frames we save
-	_build(0)
+	_match = Match.new()
+	add_child(_match)
+	_match.setup({"mode": "practice", "seed": 4242, "presentation": true, "loop": false,
+			"loadouts": [LOADOUT.duplicate(true), LOADOUT.duplicate(true)]})
+	_cam = Camera3D.new()
+	_cam.fov = 50.0
+	add_child(_cam)
 
 
-func _build(i: int) -> void:
-	for f: Fighter in _fighters:
-		_stage.remove_child(f)
-		f.free()
-	_fighters.clear()
-	var s: Array = SETS[i]
-	for k: int in 2:
-		var f := Fighter.new()
-		f.name = "Armored%d" % k
-		_stage.add_child(f)
-		f.global_transform = Transform3D(Basis(), Vector3((0.5 - float(k)) * 2.0 * SPACING, 0.0, 0.0))
-		f.setup(s[k + 1], k, Tuning.shared())
-		_fighters.append(f)
-	_frame = 0
+func _dummy() -> Fighter:
+	return _match.fighters[1] as Fighter if _match.fighters.size() > 1 else null
 
 
 func _process(_d: float) -> void:
 	_frame += 1
-	# [tag, camera, target, fov]: both fighters, then each fighter's front and back three-quarter.
-	var shots: Array = [["full", Vector3(0.0, 1.2, -4.6), Vector3(0.0, 0.9, 0.0), 42.0]]
-	for f: Fighter in _fighters:
-		var x: float = f.global_position.x
-		shots.append(["%s_front" % f.name.to_lower(), Vector3(x - 0.5, 1.6, -2.2), Vector3(x, 1.2, 0.0), 45.0])
-		shots.append(["%s_back" % f.name.to_lower(), Vector3(x + 1.0, 1.7, 2.0), Vector3(x, 1.2, 0.0), 45.0])
-	var k: int = _frame - SETTLE_FRAMES
-	if k >= 0 and k < shots.size() * 3 and k % 3 == 0:
-		var sh: Array = shots[k / 3]
-		_cam.fov = float(sh[3])
-		_cam.look_at_from_position(sh[1], sh[2])
-		RenderingServer.render_loop_enabled = true
-	elif k >= 0 and k < shots.size() * 3 and k % 3 == 2:
-		_save("%s_%s" % [str((SETS[_set] as Array)[0]), str((shots[k / 3] as Array)[0])])
-		RenderingServer.render_loop_enabled = false
-	elif k == shots.size() * 3:
-		_set += 1
-		if _set >= SETS.size():
-			print("ARMORCAP done sets=", SETS.size())
+	var f: Fighter = _dummy()
+	if f == null:
+		return
+	if _save_at >= 0:
+		_cam.make_current()
+		if _frame >= _save_at:
+			_save(_save_tag)
+			_save_at = -1
+			RenderingServer.render_loop_enabled = false
+		return
+	match _stage:
+		"wait_stand":
+			if (f.state() == "standing" and Engine.get_physics_frames() > 90) or Engine.get_physics_frames() > 600:
+				_stage = "shots"
+		"shots":
+			if _shot < SHOTS.size():
+				var s: Array = SHOTS[_shot]
+				_aim_at_fighter(f, str(s[1]), float(s[2]), float(s[3]), float(s[4]))
+				_queue(str(s[0]))
+				_shot += 1
+			else:
+				f.call("_dislodge", "helm_iron", "head", Vector3(1, 0, 0.3))
+				f.call("_dislodge", "bracers_iron", "forearm_r", Vector3(0.6, 0, -0.8))
+				_stage = "wait_props"
+				_stage_at = Engine.get_physics_frames()
+		"wait_props":
+			var props: Array = get_tree().get_nodes_in_group("armor_props")
+			var resting: bool = not props.is_empty()
+			for p: Node in props:
+				if (p as RigidBody3D).linear_velocity.length() > 0.05:
+					resting = false
+			var ticks: int = Engine.get_physics_frames() - _stage_at  # physics ticks: frames run fast while not drawn
+			if (resting and ticks > 60) or ticks > 600:
+				_props = props
+				_stage = "prop_shots"
+		"prop_shots":
+			if _prop_shot < _props.size():
+				var pr: RigidBody3D = _props[_prop_shot] as RigidBody3D
+				_aim_at_prop(pr, f)
+				_queue("knocked_off_%d" % _prop_shot)
+				_prop_shot += 1
+			else:
+				_stage = "done"
+		"done":
 			get_tree().quit()
-		else:
-			_build(_set)
+
+
+func _aim_at_fighter(f: Fighter, part: String, dist: float, up: float, yaw: float) -> void:
+	var at: Vector3 = (f.parts[part] as Node3D).global_position
+	var torso: Node3D = f.parts["torso"] as Node3D
+	var fwd: Vector3 = -torso.global_basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized() if fwd.length_squared() > 0.001 else Vector3.FORWARD
+	var dir: Vector3 = fwd.rotated(Vector3.UP, yaw)
+	var look: Vector3 = at + Vector3.UP * up
+	_cam.global_position = look + dir * dist + Vector3.UP * 0.15
+	_cam.look_at(look, Vector3.UP)
+
+
+## Looks down at one knocked-off piece from the side away from the fighter, so the fighter's feet sit behind it.
+func _aim_at_prop(prop: Node3D, f: Fighter) -> void:
+	var c: Vector3 = prop.global_position
+	var away: Vector3 = c - (f.parts["pelvis"] as Node3D).global_position
+	away.y = 0.0
+	away = away.normalized() if away.length_squared() > 0.001 else Vector3.RIGHT
+	_cam.global_position = c + away * 0.7 + Vector3.UP * 0.45
+	_cam.look_at(c, Vector3.UP)
+
+
+func _queue(tag: String) -> void:
+	_cam.make_current()
+	RenderingServer.render_loop_enabled = true
+	_save_at = _frame + 4
+	_save_tag = tag
 
 
 func _save(tag: String) -> void:
 	var img: Image = get_viewport().get_texture().get_image()
-	img.save_png("%s%s_%s.png" % [_out, _name, tag])
-	if tag.ends_with("full"):
-		for f: Fighter in _fighters:
-			print("ARMORCAP %s %s state=%s" % [tag, f.name, f.state_name()])
+	var k: float = minf(MAX_SIDE / float(maxi(img.get_width(), img.get_height())), 1.0)  # keeps a PNG near 300 KB
+	img.resize(roundi(img.get_width() * k), roundi(img.get_height() * k), Image.INTERPOLATE_LANCZOS)
+	var path: String = "%s%s_%s.png" % [_out, _name, tag]
+	img.save_png(path)
+	print("ARMORCAP saved ", path)
