@@ -1,4 +1,4 @@
-[gd_resource type="ORMMaterial3D" load_steps=3 format=3]
+[gd_resource type="StandardMaterial3D" load_steps=3 format=3]
 
 [ext_resource type="Texture2D" path="res://assets/textures/marble_albedo.png" id="1"]
 [ext_resource type="Texture2D" path="res://assets/textures/marble_orm.png" id="2"]
@@ -7,7 +7,11 @@
 resource_name = "marble"
 albedo_color = Color(1, 1, 1, 1)
 albedo_texture = ExtResource("1")
-orm_texture = ExtResource("2")
 metallic = 0
+metallic_texture = ExtResource("2")
+metallic_texture_channel = 2
 roughness = 0.6116
+roughness_texture = ExtResource("2")
+roughness_texture_channel = 1
 ao_enabled = true
+ao_texture = ExtResource("2")

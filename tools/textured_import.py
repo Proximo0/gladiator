@@ -3,7 +3,7 @@
 
 Each textured glb embeds its own 512 px copies of the library textures (assets/textures/<family>_{albedo,normal,orm}.png,
 tools/houdini/build_textures.py): 203 images, 27 distinct. Imported as is, every model would load its own uncompressed
-copies. This tool writes one ORMMaterial3D per distinct glb material into assets/textured/materials/ that points at the
+copies. This tool writes one StandardMaterial3D per distinct glb material into assets/textured/materials/ that points at the
 library PNGs, sets each glb's import to use those materials and discard its embedded images, and sets the library PNGs
 to VRAM-compressed with mipmaps (normal maps as normal maps). Run it after re-exporting the textured models, then
 `godot --headless --import`. Standard library only. Usage: tools/textured_import.py
@@ -53,6 +53,9 @@ def material_spec(j, m):
 
 
 def tres(name, spec):
+	"""A StandardMaterial3D, not an ORMMaterial3D: Godot's ORM shader takes roughness and metallic straight from the map
+	and ignores both factors, so every metal was rough (G mean 0.9) and fully metallic. Here one ORM texture feeds AO (R),
+	roughness (G) and metallic (B) through channel selects, and the glTF factors multiply them as glTF means."""
 	ext = []
 	for key in ("albedo", "orm", "normal"):
 		if spec[key]:
@@ -60,7 +63,7 @@ def tres(name, spec):
 			if not os.path.exists(png):
 				raise SystemExit("textured_import: missing library texture %s" % png)
 			ext.append((key, "res://assets/textures/%s.png" % spec[key]))
-	lines = ['[gd_resource type="ORMMaterial3D" load_steps=%d format=3]' % (len(ext) + 1), ""]
+	lines = ['[gd_resource type="StandardMaterial3D" load_steps=%d format=3]' % (len(ext) + 1), ""]
 	for i, (_k, p) in enumerate(ext):
 		lines.append('[ext_resource type="Texture2D" path="%s" id="%d"]' % (p, i + 1))
 	lines += ["", "[resource]", 'resource_name = "%s"' % name]
@@ -68,15 +71,20 @@ def tres(name, spec):
 	ids = {k: i + 1 for i, (k, _p) in enumerate(ext)}
 	if "albedo" in ids:
 		lines.append('albedo_texture = ExtResource("%d")' % ids["albedo"])
-	if "orm" in ids:
-		lines.append('orm_texture = ExtResource("%d")' % ids["orm"])
 	lines.append("metallic = %g" % spec["metallic"])
+	if "orm" in ids:
+		lines.append('metallic_texture = ExtResource("%d")' % ids["orm"])
+		lines.append("metallic_texture_channel = 2")
 	lines.append("roughness = %g" % spec["roughness"])
+	if "orm" in ids:
+		lines.append('roughness_texture = ExtResource("%d")' % ids["orm"])
+		lines.append("roughness_texture_channel = 1")
 	if "normal" in ids:
 		lines.append("normal_enabled = true")
 		lines.append('normal_texture = ExtResource("%d")' % ids["normal"])
 	if spec["ao"] and "orm" in ids:
 		lines.append("ao_enabled = true")
+		lines.append('ao_texture = ExtResource("%d")' % ids["orm"])
 	return "\n".join(lines) + "\n"
 
 
