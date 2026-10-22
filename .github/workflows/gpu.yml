@@ -1,0 +1,54 @@
+# Real-GPU checks on the owner's Windows PC (self-hosted runner, labels: self-hosted, Windows, gpu).
+# Security: this repo is public, so this workflow never runs on pull_request (fork code must not reach the PC).
+# Only pushes to main and manual runs use it. The runner needs Git for Windows (bash) and GODOT set in its .env
+# (or Godot 4.7.2 at the default path below).
+name: gpu
+on:
+  push:
+    branches: [main]
+    paths: ["game/**", "data/**", "tests/perf/**", "project.godot", ".github/workflows/gpu.yml"]
+  workflow_dispatch:
+concurrency:
+  group: gpu
+  cancel-in-progress: true
+jobs:
+  perf:
+    runs-on: [self-hosted, Windows, gpu]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      GODOT: ${{ vars.GPU_GODOT || 'C:/Users/crp27/Downloads/Godot_4.7.2/Godot_v4.7.2-stable_win64_console.exe' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import
+        run: '"$GODOT" --headless --path . --import > import.log 2>&1 || { tail -50 import.log; exit 1; }'
+      - name: Warm-up run (shader compiles, not measured)
+        run: '"$GODOT" --path . --rendering-driver opengl3 --resolution 1920x1080 --fixed-fps 60 --disable-vsync res://tests/perf/perf.tscn -- --quality=2 --heavy > warmup.log 2>&1 || true'
+      - name: Heavy gore perf, low and high, 1080p
+        run: |
+          rc=0
+          for q in 0 2; do
+            "$GODOT" --path . --rendering-driver opengl3 --resolution 1920x1080 --fixed-fps 60 --disable-vsync \
+              res://tests/perf/perf.tscn -- --quality=$q --heavy > perf_$q.log 2>&1
+            line=$(grep '^PERF {' perf_$q.log | tail -1)
+            if [ -z "$line" ]; then echo "PERF quality=$q FAIL no result line"; tail -30 perf_$q.log; rc=1; continue; fi
+            echo "${line#PERF }" > perf_$q.json
+            echo "quality=$q ${line:0:400}"
+          done
+          exit $rc
+      - name: Bot smoke fights (real window, GPU)
+        run: |
+          "$GODOT" --path . --rendering-driver opengl3 --resolution 1280x720 --fixed-fps 60 res://tests/bot/bot.tscn \
+            -- --shard=0 --nshards=1 --matches=2 --seed=11 --time_limit=60 > bot.log 2>&1 || { tail -40 bot.log; exit 1; }
+          if grep -E "SCRIPT ERROR" bot.log; then echo "bot fights logged script errors"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpu-perf
+          path: |
+            perf_*.json
+            perf_*.log
+            bot.log
+          retention-days: 14
