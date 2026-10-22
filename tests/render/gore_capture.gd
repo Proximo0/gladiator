@@ -118,5 +118,8 @@ func _aim(v: Fighter, mode: String) -> void:
 
 func _save(tag: String) -> void:
 	var img: Image = get_viewport().get_texture().get_image()
+	var k: float = 560.0 / float(maxi(img.get_width(), img.get_height()))  # keeps each PNG small (docs renders < 300 KB)
+	if k < 1.0:
+		img.resize(roundi(img.get_width() * k), roundi(img.get_height() * k), Image.INTERPOLATE_LANCZOS)
 	img.save_png("%s%s_%s.png" % [_out, _name, tag])
 	print("GORECAP saved ", tag)
