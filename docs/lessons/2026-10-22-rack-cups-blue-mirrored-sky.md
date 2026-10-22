@@ -1,0 +1,2 @@
+What happened: The weapon racks' iron cups rendered blue (57, 72, 111): Houdini's iron (metallic 1, roughness 0.55) mirrored the procedural sky's deep-blue top on every face pointing up, and ArenaDressing also skipped the rack's textured copy, so the model was suspected
+Rule: Sample the bad pixel and check the face's normal against the sky before suspecting a material slot; flat, upward metal in an open arena wants to be matte or partly metallic

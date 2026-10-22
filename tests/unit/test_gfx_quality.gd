@@ -3,7 +3,7 @@ extends TestCase
 
 func test_tables_have_one_entry_per_level() -> void:
 	for t: Array in [GfxQuality.CROWD_SPACING_MULT, GfxQuality.CROWD_BACK_SPACING, GfxQuality.SHADOW_DISTANCE,
-			GfxQuality.SAND_TEXELS_PER_M, GfxQuality.SAND_MESH_CELL, GfxQuality.SAND_POOL_STEP_S, GfxQuality.SAND_UPLOAD_S]:
+			GfxQuality.SHADOW_BIAS, GfxQuality.SHADOW_NORMAL_BIAS, GfxQuality.SAND_TEXELS_PER_M, GfxQuality.SAND_MESH_CELL, GfxQuality.SAND_POOL_STEP_S, GfxQuality.SAND_UPLOAD_S]:
 		assert_eq(t.size(), 3)
 	for t: Array in [GfxQuality.CROWD_CHEER_TIER, GfxQuality.CROWD_SECTORS, GfxQuality.SHADOW_SPLITS, GfxQuality.MSAA,
 			GfxQuality.SAND_GRAINS, GfxQuality.SAND_PUFFS, GfxQuality.SAND_PUFF_AMOUNT, GfxQuality.SAND_DETAIL,

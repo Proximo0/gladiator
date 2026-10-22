@@ -25,6 +25,7 @@ const SHOWCASE_X: float = 0.62  ## weapon close-up across the view (fraction of 
 const SHOWCASE_H: float = 1.25  ## m the longest side of a weapon close-up is scaled to
 const SHOWCASE_SPIN: float = 0.9  ## rad/s
 const SOLO_SHIFT: float = 0.36  ## m the lone fighter moves left to make room for the weapon close-up
+const SOLO_HALF_W: float = 0.5  ## m either side of a lone fighter's centre (shield, arms) kept clear of the banner
 
 var _vp: SubViewport
 var _rig: Node3D
@@ -41,6 +42,14 @@ var _show_weapon: Node3D = null
 var _show_id: String = ""
 var _show_locked: bool = false
 var _show_spin: float = 0.0
+## Fraction of the frame's width on the left that a docked banner covers (PreviewFrame): in a wide frame the lone
+## fighter then stands centred between it and the weapon close-up.
+var left_clear: float = 0.0:
+	set(v):
+		if not is_equal_approx(v, left_clear):
+			left_clear = v
+			if _cam != null:
+				_fit_showcase()
 
 
 func _init() -> void:
@@ -207,6 +216,13 @@ func _fit_showcase() -> void:
 		return
 	var d: float = 2.6
 	var half_w: float = d * _half_tan()
+	if left_clear > 0.0 and _cam.keep_aspect == Camera3D.KEEP_HEIGHT:
+		# Screen fractions: the close-up's left edge (it keeps its place whatever h_offset), the banner's right edge;
+		# the fighter goes midway, kept clear of the banner by its own half-width.
+		var show_left: float = 0.5 + 0.5 * SHOWCASE_X - SHOWCASE_H * 0.5 / (2.0 * half_w)
+		var fighter_w: float = 2.0 * CAM_DIST_SOLO * _half_tan()
+		var fc: float = maxf((left_clear + show_left) * 0.5, left_clear + SOLO_HALF_W / fighter_w)
+		_cam.h_offset = (0.5 - fc) * fighter_w
 	# h_offset moves the whole view, the close-up with it: add it back so the weapon keeps its place.
 	_show_pivot.position = Vector3(half_w * SHOWCASE_X + _cam.h_offset, 0.05, -d)
 

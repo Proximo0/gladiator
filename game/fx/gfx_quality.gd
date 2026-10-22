@@ -24,6 +24,12 @@ const CROWD_TIER_LOD: Array = [[1, 1, 1, 2, 2, 2], [0, 0, 0, 1, 1, 1], [-1, -1, 
 const SHADOW_SPLITS: Array[int] = [1, 2, 2]
 const SHADOW_DISTANCE: Array[float] = [34.0, 44.0, 52.0]
 const SHADOW_BLUR: Array[float] = [0.0, 1.0, 2.0]
+## Sun shadow bias and normal bias. At 0.05 / 0.5 the split (blurred) maps speckled every small prop lying in the sun
+## (tests/render/shadow_capture.gd: 12.6k acne pixels on the high-tier weapon row, 14.6k on medium); 0.2 / 1.0 leaves
+## ~1.7k, the sand's own sparkle floor. The low tier's single unblurred map had no acne, and a normal bias of 1 or more
+## there thinned the props' cast shadows (shade pixels 64k to 50k), so it keeps 0.5.
+const SHADOW_BIAS: Array[float] = [0.2, 0.2, 0.2]
+const SHADOW_NORMAL_BIAS: Array[float] = [0.5, 1.0, 1.0]
 ## Do small fighter pieces (forearms, shins and feet, armor trims on them) cast into the sun shadow map? Each caster is
 ## drawn a second time in the shadow pass, and from the camera a forearm's shadow is hardly seen on the sand.
 const SMALL_PART_SHADOWS: Array[bool] = [false, true, true]
@@ -39,6 +45,9 @@ const SAND_FX_MULT: Array[float] = [0.45, 0.75, 1.0]
 const SAND_PUFFS: Array[int] = [4, 7, 10]
 const SAND_PUFF_AMOUNT: Array[int] = [5, 7, 9]
 const SAND_DETAIL: Array[int] = [0, 1, 2]
+## Contact shadows under the feet: 1 takes them off the sun light only (the sun shadow map is fine enough to ground
+## the feet itself, so a blob there would stack on it), 0 darkens the sand under them outright (one coarse split).
+const CONTACT_SUN_FADE: Array[float] = [0.0, 0.0, 1.0]
 ## Seconds between blood pool spreading steps on the sand (each step repaints the pool's texels).
 ## Seconds between uploads of the dirty sand tiles to the GPU.
 const SAND_UPLOAD_S: Array[float] = [1.0 / 15.0, 1.0 / 20.0, 1.0 / 30.0]

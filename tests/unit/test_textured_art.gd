@@ -66,6 +66,13 @@ func test_gut_pieces_carry_uvs_and_tangents_for_the_organic_maps() -> void:
 	var mat: BaseMaterial3D = GutArt.material()
 	assert_true(mat.vertex_color_use_as_albedo, "the blood palette still tints the spill")
 	assert_true(mat.normal_enabled and mat.normal_texture != null)
+	# Not the ORM shader (it ignores the roughness factor, so the wet spill rendered at the map's ~0.84 instead of 0.3).
+	assert_false(mat is ORMMaterial3D, "gut material is not an ORM material")
+	assert_true(mat.roughness_texture != null, "roughness from the organic ORM map")
+	assert_eq(mat.roughness_texture_channel, BaseMaterial3D.TEXTURE_CHANNEL_GREEN)
+	assert_eq(mat.metallic_texture_channel, BaseMaterial3D.TEXTURE_CHANNEL_BLUE)
+	assert_eq(mat.ao_texture_channel, BaseMaterial3D.TEXTURE_CHANNEL_RED)
+	assert_near(mat.roughness * 0.84, GutArt.ROUGHNESS, 0.01, "wet gloss: factor x map mean green")
 
 
 ## Godot's ORMMaterial3D shader reads roughness and metallic straight from the map and ignores both factors (every

@@ -401,13 +401,18 @@ func _contact_shadows() -> void:
 		return
 	var t: Tuning = Tuning.shared()
 	var blobs: Array[Vector4] = []
+	var axes: Array[Vector4] = []
 	for f: Variant in _fighters:
 		if not is_instance_valid(f) or (f as Fighter).parts.is_empty() or not (f as Fighter).visible:
 			continue
 		var ft: Fighter = f
 		var feet: Array[Vector3] = []
+		var toes: Array[Vector3] = []
 		for n: String in ["shin_l", "shin_r"]:
 			if not ft.is_limb_cut(n):
-				feet.append((ft.parts[n] as RigidBody3D).global_transform * FighterRig.FOOT_OFFSET)
+				var shin: Transform3D = (ft.parts[n] as RigidBody3D).global_transform
+				feet.append(shin * FighterRig.FOOT_OFFSET)
+				toes.append(-shin.basis.z)
 		blobs.append_array(ContactShadow.fighter_blobs(feet, (ft.parts["pelvis"] as RigidBody3D).global_position, t))
-	sand.call("set_contacts", ContactShadow.pack(blobs))
+		axes.append_array(ContactShadow.fighter_axes(toes, t))
+	sand.call("set_contacts", ContactShadow.pack(blobs), ContactShadow.pack_axes(blobs, axes))

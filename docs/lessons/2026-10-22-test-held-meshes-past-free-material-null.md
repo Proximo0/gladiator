@@ -1,0 +1,2 @@
+What happened: test_premium_weapons logged `Parameter "material" is null` on every run: the test kept the weapons' Mesh references in an array past the weapons' free, and the headless dummy renderer then fails `material_get_instance_shader_parameters` for the freed override materials
+Rule: In tests, compare resources by `get_instance_id()` (ints) rather than holding them past the nodes that use them; reproduce a teardown error in a minimal script before blaming the game code
