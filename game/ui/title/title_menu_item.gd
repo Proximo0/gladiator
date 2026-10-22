@@ -83,6 +83,9 @@ func _draw() -> void:
 	# Bronze marker: a small lozenge left of the text.
 	var font: Font = MenuTheme.caps_font()
 	var fs: int = font_px
+	var room: float = s.x - (22.0 if tile else 30.0) - NUDGE - 14.0
+	while fs > 14 and font.get_string_size(label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > room:
+		fs -= 1  # a long label in a narrow tile shrinks rather than being cut off
 	var nfs: int = maxi(22, int(float(fs) * 0.56))
 	var has_note: bool = note != ""
 	var block: float = float(fs) * 0.72 + (float(nfs) * 1.05 if has_note else 0.0)

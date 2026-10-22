@@ -153,6 +153,9 @@ func _process(_delta: float) -> void:
 	_sounds.back_ok = screen != Screen.TITLE
 	_nav.active = screen != Screen.FIGHT
 	_nav.root = _screen_root()
+	if _nav.root != null and _nav.root != _title and (TouchControls.active() or DisplayServer.is_touchscreen_available() or Flags.args.has("touch")):
+		var ppu: float = maxf(get_viewport().get_final_transform().get_scale().x * _layer.scale.x, 0.01)
+		MenuNav.enforce_touch_height(_nav.root, MenuMetrics.touch_units(DisplayServer.screen_get_dpi(), ppu))
 
 
 ## Scales the layer so a landscape screen keeps design units and a portrait one gets ~1000 units across.

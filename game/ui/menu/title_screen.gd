@@ -21,6 +21,8 @@ const TOUCH_MAX_H: float = 150.0
 const GAP: float = 8.0
 const TILE_GAP: float = 14.0
 const RULE_MIN_PX: float = 12.0  ## Smallest meander cell on screen.
+const SUB_MIN_PX: float = 22.0  ## Smallest motto (MORS AVT VICTORIA) on screen.
+const SUB_EN_MIN_PX: float = 16.0  ## Smallest English line under it on screen.
 
 var _logo: TitleLogo
 var _rule: Control
@@ -181,9 +183,9 @@ func _place_head(x: float, y: float, w: float, logo_px: float, centre: bool) -> 
 	var rw: float = minf(lw, w)
 	_rule.size = Vector2(rw, _rule_cell + 14.0)
 	_rule.position = Vector2(_logo.position.x + (lw - rw) * 0.5 if centre else _logo.position.x, ly)
-	var sub_px: int = int(clampf(logo_px * 0.26, 28.0, 46.0))
+	var sub_px: int = int(_sub_px(logo_px))
 	_sub.add_theme_font_size_override("font_size", sub_px)
-	_sub_en.add_theme_font_size_override("font_size", maxi(int(HINT_MIN_UNITS), int(float(sub_px) * 0.72)))
+	_sub_en.add_theme_font_size_override("font_size", maxi(int(ceilf(SUB_EN_MIN_PX / _px)), int(float(sub_px) * 0.72)))
 	var sy: float = _rule.position.y + _rule.size.y + 2.0
 	for l: Label in [_sub, _sub_en]:
 		l.size = l.get_combined_minimum_size()
@@ -197,8 +199,13 @@ func _place_head(x: float, y: float, w: float, logo_px: float, centre: bool) -> 
 	return sy + 4.0
 
 
+## The motto's size: in step with the mark, never under SUB_MIN_PX on screen.
+func _sub_px(logo_px: float) -> float:
+	return maxf(clampf(logo_px * 0.26, 28.0, 46.0), ceilf(SUB_MIN_PX / maxf(_px, 0.01)))
+
+
 func _head_h(logo_px: float) -> float:
-	var sub_px: float = clampf(logo_px * 0.26, 28.0, 46.0)
+	var sub_px: float = _sub_px(logo_px)
 	return logo_px * (0.86 + TitleLogo.DEPTH_EM + 0.42) - logo_px * 0.1 + _rule_cell + 16.0 + sub_px * 1.2 + sub_px * 0.9 + 4.0
 
 

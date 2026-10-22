@@ -139,7 +139,7 @@ func _build_plinth() -> void:
 	sand.specular_mode = BaseMaterial3D.SPECULAR_DISABLED  # no glare streaks on the flat top
 	dm.material = sand
 	top.mesh = dm
-	top.position = Vector3(0.0, -0.02, 0.0)
+	top.position = Vector3(0.0, -0.004, 0.0)  # lifted clear of the stone's top face (they z-fought in stripes)
 	_stage.add_child(top)
 
 
