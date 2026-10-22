@@ -3,10 +3,10 @@ extends Node
 ## blobs off ("before") and on ("after") from the fight camera and from a low close camera at the feet.
 ## xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 --resolution 1280x720 \
 ##     --fixed-fps 60 res://tests/render/contact_shadow_capture.tscn -- --out=DIR --quality=0 [--seed=S]
-## Moments: "fight" when both stand within 2.6 m (fallback tick 360), "down" when a fighter is down, ko or dead
+## Moments: "fight" when both stand within 2.6 m (fallback tick 900), "down" when a fighter is down, ko or dead
 ## (fallback tick 2400). Never part of the check suite; writes only the PNGs it is told to.
 
-const FIGHT_FALLBACK: int = 360
+const FIGHT_FALLBACK: int = 900
 const DOWN_FALLBACK: int = 2400
 
 var _out: String = "/tmp/contact_capture/"
@@ -100,9 +100,11 @@ func _process(_d: float) -> void:
 	_shot_step += 1
 
 
-## A low camera 2.6 m from the first fighter's pelvis, from the side facing the fight camera, looking at its feet.
+## A low camera 2.6 m from a standing fighter's pelvis (else the first fighter's), from the side facing the fight camera, looking at its feet.
 func _aim_close() -> void:
 	var f: Fighter = _match.fighters[0]
+	if f.state_name() != "standing" and (_match.fighters[1] as Fighter).state_name() == "standing":
+		f = _match.fighters[1]
 	var p: Vector3 = (f.parts["pelvis"] as RigidBody3D).global_position
 	var fc: Vector3 = _match.presenter.camera.global_position
 	var dir: Vector3 = Vector3(fc.x - p.x, 0.0, fc.z - p.z).normalized()
