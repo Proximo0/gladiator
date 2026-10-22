@@ -40,7 +40,7 @@ var camera: FightCamera = null
 var aim: AimOverlay = null  ## the human fighter's aim aid (local only)
 var _finale_done: Array[bool] = [false, false]
 var _finale_fighter: Fighter = null  ## the finale's victim, to see when its head comes off
-var panel: TuningPanel = null
+var panel: TuningPanel = null  ## built on the first toggle press (open_panel)
 var hit_fx: HitFx = null
 var killcam: KillCam = null  ## instant replay of the finishing blow (records every shown tick)
 var feel: FeelDirector = null  ## hit-stop, screen punch, bass, finisher cinematic, rumble patterns
@@ -55,11 +55,24 @@ var _spray_clock: float = 0.0
 var _last_spray: float = -10.0
 var _drags: int = 0
 var _player_side: int = 0
+## The arena (stands, crowd, sand, about 160-200 ms to build) outlives its match: when a presenter leaves the tree its
+## arena is kept here, out of the tree, and the next match at the same graphics quality takes it back (sand cleared)
+## instead of building a new one. Not in headless runs (nothing is drawn; no orphan left at exit).
+static var _spare_arena: Arena = null
+static var _spare_level: int = -1
+## A/B knobs for tests/perf (--legacy): rebuild the arena every match and build the tuning panel with it, as before.
+static var keep_arena: bool = true
+static var eager_panel: bool = false
+## Perf sections (tests/perf only): microseconds per section while `prof_on`.
+var prof_on: bool = false
+var prof: Dictionary = {}
 
 
 func build(camera_mode: String) -> void:
-	arena = Arena.new()
-	arena.name = "Arena"
+	arena = _take_spare_arena()
+	if arena == null:
+		arena = Arena.new()
+		arena.name = "Arena"
 	add_child(arena)
 	sand = arena.sand
 	blood = BloodFx.new()
@@ -92,14 +105,71 @@ func build(camera_mode: String) -> void:
 	feel.name = "FeelDirector"
 	add_child(feel)
 	feel.setup(camera, sfx)
-	panel = TuningPanel.new()
-	panel.name = "TuningPanel"
-	add_child(panel)
 	killcam = KillCam.new()
 	killcam.name = "KillCam"
 	killcam.presenter = self
 	killcam.arena_radius = Tuning.shared().arena_radius
 	add_child(killcam)
+	# The tuning panel (about 1,500 Control nodes) is built on its first toggle, not with every match.
+	if eager_panel:
+		open_panel()
+		panel.visible = false
+	var opener := _PanelOpener.new()
+	opener.name = "TuningPanelOpener"
+	opener.presenter = self
+	add_child(opener)
+	# Compile every fighter, weapon and gore material once, off-screen, before the first blow (once per session).
+	FighterWarmup.start(self)
+
+
+func _exit_tree() -> void:
+	if arena == null or not is_instance_valid(arena) or arena.get_parent() != self:
+		return
+	if not keep_arena or DisplayServer.get_name() == "headless" or not arena.is_node_ready():
+		return
+	if _spare_arena != null and is_instance_valid(_spare_arena) and _spare_arena != arena:
+		_spare_arena.free()
+	remove_child(arena)
+	_spare_arena = arena
+	_spare_level = GfxQuality.level
+
+
+## The kept arena when it was built at the current graphics quality (freed otherwise), reset for a new match; or null.
+static func _take_spare_arena() -> Arena:
+	var a: Arena = _spare_arena
+	_spare_arena = null
+	if a == null or not is_instance_valid(a):
+		return null
+	if _spare_level != GfxQuality.level:
+		a.free()
+		return null
+	if a.sand != null and a.sand.has_method("clear"):
+		a.sand.call("clear")
+	a.set_crowd_excitement(0.0)
+	return a
+
+
+## Builds the tuning panel (once) and shows it. Called by the first toggle press.
+func open_panel() -> void:
+	if panel == null:
+		panel = TuningPanel.new()
+		panel.name = "TuningPanel"
+		add_child(panel)
+	panel.visible = true
+
+
+## Waits for the tuning panel's toggle (also while paused) and builds the panel then; afterwards the panel toggles itself.
+class _PanelOpener extends Node:
+	var presenter: MatchPresenter = null
+
+	func _init() -> void:
+		process_mode = Node.PROCESS_MODE_ALWAYS
+
+	func _unhandled_input(event: InputEvent) -> void:
+		if presenter != null and presenter.panel == null and TuningPanel.is_toggle_event(event):
+			presenter.open_panel()
+			get_viewport().set_input_as_handled()
+			queue_free()
 
 
 ## Points everything at a fresh pair of fighters (also after a loop restart).
@@ -207,6 +277,15 @@ func _spray(pos: Vector3, vel: Vector3, amount: float) -> void:
 
 ## Once per physics tick, after the fighters' frames were built.
 func tick(frames: Array, delta: float) -> void:
+	if not prof_on:
+		_tick_sand(frames, delta)
+		return
+	var t0: int = Time.get_ticks_usec()
+	_tick_sand(frames, delta)
+	prof["pres_tick"] = int(prof.get("pres_tick", 0)) + Time.get_ticks_usec() - t0
+
+
+func _tick_sand(frames: Array, delta: float) -> void:
 	_spray_clock += delta
 	_drags = 0
 	if sand == null or not sand.has_method("stamp_ellipse"):

@@ -128,6 +128,11 @@ var _anchor_set: bool = false
 ## "rearms_after_disarm" counts pickups made while a weapon knocked out of hand was still not replaced.
 var _wlog: Dictionary = {"disarms": 0, "arm_drops": 0, "rearms": 0, "rearms_after_disarm": 0}
 var _unreplaced_disarms: int = 0
+## Perf sections (tests/perf only): microseconds summed over all fighters while `prof_on`.
+static var prof_on: bool = false
+static var prof: Dictionary = {}
+## Build cut caps ahead, one per frame (see `_process`); tests/perf turns it off for before/after runs.
+static var prebuild_caps: bool = true
 
 
 func _init() -> void:
@@ -154,6 +159,18 @@ func setup(p_loadout: Dictionary, p_side: int, tuning: Tuning) -> void:
 func _ready() -> void:
 	if not _built and _tun != null:
 		_build()
+
+
+## Presentation only: builds one cut cap ahead per frame (FighterArt.prebuild_step), so a sever attaches ready caps
+## instead of stalling the frame of the blow. Off in headless runs (no one sees the caps; sims stay as fast).
+func _process(_delta: float) -> void:
+	if _art == null or not prebuild_caps or DisplayServer.get_name() == "headless" or not _art.prebuild_step(parts):
+		set_process(false)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and _art != null:
+		_art.free_ready_caps()
 
 
 func apply_input(inp: FighterInput) -> void:
@@ -551,6 +568,9 @@ func _compute_inertia() -> void:
 func _physics_process(delta: float) -> void:
 	if not _built:
 		return
+	if prof_on:
+		_physics_profiled(delta)
+		return
 	_tick += 1
 	if _skip_contacts > 0:
 		_skip_contacts -= 1
@@ -561,6 +581,29 @@ func _physics_process(delta: float) -> void:
 	_update_state(delta)
 	_control(delta)
 	_record_velocities()
+
+
+## The same tick as `_physics_process`, with each step timed into `prof` (tests/perf only).
+func _physics_profiled(delta: float) -> void:
+	var t0: int = Time.get_ticks_usec()
+	_tick += 1
+	if _skip_contacts > 0:
+		_skip_contacts -= 1
+	else:
+		_process_contacts()
+	var t1: int = Time.get_ticks_usec()
+	if health != null:
+		health.tick(delta, _exertion)
+	_update_state(delta)
+	var t2: int = Time.get_ticks_usec()
+	_control(delta)
+	var t3: int = Time.get_ticks_usec()
+	_record_velocities()
+	var t4: int = Time.get_ticks_usec()
+	prof["f_contacts"] = int(prof.get("f_contacts", 0)) + t1 - t0
+	prof["f_state"] = int(prof.get("f_state", 0)) + t2 - t1
+	prof["f_control"] = int(prof.get("f_control", 0)) + t3 - t2
+	prof["f_velrec"] = int(prof.get("f_velrec", 0)) + t4 - t3
 
 
 func _frame() -> int:
@@ -1921,6 +1964,16 @@ func state_hash() -> int:
 
 
 func debug_frame() -> Dictionary:
+	if not prof_on:
+		return _debug_frame_build()
+	var t0: int = Time.get_ticks_usec()
+	var d: Dictionary = _debug_frame_build()
+	prof["debug_frame"] = int(prof.get("debug_frame", 0)) + Time.get_ticks_usec() - t0
+	prof["debug_frame_n"] = int(prof.get("debug_frame_n", 0)) + 1
+	return d
+
+
+func _debug_frame_build() -> Dictionary:
 	var pelvis: RigidBody3D = parts.get("pelvis")
 	var pd: Dictionary = {}
 	for n: String in FighterRig.names():

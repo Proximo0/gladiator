@@ -13,7 +13,10 @@ const TAIL_CAP: float = 7.0
 const SYSTOLE: float = 0.36
 const BASE_FLOW: float = 0.10
 
-const BUDGETS: Array[int] = [600, 2400, 5000]
+## Live droplets per quality. High was 5000: the heavy double-gore case peaked at 3900 (2255 on a real PC run) and the
+## top of that is drops piled in mid-air over two fountains, which no one reads one by one. 3600 bounds the sim and
+## upload cost of the worst case without trimming a normal fight's spray.
+const BUDGETS: Array[int] = [600, 2400, 3600]
 const MIST_BUDGETS: Array[int] = [90, 240, 480]
 const RATE_MULT: Array[float] = [0.5, 1.0, 1.7]
 const FOUNTAIN_STREAMS: Array[float] = [0.5, 1.0, 1.25]  ## share of the base jet count per quality level
@@ -23,8 +26,16 @@ const DECAL_BUDGETS: Array[int] = [160, 420, 900]
 const STAIN_BUDGETS: Array[int] = [14, 30, 48]
 ## Most ground splats per frame that are turned into decals and sand stains (each repaints sand texels).
 const SPLAT_CALLS: Array[int] = [12, 24, 48]
-## Sand-stamping area per frame, in units of a 5 cm splat (radius^2): the real cost of a splat is its texel count.
-const SPLAT_AREA: Array[float] = [8.0, 18.0, 36.0]
+## Sand-stamping budget per frame in texels touched (SandMap.apply_blood walks a square of side 2 * (2 r + 1) texels,
+## and builds a 256-entry edge table per call, charged as SPLAT_CALL_TEXELS). The first splat of a frame always runs;
+## the rest wait (and merge into their cell) once the budget is spent. A pool-sized splat is thousands of texels, so
+## charging by area in metres let 15 of them run in one frame (70 ms in the heavy bench).
+const SPLAT_TEXELS: Array[float] = [1500.0, 3000.0, 5000.0]
+const SPLAT_CALL_TEXELS: float = 180.0
+## Most litres one sand stamp carries (radius about 0.18 m). A fountain landing on one 7 cm cell piles up litres
+## (VOLUME_BOOST makes every drop count 12x): uncapped, one cell reached 68 L, a 2.3 m stamp of 40k texels in a single
+## call. The ground decal still takes all of it, so the pool reads as big; the sand only stains under it.
+const SPLAT_SAND_MAX_LITRES: float = 0.35
 ## Presentation multiplier: pools on the ground read as this many times the blood that really left the fighter.
 const POOL_VISUAL_MULT: float = 2.5
 ## Seconds for fresh arterial red to dry to dark brown.
@@ -55,8 +66,14 @@ static func splat_calls(level: int) -> int:
 	return SPLAT_CALLS[clampi(level, 0, 2)]
 
 
-static func splat_area(level: int) -> float:
-	return SPLAT_AREA[clampi(level, 0, 2)]
+static func splat_texels(level: int) -> float:
+	return SPLAT_TEXELS[clampi(level, 0, 2)]
+
+
+## Texels one sand stamp of `radius_m` costs at `texels_per_m` (with the per-call edge table).
+static func splat_cost(radius_m: float, texels_per_m: float) -> float:
+	var e: float = maxf(radius_m * texels_per_m, 0.8) * 2.0 + 1.0
+	return 4.0 * e * e + SPLAT_CALL_TEXELS
 
 
 static func stain_budget(level: int) -> int:

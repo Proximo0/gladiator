@@ -172,7 +172,7 @@ func _build() -> void:
 	if _mm_drops != null:
 		return
 	var drop_mat: ShaderMaterial = ShaderMaterial.new()
-	drop_mat.shader = load("res://game/fx/blood/blood_drop.gdshader")
+	drop_mat.shader = load(BloodMesh.shader_path(quality))
 	var mist_mat: ShaderMaterial = ShaderMaterial.new()
 	mist_mat.shader = load("res://game/fx/blood/blood_mist.gdshader")
 	_drop_mat = drop_mat
@@ -357,6 +357,11 @@ func set_quality(level: int) -> void:
 		_apply_sizes()
 	if _mm_drops != null:
 		_mm_drops.multimesh.mesh = BloodMesh.for_quality(quality)
+		var shader: Shader = load(BloodMesh.shader_path(quality))
+		if _drop_mat.shader != shader:
+			_drop_mat.shader = shader
+			for slot: int in PALETTE_SLOTS:
+				_apply_palette(slot)
 
 
 ## Default source of remaining blood (litres) for spurts that have no fighter of their own.
@@ -893,9 +898,9 @@ func _emit_fountain(s: _BfSpurt, origin: Vector3, axis: Vector3, dt: float) -> v
 		if s.pool_acc >= 0.01:
 			s.pool_slot = decals.feed(s.pool_slot, ground, s.pool_acc, rng.randf(), s.slot)
 			s.pool_acc = 0.0
-		if s.sand_timer >= 0.25 and sand != null and sand.has_method("add_blood"):
+		if s.sand_timer >= 0.25:
 			var at: Vector3 = ground + Vector3(rng.randf_range(-0.2, 0.2), 0.0, rng.randf_range(-0.2, 0.2))
-			sand.call("add_blood", at, BloodMath.splat_radius(s.sand_acc), s.sand_acc, s.slot)
+			_add_splat(at, s.sand_acc, s.slot)  ## stamped by _flush_splats, inside its texel budget
 			s.sand_acc = 0.0
 			s.sand_timer = 0.0
 
@@ -954,7 +959,7 @@ func _update_guts(dt: float) -> void:
 	var tn: Tuning = Tuning.shared()
 	var anchors: PackedVector3Array = PackedVector3Array()
 	for r: GutRope in guts.ropes:
-		var node: Variant = r.get_meta("node", null)
+		var node: Variant = r.get_meta("node") if r.has_meta("node") else null  ## get_meta(k, null) errors when unset
 		if node is Node3D and is_instance_valid(node):
 			anchors.append((node as Node3D).to_global(r.get_meta("lpos") as Vector3))
 		else:
@@ -974,10 +979,8 @@ func _update_guts(dt: float) -> void:
 		var sl: int = guts.touch_slots[i]
 		if l <= 0.0:
 			break
-		var ground: Vector3 = Vector3(at.x, _ground_y(at) + 0.006, at.z)
-		decals.add(ground, l, rng.randf(), sl)
-		if sand != null and sand.has_method("add_blood"):
-			sand.call("add_blood", ground, BloodMath.splat_radius(l * 1.5), l, sl)
+		# Smears go through the splat cells like landed drops, so a spill landing at once shares the stamping budget.
+		_add_splat(Vector3(at.x, _ground_y(at), at.z), l, sl)
 		for k: int in roundi(10.0 * BloodMath.rate_mult(quality)):
 			sim.emit(at + Vector3(0, 0.05, 0), Vector3(rng.randf_range(-1.2, 1.2), rng.randf_range(0.8, 2.2), rng.randf_range(-1.2, 1.2)),
 					BloodMath.drop_radius(rng.randf(), 0.0035, 0.008), 2.0, 5.0, rng.randf(), sl)
@@ -1306,27 +1309,46 @@ func _process_impacts() -> void:
 					rng.randf() * TAU, pslot)
 
 
+## Adds `litres` landing at `p` to its splat cell (one accumulator per cell and blood colour); _flush_splats turns
+## cells into ground decals and sand stamps within the per-frame texel budget.
+func _add_splat(p: Vector3, litres: float, slot: int) -> void:
+	var cs: Vector2i = BloodMath.splat_cell(p.x, p.z, SPLAT_CELL)
+	var cell: Vector3i = Vector3i(cs.x, cs.y, slot)
+	var acc: Vector4 = _splat.get(cell, Vector4.ZERO)
+	_splat[cell] = Vector4(acc.x + p.x * litres, acc.y + p.y * litres, acc.z + p.z * litres, acc.w + litres)
+
+
 func _flush_splats() -> void:
 	stat_splat_calls = 0
 	if _splat.is_empty():
 		return
 	var has_sand: bool = sand != null and sand.has_method("add_blood")
+	var tpm: float = 40.0
+	if has_sand and sand.get("texels_per_m") != null:
+		tpm = float(sand.get("texels_per_m"))
 	var max_calls: int = BloodMath.splat_calls(quality)
-	var area_left: float = BloodMath.splat_area(quality)  ## big splats cost texels^2: the rest wait a frame (cells merge)
+	var texels_left: float = BloodMath.splat_texels(quality)  ## big splats cost texels^2: the rest wait a frame (cells merge)
 	for cell: Vector3i in _splat.keys():
-		if stat_splat_calls >= max_calls or area_left <= 0.0:
+		if stat_splat_calls >= max_calls:
 			break
 		var a: Vector4 = _splat[cell]
-		_splat.erase(cell)
 		if a.w <= 0.0:
+			_splat.erase(cell)
 			continue
+		var sl: float = minf(a.w, BloodMath.SPLAT_SAND_MAX_LITRES)
+		var sr: float = BloodMath.splat_radius(sl)
+		var cost: float = BloodMath.splat_cost(SandMap.blood_spread_radius(sl, sr), tpm) if has_sand else 0.0
+		if cost > texels_left and stat_splat_calls > 0:
+			continue  ## too big for what is left this frame: a smaller one may still fit
+		_splat.erase(cell)
 		var at: Vector3 = Vector3(a.x / a.w, a.y / a.w, a.z / a.w)
 		decals.add(at + Vector3(0, 0.006, 0), a.w, rng.randf(), cell.z)
 		if has_sand:
-			var sr: float = BloodMath.splat_radius(a.w)
-			sand.call("add_blood", at, sr, a.w, cell.z)
-			area_left -= maxf(sr, 0.05) * maxf(sr, 0.05) / 0.0025
+			sand.call("add_blood", at, sr, sl, cell.z)
+			texels_left -= cost
 		stat_splat_calls += 1
+		if texels_left <= 0.0:
+			break
 	if _splat.size() > 4 * max_calls:
 		_splat.clear()
 

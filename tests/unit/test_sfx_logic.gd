@@ -242,3 +242,42 @@ func test_duck_envelope() -> void:
 	assert_eq(SfxLogic.duck_db(0.3, -10.0, 0.1, 0.5, 1.0), -10.0)
 	assert_near(SfxLogic.duck_db(1.1, -10.0, 0.1, 0.5, 1.0), -5.0, 0.01)
 	assert_eq(SfxLogic.duck_db(5.0, -10.0, 0.1, 0.5, 1.0), 0.0)
+
+
+func test_priority_tiers_and_loudness() -> void:
+	assert_eq(SfxLogic.priority_tier("gore/behead"), 3)
+	assert_eq(SfxLogic.priority_tier("impact/armor_clank"), 2)
+	assert_eq(SfxLogic.priority_tier("move/whoosh_heavy"), 1)
+	assert_eq(SfxLogic.priority_tier("move/footstep_sand"), 0)
+	# A quiet top-tier sound outranks the loudest impact; within a tier the louder one wins.
+	assert_true(SfxLogic.priority("gore/behead", -20.0) > SfxLogic.priority("impact/clang_steel", 6.0))
+	assert_true(SfxLogic.priority("impact/armor_clank", 0.0) > SfxLogic.priority("impact/leather_slap", -10.0))
+	# A finisher's layers jump a tier; heavy weapons get a few dB.
+	var fin: float = SfxLogic.priority("impact/body_thud", -15.0, SfxLogic.hit_boost_db({"finisher": "pummel"}))
+	assert_true(fin > SfxLogic.priority("impact/clang_steel", 0.0))
+	assert_true(SfxLogic.is_important(fin))
+	assert_eq(SfxLogic.hit_boost_db({"weapon_id": "warhammer"}), SfxLogic.HEAVY_BOOST_DB)
+	assert_eq(SfxLogic.hit_boost_db({"weapon_id": "gladius"}), 0.0)
+	assert_false(SfxLogic.is_important(SfxLogic.priority("impact/leather_slap", -10.0)))
+	assert_true(SfxLogic.decayed_priority(50.0, 0.5) < 50.0)
+
+
+func test_steal_victim_picks_lowest_below_newcomer() -> void:
+	var prios: PackedFloat32Array = PackedFloat32Array([60.0, 40.0, -1.0e9, 55.0])
+	assert_eq(SfxLogic.steal_victim(prios, 70.0), 1)
+	assert_eq(SfxLogic.steal_victim(prios, 40.0), -1, "a tie keeps the playing sound")
+	assert_eq(SfxLogic.steal_victim(prios, 30.0), -1)
+	assert_eq(SfxLogic.steal_victim(PackedFloat32Array([-1.0e9]), 70.0), -1)
+
+
+func test_spurts_only_for_severs_and_deep_wounds() -> void:
+	assert_true(SfxLogic.spurts_for("sever", 0.0))
+	assert_true(SfxLogic.spurts_for("bleed", SfxLogic.SPURT_MIN_BLEED))
+	assert_false(SfxLogic.spurts_for("bleed", 0.006), "a bloody nose does not spurt")
+	assert_false(SfxLogic.spurts_for("behead", 1.0), "beheads gush instead")
+
+
+func test_real_delta_undoes_time_scale() -> void:
+	assert_near(SfxLogic.real_delta(1.0 / 60.0, 1.0), 1.0 / 60.0, 0.000001)
+	assert_near(SfxLogic.real_delta(0.2 / 60.0, 0.2), 1.0 / 60.0, 0.000001, "0.2x slow motion")
+	assert_true(is_finite(SfxLogic.real_delta(0.0, 0.0)), "paused: no division by zero")
