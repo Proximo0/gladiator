@@ -1,0 +1,2 @@
+What happened: the spawn guard pose set the arm bones with `FighterMath.bone_basis(dir)` (shortest arc from world down), which keeps a world roll; side 1 is built turned 180 degrees, so its forearm twisted past the grip joint's limits, the machete spawned pointing sideways and the joint snapped it back (0.15 m intro drift became 0.49 m). Only side 1 showed it
+Rule: any pose written into a rig takes its roll from the body's yaw (`yb * bone_basis(yb.inverse() * dir)`), and every spawn or pose check runs both sides

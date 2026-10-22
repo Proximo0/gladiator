@@ -197,6 +197,24 @@ func test_swing_inside_is_continuous_and_inside() -> void:
 	assert_true(not FightCamera.swing_inside(Vector3(0, 4, 9), look, 10.3, 0.8, 2.0)["cut"])
 
 
+func test_swing_unwinds_at_a_bounded_rate() -> void:
+	var look := Vector3(0, 1.8, 6.0)
+	# Swung far round (the long way, as after a cut), then the free pose comes back inside the wall at once.
+	var sw: Dictionary = FightCamera.swing_inside(Vector3(0.3, 4.0, 9.0), look, 10.3, 0.8, 2.0, -1.0, 1.75, -1.5, 0.05)
+	assert_near(float(sw["rot"]), -1.45, 0.001, "turns back one step")
+	assert_eq(float(sw["sign"]), -1.0, "keeps its way round")
+	var p: Vector3 = sw["pos"]
+	assert_true(Vector2(p.x, p.z).length() <= 10.3 + 0.01, "inside")
+	var free: Dictionary = FightCamera.swing_inside(Vector3(0.3, 4.0, 9.0), look, 10.3, 0.8, 2.0, -1.0, 1.75, -0.03, 0.05)
+	assert_near(float(free["rot"]), 0.0, 0.001, "the last step lands on the unswung pose")
+	assert_eq(FightCamera.swing_inside(Vector3(0.3, 4.0, 9.0), look, 10.3, 0.8, 2.0, -1.0)["pos"], Vector3(0.3, 4.0, 9.0),
+		"no limit given: unswung at once")
+	var cut: Dictionary = FightCamera.swing_inside(Vector3(0.3, 4.0, 9.0), look, 10.3, 0.8, 2.0, -1.0, 1.75, -1.5, 0.05, 0.5)
+	assert_true(bool(cut["cut"]) and float(cut["rot"]) == 0.0, "held back too far: cuts to the unswung pose")
+	var near: Dictionary = FightCamera.swing_inside(Vector3(0.3, 4.0, 9.0), look, 10.3, 0.8, 2.0, -1.0, 1.75, -0.4, 0.05, 0.5)
+	assert_true(not bool(near["cut"]) and absf(float(near["rot"]) + 0.35) < 0.001, "a small swing still turns back")
+
+
 func test_side_pose_never_crosses_the_fight_line_near_the_wall() -> void:
 	# Fighters walking along the wall: the side-on camera stays on one side of their line.
 	for i: int in 40:

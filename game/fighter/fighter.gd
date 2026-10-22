@@ -230,12 +230,81 @@ func _build() -> void:
 	if oid != "" and oid != "fists" and not CombatData.weapon(oid).is_empty():
 		offhand = _make_weapon(CombatData.weapon(oid), -1.0)
 		_attach(offhand, "l")
+	_spawn_guard_pose()
 	_compute_inertia()
 	_hand_target = _hand_pos("r")
 	_hand_target_l = _hand_pos("l")
 	_goal_r = _hand_target - (parts["pelvis"] as RigidBody3D).global_position
 	_goal_l = _hand_target_l - (parts["pelvis"] as RigidBody3D).global_position
 	_record_velocities()
+
+
+## Spawn with the arms already in the idle guard (the pose neutral input drives them to) and the blade already at its
+## guard angle, so nothing swings up and shoves the body back during the match intro (a spear backed its holder off
+## 0.41 m while the plates showed). Moves each arm and what its hand holds rigidly, so every joint stays satisfied.
+func _spawn_guard_pose() -> void:
+	var torso: RigidBody3D = parts["torso"]
+	var up := Vector3.UP
+	var fwd: Vector3 = -global_transform.basis.z
+	fwd = Vector3(fwd.x, 0.0, fwd.z).normalized()
+	var right: Vector3 = fwd.cross(up).normalized()
+	var chest: Vector3 = torso.global_position + up * 0.1
+	var origin: Vector3 = chest + fwd * _t("guard_forward") - up * 0.05
+	var reach: float = (FighterRig.UPPER_ARM_LEN + FighterRig.FOREARM_LEN) * 0.97
+	var gp: Dictionary = {"w": _t("guard_width"), "h": _t("guard_height"), "fwd": _t("guard_forward"),
+		"thrust": _t("thrust_reach"), "min_fwd": 0.2}
+	var shoulder_r: Vector3 = _shoulder_world("r")
+	_pose_arm("r", FighterMath.guard_target(Vector2.ZERO, 0.0, origin, right, up, fwd, shoulder_r, reach, gp), fwd, right)
+	if weapon != null and weapon.shape_kind != "shield":
+		var fore: RigidBody3D = parts["forearm_r"]
+		var hp: Vector3 = _hand_pos("r")
+		var out: Vector3 = hp - (chest - fwd * _t("blade_pivot_back"))
+		var blade: Vector3 = (out.normalized() * 0.8 + up * _t("blade_up_guard")).normalized()
+		var natural: Vector3 = (fore.global_transform.basis * _grip_basis(weapon)).y.normalized()
+		var ang: float = natural.angle_to(blade)
+		if ang > _t("wrist_reach"):
+			blade = natural.slerp(blade, _t("wrist_reach") / ang).normalized()
+		var edge: Vector3 = fwd - blade * fwd.dot(blade)
+		if edge.length_squared() < 0.0001:
+			edge = right
+		edge = edge.normalized()
+		weapon.global_transform = Transform3D(Basis(edge, blade, edge.cross(blade)), weapon.global_position)
+	var lt: Vector3 = chest + fwd * 0.3 - right * 0.22 - up * 0.2
+	if offhand != null:
+		lt = chest + fwd * 0.3 - right * 0.22 - up * 0.3
+	elif weapon != null and bool(weapon.def.get("two_handed", false)):
+		lt = weapon.global_transform * Vector3(0, -0.13, 0)
+	_pose_arm("l", lt, fwd, right)
+
+
+func _shoulder_world(h: String) -> Vector3:
+	var torso: RigidBody3D = parts["torso"]
+	return torso.global_transform * ((FighterRig.part("upper_arm_" + h)["pivot"] as Vector3) - (FighterRig.part("torso")["center"] as Vector3))
+
+
+## Puts arm `h` on its IK solution for a hand at `target` (the bones as the arm drive aims them) and carries whatever
+## the hand holds along with the forearm.
+func _pose_arm(h: String, target: Vector3, fwd: Vector3, right: Vector3) -> void:
+	var sgn: float = 1.0 if h == "r" else -1.0
+	var shoulder: Vector3 = _shoulder_world(h)
+	var ik: Array[Vector3] = FighterMath.arm_ik(shoulder, target, FighterRig.UPPER_ARM_LEN, FighterRig.FOREARM_LEN,
+		-Vector3.UP + right * (0.5 * sgn) + fwd * -0.2)
+	# Bones keep their rest roll about the body's yaw (the built rig's), so the elbow and wrist joints start inside
+	# their limits whichever way the fighter faces.
+	var yb: Basis = Basis(Vector3.UP, atan2(-fwd.x, -fwd.z))
+	var ub: Basis = yb * FighterMath.bone_basis(yb.inverse() * (ik[0] - shoulder))
+	var fb: Basis = yb * FighterMath.bone_basis(yb.inverse() * (ik[1] - ik[0]))
+	var upper: RigidBody3D = parts["upper_arm_" + h]
+	var fore: RigidBody3D = parts["forearm_" + h]
+	var ud: Dictionary = FighterRig.part("upper_arm_" + h)
+	var fd: Dictionary = FighterRig.part("forearm_" + h)
+	var fore_old: Transform3D = fore.global_transform
+	upper.global_transform = Transform3D(ub, shoulder + ub * ((ud["center"] as Vector3) - (ud["pivot"] as Vector3)))
+	fore.global_transform = Transform3D(fb, ik[0] + fb * ((fd["center"] as Vector3) - (fd["pivot"] as Vector3)))
+	var carry: Transform3D = fore.global_transform * fore_old.affine_inverse()
+	for w: Weapon in [fist_r, fist_l, weapon, offhand]:
+		if w != null and w.holder == self and w.hand == h:
+			w.global_transform = carry * w.global_transform
 
 
 func _make_part(pd: Dictionary, col: Color) -> void:

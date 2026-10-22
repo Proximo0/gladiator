@@ -7,10 +7,12 @@ extends "res://tests/sim/sim_base.gd"
 const HOLD_CAP: int = 400
 ## Ticks from the bleed-out to the results: MenuFlow.RESULT_DELAY_S, then the instant replay (KillCam) when it plays.
 const RESULT_CAP: int = 1800
-## The match seed (MenuFlow draws one from the wall clock otherwise): it picks the CPU's loadout, and a held fighter
-## still settles into its guard, so a random weapon made the drift random (a spear swings up and backs its holder off
-## 0.41 m). This one gives the CPU a gladius.
+## The match seed (MenuFlow draws one from the wall clock otherwise): it picks the CPU's loadout. Fighters spawn with
+## their weapons in guard, so every weapon drifts about 0.15 m while held (a spear swung up and backed its holder off
+## 0.41 m before); the seed stays fixed so the row is repeatable. This one gives the CPU a gladius.
 const HOLD_SEED: int = 7
+## Pelvis drift allowed while held, m (the ragdoll settling onto its feet).
+const HOLD_DRIFT_MAX: float = 0.25
 
 
 func _wait_until(cond: Callable, cap: int) -> int:
@@ -59,7 +61,7 @@ func run() -> Array:
 	var want_ticks: int = roundi(Tuning.shared().intro_s * 60.0)
 	var cpu_weapon: String = str((m.fighters[1] as Fighter).debug_frame()["weapon_id"])
 	rows.append(row("match_show_intro_hold", held and freed and absi(n - want_ticks) <= 12 and leaks[0] > 0 and leaks[1] == 0
-		and drift < 0.35,
+		and drift < HOLD_DRIFT_MAX,
 		"held=%s for %d ticks (intro_s %d), %d of %d held ticks with input, drift %.2f m (CPU %s), then reader '%s' and brain back=%s"
 		% [str(held), n, want_ticks, leaks[1], leaks[0], drift, cpu_weapon, reader.device, str(m.brains[1] != null)]))
 	var hint_after: int = await _wait_until(func() -> bool: return flow.intro_phase() == "", 120)

@@ -1,0 +1,2 @@
+What happened: the follow camera's wall swing eases with the overshoot, so after it cut to the long way round (1.3 rad) a fighter stepping off the wall unwound it across the whole fight in about 15 frames (want moved 18 m/s, lag 5.2 m). Found only because the spawn-pose change sent the seeded bot fight down another path
+Rule: an eased offset that can be large needs a rate limit (and a cut when it falls far behind), not only easing by its input; a seeded fight sim covers one path, so a failure after an unrelated change is a defect to trace, not noise

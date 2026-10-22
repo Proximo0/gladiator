@@ -8,6 +8,8 @@ const FOV_EXTRA_MAX: float = 18.0  ## most the lens widens to keep both fighters
 const WALL_MARGIN: float = 0.7  ## how far inside the wall the camera stays
 const SQUEEZE_FREE_M: float = 0.8  ## how far outside the wall the follow pose may be (it just comes in) before it swings aside, m
 const SQUEEZE_FULL_M: float = 2.0  ## overshoot at which the swing round the look point is complete, m
+const SQUEEZE_UNWIND_RAD_S: float = 1.0  ## fastest the wall swing turns back as the fighter steps off the wall, rad/s
+const SQUEEZE_UNWIND_CUT_RAD: float = 0.5  ## held back this far from where it wants to be, the swing cuts there, rad
 ## Aim and height: look a little below head height from above, so the fighters sit in the lower-middle of the frame
 ## with sand under their feet and the wall kept to the top third.
 const FOLLOW_LOOK_Y: float = 0.9
@@ -64,6 +66,7 @@ var _vel_look: Vector3 = Vector3.ZERO
 var _prev_want_pos: Vector3 = Vector3.ZERO
 var _prev_want_look: Vector3 = Vector3.ZERO
 var _side_sign: float = 0.0  ## side of the fight line the wall-squeeze shot films from, latched while it is in use
+var _swing_rot: float = 0.0  ## the wall swing last frame (signed, rad), so it unwinds at a bounded rate
 var _side_prev: Vector3 = Vector3.ZERO  ## last side-on camera position: the wall turn keeps to the end of the arc nearest it
 var _side_have: bool = false
 var _victim_owner: Node = null  ## the finale victim's fighter (anything with is_limb_cut), polled for a later beheading
@@ -208,18 +211,24 @@ static func ray_fit(from: Vector3, d: Vector3, lim: float) -> float:
 ## only comes in along its line. Further out it swings round `look` (keeping height) toward the nearest direction
 ## where it fits `free_m` closer (fit_dir), fully once `full_m` outside; the swing eases in with that radial overshoot
 ## (smoothstep), so it never jumps, and stops at `max_rad` (past side-on it would film the fighter's face). `sign`
-## (+1 / -1) keeps the way round it already took; 0 picks the shorter way. Returns {"pos", "sign", "amount" 0..1,
-## "cut" true when it had to change ways}.
+## (+1 / -1) keeps the way round it already took; 0 picks the shorter way. `prev_rot` is the swing last time (the
+## returned "rot") and `max_unwind` how far it may shrink in one call (rad): a big swing (the long way round, after a
+## cut) would otherwise unwind across the whole fight in a few frames as the fighter steps off the wall. Once the
+## held-back swing is more than `unwind_cut` from where it wants to be, it cuts there instead.
+## Returns {"pos", "sign", "amount" 0..1, "rot" (signed swing, rad), "cut" true when it changed ways or cut back}.
 static func swing_inside(pos: Vector3, look: Vector3, lim: float, free_m: float, full_m: float, sign: float = 0.0,
-		max_rad: float = 1.75) -> Dictionary:
-	var out: Dictionary = {"pos": pos, "sign": 0.0, "amount": 0.0, "cut": false}
-	if lim <= 0.0 or Vector2(pos.x, pos.z).length() <= lim:
-		return out
+		max_rad: float = 1.75, prev_rot: float = 0.0, max_unwind: float = INF, unwind_cut: float = INF) -> Dictionary:
+	var out: Dictionary = {"pos": pos, "sign": 0.0, "amount": 0.0, "rot": 0.0, "cut": false}
 	var o := Vector3(pos.x - look.x, 0.0, pos.z - look.z)
 	var rh: float = o.length()
-	if rh < 0.01:
+	if lim <= 0.0 or rh < 0.01:
 		return out
 	var d: Vector3 = o / rh
+	if Vector2(pos.x, pos.z).length() <= lim:
+		if absf(prev_rot) <= max_unwind or absf(prev_rot) - max_unwind > unwind_cut:
+			out["cut"] = absf(prev_rot) > max_unwind
+			return out
+		return _swung(out, look, d, rh, pos.y, lim, prev_rot - signf(prev_rot) * max_unwind, signf(prev_rot))
 	var excess: float = Vector2(pos.x, pos.z).length() - lim
 	var r_in: float = maxf(rh - free_m, 0.5)
 	var s: float = 0.0
@@ -228,8 +237,8 @@ static func swing_inside(pos: Vector3, look: Vector3, lim: float, free_m: float,
 	elif excess > free_m:
 		s = 1.0
 	s = s * s * (3.0 - 2.0 * s)
-	var dir: Vector3 = d
 	var sg: float = sign
+	var rot: float = 0.0
 	if s > 0.0:
 		# The directions that fit form an arc round the arena-centre direction; reach its near end going the way
 		# already taken. Only when that way can no longer reach the arc (past `max_rad`) and the other way can,
@@ -253,12 +262,27 @@ static func swing_inside(pos: Vector3, look: Vector3, lim: float, free_m: float,
 		if absf(wrapf(a_d - a_in, -PI, PI)) <= half:
 			ang = 0.0  # it already fits that close in: no swing
 		ang = clampf(ang, -max_rad, max_rad)
-		var rot: Vector2 = Vector2(d.x, d.z).rotated(ang * s)
-		dir = Vector3(rot.x, 0.0, rot.y)
-		out["amount"] = absf(ang * s) / (PI * 0.5)
+		rot = ang * s
+	var shrink: bool = absf(rot) < absf(prev_rot) - max_unwind or (rot * prev_rot < 0.0 and absf(prev_rot) > max_unwind)
+	if not out["cut"] and shrink:
+		var held: float = prev_rot - signf(prev_rot) * max_unwind
+		if absf(held - rot) > unwind_cut:
+			out["cut"] = true
+		else:
+			rot = held
+			sg = signf(prev_rot)
+	return _swung(out, look, d, rh, pos.y, lim, rot, sg)
+
+
+## Fills swing_inside's result for a swing of `rot` (rad) of the ground direction `d` round `look`.
+static func _swung(out: Dictionary, look: Vector3, d: Vector3, rh: float, y: float, lim: float, rot: float, sg: float) -> Dictionary:
+	var rv: Vector2 = Vector2(d.x, d.z).rotated(rot)
+	var dir := Vector3(rv.x, 0.0, rv.y)
+	out["amount"] = absf(rot) / (PI * 0.5)
+	out["rot"] = rot
 	out["sign"] = sg
 	var r: float = minf(rh, ray_fit(look, dir, lim))
-	out["pos"] = Vector3(look.x + dir.x * r, pos.y, look.z + dir.z * r)
+	out["pos"] = Vector3(look.x + dir.x * r, y, look.z + dir.z * r)
 	return out
 
 
@@ -455,6 +479,7 @@ func snap() -> void:
 	_victim_owner = null
 	_head_seen = false
 	_side_sign = 0.0
+	_swing_rot = 0.0
 	_side_have = false
 	finale_head = null
 	finale_head_free = false
@@ -561,12 +586,15 @@ func update_camera(delta: float) -> void:
 	var want_look: Vector3 = look_pt
 	if mode == "follow":
 		# Backed against the wall: swing round the look point to the nearest angle that fits inside it, after first
-		# allowing the camera SQUEEZE_FREE_M closer. Continuous, so it never sweeps through the fighters or cuts.
+		# allowing the camera SQUEEZE_FREE_M closer. Continuous, so it never sweeps through the fighters; it turns back
+		# at most SQUEEZE_UNWIND_RAD_S and cuts back when it falls SQUEEZE_UNWIND_CUT_RAD behind.
 		var free_pos: Vector3 = raw_pos + away * pull
-		var sw: Dictionary = swing_inside(free_pos, look_pt, lim, SQUEEZE_FREE_M, SQUEEZE_FULL_M, _side_sign if _primed else 0.0)
+		var sw: Dictionary = swing_inside(free_pos, look_pt, lim, SQUEEZE_FREE_M, SQUEEZE_FULL_M, _side_sign if _primed else 0.0,
+				1.75, _swing_rot if _primed else 0.0, SQUEEZE_UNWIND_RAD_S * delta, SQUEEZE_UNWIND_CUT_RAD)
 		var swung: Vector3 = sw["pos"]
 		_squeeze_t = float(sw["amount"])
 		_side_sign = float(sw["sign"])
+		_swing_rot = float(sw["rot"])
 		cut = bool(sw["cut"])
 		want_pos = clamp_to_arena(swung, arena_radius, WALL_MARGIN, 0.5)
 	# A beheading after the finale began (or after it ended): the shot re-aims on the head (FinaleShot.head_free).

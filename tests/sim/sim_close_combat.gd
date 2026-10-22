@@ -145,7 +145,8 @@ func _kick(gap: float) -> Array:
 func _grab() -> Array:
 	await sandbox()
 	_floor()
-	var fs: Array = _pair("gladius", "gladius", 0.8)
+	# 1.1 m: the clinch range the guards settle at (fighters spawn in guard; they used to shove apart from 0.8 m).
+	var fs: Array = _pair("gladius", "gladius", 1.1)
 	var f: Node3D = fs[0]
 	var foe: Node3D = fs[1]
 	var held_at: int = -1
