@@ -46,7 +46,7 @@ const SPEAR_SERVO_GAIN: float = 0.12  # TUNING: share of the blade line's miss c
 const SPEAR_AIM_SLEW: float = 0.2  ## max aim travel per tick while a spear tracks its target
 const SPEAR_ALIGN_TOL: float = 0.18  # TUNING: blade line miss (m) under which a spear thrust is let go
 const SPEAR_WINDUP: int = 10  ## ticks a spear waits for its point to line up before it thrusts anyway
-const SPEAR_READY_DIST: float = 4.5  ## inside this distance a spear holds its pole stance (blade level, point on the foe)
+const SPEAR_READY_DIST: float = 4.8  ## inside this distance a spear holds its pole stance (blade level, point on the foe)
 const SPEAR_THRUST_MIN: float = 2.75  # TUNING: closer than this the levelled point is already past the foe's front
 const SPEAR_MIN_RANGE: float = 2.3  # TUNING: inside this a spear gives ground until there is room for the point
 const SPEAR_BACKSTEP: int = 800  ## backward move input while a spear gives ground
@@ -905,10 +905,13 @@ func _do_windup(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 				out.move_y = -600
 			elif tc > SWORD_SET_MAX:
 				out.move_y = 500
-		if room and ((_st_ticks >= 1 and _spear_aligned(me, tgt)) or _st_ticks + 1 >= _st_len):
+		if room and _st_ticks >= 1 and _spear_aligned(me, tgt, 1.0):
 			_begin_drive(me)
-		elif _st_ticks >= _st_len * 3:
-			_enter(ST_APPROACH, 0)  # never found room for the drive
+		elif _st_ticks + 1 >= _st_len:
+			if room and _spear_aligned(me, tgt, 2.0):
+				_begin_drive(me)  # near enough on line: go before the foe walks past the point
+			else:
+				_enter(ST_APPROACH, 0)  # a drive off line only bats the foe with the shaft: set again
 		return
 	var t: Vector2 = _plan_target(me, obs)
 	var wind: Vector2 = _windup_aim(t)
@@ -1198,7 +1201,7 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 			dir = Vector2(mirror * 0.45, -0.25)  # thrust: wind up off line, then drive onto the target
 			if shape == "spear":
 				dir = Vector2.ZERO  # a pole thrust is drawn back along its own line, never swept across the foe
-	var committed: bool = kind == "thrust" and not half and _point_weapon(def)
+	var committed: bool = kind == "thrust" and (_spear or (not half and _point_weapon(def)))
 	if committed and not _spear and float(_d.get("thrust_skill", 1.0)) < 1.0:
 		committed = _drng.randf() < float(_d["thrust_skill"])  # a novice stabs with a swing of the arm
 	return {"kind": kind, "part": part, "dir": dir, "noise": noise, "half": half, "neck": neck, "finishing": finishing,
@@ -1407,15 +1410,15 @@ func _pole_servo(me: Dictionary, target: Vector3) -> Vector2:
 	return _clamp_aim(_last_aim + step.limit_length(SPEAR_AIM_SLEW))
 
 
-## True when the spear points ahead and its blade line passes within SPEAR_ALIGN_TOL of `target`.
-func _spear_aligned(me: Dictionary, target: Vector3) -> bool:
+## True when the spear points ahead and its blade line passes within SPEAR_ALIGN_TOL (times `slack`) of `target`.
+func _spear_aligned(me: Dictionary, target: Vector3, slack: float = 1.0) -> bool:
 	if not me.has("tip_pos") or not me.has("hand_pos"):
 		return true
 	var hand: Vector3 = me["hand_pos"]
 	var tip: Vector3 = me["tip_pos"]
 	if (tip - hand).normalized().dot(_dir) < 0.85:
 		return false
-	return pole_miss(hand, tip, target, _right).length() <= SPEAR_ALIGN_TOL
+	return pole_miss(hand, tip, target, _right).length() <= SPEAR_ALIGN_TOL * slack
 
 
 func _windup_aim(t: Vector2) -> Vector2:
@@ -1508,8 +1511,10 @@ func _wall_adjust(me: Dictionary, out: FighterInput) -> void:
 func _windup_len(me: Dictionary) -> int:
 	var def: Dictionary = CombatData.weapon(str(me.get("weapon_id", "fists")))
 	var m: float = float(def.get("mass", 1.0))
-	if _spear:
+	if _spear and not _committed_thrust():
 		return SPEAR_WINDUP
+	if _spear:
+		return int(Tuning.shared().ai_spear_set_ticks)
 	if _committed_thrust():
 		return int(Tuning.shared().ai_sword_set_ticks)
 	return clampi(roundi((8.0 + m * 7.0) * (1.15 - _pf("aggression") * 0.5)), 8, 36)

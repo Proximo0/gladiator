@@ -44,7 +44,7 @@ jobs:
             exit 0
           fi
           if [ "${{ matrix.data }}" = main ]; then
-            git fetch -q --depth=1 origin main && git checkout FETCH_HEAD -- data/weapons.json data/armor.json
+            git fetch -q --depth=1 origin main && git checkout FETCH_HEAD -- data game  # main's data and game code (an AI branch gets its "before" too)
           fi
           godot --headless --path . --import > /tmp/import.log 2>&1 || { cat /tmp/import.log; exit 1; }
           python3 tools/balance_matrix.py run --fights=20 --jobs=4 --shard=${{ matrix.shard }} --nshards=20 --out=out/balance/shard.json
@@ -84,7 +84,10 @@ jobs:
           for fn in sys.argv[2:]:
               d = json.load(open(fn))
               for r in d["records"]:
-                  r.pop("hitlog", None)
+                  hl = r.pop("hitlog", None) or {}
+                  # Per-weapon contact sums only (point share and speeds for AI work), rounded.
+                  r["hl"] = {w: {k: round(float(v), 2) for k, v in h.items() if k in ("n", "point", "speed", "point_speed", "total")}
+                      for w, h in hl.items()}
                   r.pop("log", None)
                   recs.append(r)
           with gzip.open(sys.argv[1], "wt") as f:

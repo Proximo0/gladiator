@@ -83,10 +83,10 @@ func _tick() -> void:
 			var chest: Vector3 = (foe["parts"]["torso"] as Dictionary)["pos"]
 			var tip: Vector3 = me["tip_pos"]
 			var hand: Vector3 = me["hand_pos"]
-			print("TR t=%d miss=%.2f st=%s dist=%.2f tip_chest=%.2f tip_v=%.2f pel_v=%.2f blade_dir=(%.2f,%.2f,%.2f) tip_y=%.2f chest_y=%.2f" % [_t, FighterBrain.pole_miss(hand, tip, chest, Vector3(1, 0, 0) if true else Vector3.ZERO).length(),
+			print("TR t=%d miss=%.2f st=%s dist=%.2f tip_chest=%.2f tip_v=%.2f pel_v=%.2f blade_on_foe=%.2f up=%.2f _=%.1f tip_y=%.2f chest_y=%.2f" % [_t, FighterBrain.pole_miss(hand, tip, chest, Vector3(1, 0, 0) if true else Vector3.ZERO).length(),
 				_brain.state_name(), Vector2(mp.x - fp.x, mp.z - fp.z).length(), tip.distance_to(chest), float(me["tip_speed"]),
-				(me["pelvis_vel"] as Vector3).length(), (tip - hand).normalized().x, (tip - hand).normalized().y,
-				(tip - hand).normalized().z, tip.y, chest.y])
+				(me["pelvis_vel"] as Vector3).length(), (tip - hand).normalized().dot(Vector3(fp.x - mp.x, 0, fp.z - mp.z).normalized()), (tip - hand).normalized().y,
+				0.0, tip.y, chest.y])
 		if striking:
 			_cur_strike_max = maxf(_cur_strike_max, float(me["tip_speed"]))
 		elif _cur_strike_max >= 0.0:

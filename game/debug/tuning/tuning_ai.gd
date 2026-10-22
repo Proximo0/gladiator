@@ -8,9 +8,10 @@ const ROWS_AI: Array = [
 	["ai_thrust_near", 0.45, 0.0, 1.0, 0.01, "AI", "CPU thrust: THRUST goes at the latest when the point is this close to the target, m."],
 	["ai_thrust_hit_d", 0.1, 0.0, 0.5, 0.01, "AI", "CPU thrust: the drive ends when the point is this close to the target (it arrived), m."],
 	["ai_thrust_past_d", 0.25, 0.05, 1.0, 0.01, "AI", "CPU thrust: the drive ends when the point is this much farther than its closest (it went past), m."],
-	["ai_spear_drive_max", 3.9, 2.5, 5.0, 0.05, "AI", "CPU spear: a drive starts only inside this distance (pelvis to pelvis), m."],
-	["ai_spear_hold_min", 3.2, 2.5, 5.0, 0.05, "AI", "CPU spear: near end of the standing band the point is held at (room for a run-up), m."],
-	["ai_spear_hold_max", 3.6, 2.5, 5.0, 0.05, "AI", "CPU spear: far end of the standing band, m."],
+	["ai_spear_drive_max", 4.3, 2.5, 5.0, 0.05, "AI", "CPU spear: a drive starts only inside this distance (pelvis to pelvis), m."],
+	["ai_spear_hold_min", 3.6, 2.5, 5.0, 0.05, "AI", "CPU spear: near end of the standing band the point is held at (room for a run-up), m."],
+	["ai_spear_hold_max", 4.0, 2.5, 5.0, 0.05, "AI", "CPU spear: far end of the standing band, m."],
+	["ai_spear_set_ticks", 30.0, 2.0, 90.0, 1.0, "AI", "CPU spear: longest set (the point brought onto the chest before the drive), ticks."],
 	["ai_spear_drive_ticks", 40.0, 10.0, 90.0, 1.0, "AI", "CPU spear: longest drive (the run-in that carries the point), ticks."],
 	["ai_stop_thrust_closing", 1.2, 0.0, 5.0, 0.1, "AI", "CPU spear: a foe stepping in faster than this is met with a thrust at once (a stop thrust), m/s."],
 	["ai_sword_set_ticks", 14.0, 2.0, 40.0, 1.0, "AI", "CPU sword thrust: longest set (the point brought onto the target before the drive), ticks."],
@@ -29,6 +30,7 @@ var ai_thrust_past_d: float
 var ai_spear_drive_max: float
 var ai_spear_hold_min: float
 var ai_spear_hold_max: float
+var ai_spear_set_ticks: float
 var ai_spear_drive_ticks: float
 var ai_stop_thrust_closing: float
 var ai_sword_set_ticks: float
