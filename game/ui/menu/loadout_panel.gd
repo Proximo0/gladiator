@@ -95,6 +95,7 @@ func set_compact(compact: bool, show_card: bool = true, tight: bool = false) -> 
 
 func _add_picker(title: String, items: Array) -> MenuPicker:
 	var p := MenuPicker.new()
+	p.name = "Pick_%s" % title.replace(" ", "")
 	p.custom_minimum_size = Vector2(0.0, ROW_H)
 	p.setup(title, items)
 	p.changed.connect(func(_id: String) -> void: _on_picker(p))
