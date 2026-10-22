@@ -20,7 +20,8 @@ const BUTTON_RADIUS_MIN_MM: float = 4.5  ## 9 mm across at the least on a real p
 const BUTTON_RADIUS_MAX_MM: float = 7.0  ## 14 mm across at the most (tablets)
 const TOGGLE_BITS: int = FighterInput.OFFHAND | FighterInput.HALF_SWORD | FighterInput.CROUCH
 const EDGE_PX: float = 14.0  ## gap from the screen edge to the corner button
-const LABEL_PX: float = 15.0  ## button label size on screen
+const LABEL_PX: float = 15.0  ## smallest button label size on screen
+const LABEL_OF_RADIUS: float = 0.27  ## label size grows with the button (THRUST's radius is 1.2 of the rest)
 const MOUSE_POINTER: int = -1  ## pointer id for the mouse fallback; touch indices are >= 0
 
 var move: Vector2i = Vector2i.ZERO  ## -1000..1000, y up (read by InputReader)
@@ -265,13 +266,23 @@ func _draw() -> void:
 		draw_circle(_stick_origin + clamp_offset(_stick_pos - _stick_origin, r), r * 0.4, Color(1.0, 1.0, 1.0, 0.4))
 	if _aim_finger >= 0:
 		var ra: float = aim_radius()
-		draw_arc(_aim_start, ra, 0.0, TAU, 48, Color(1.0, 0.85, 0.5, 0.5), 2.0)
-		draw_circle(_aim_start + clamp_offset(_aim_pos - _aim_start, ra), ra * 0.2, Color(1.0, 0.85, 0.5, 0.6))
+		var knob: Vector2 = _aim_start + clamp_offset(_aim_pos - _aim_start, ra)
+		var lw: float = 2.5 / _px_per_unit()
+		# A dark under-stroke keeps the gold ring readable over bright sand and crowd.
+		draw_arc(_aim_start, ra, 0.0, TAU, 64, Color(0.0, 0.0, 0.0, 0.35), lw * 2.4, true)
+		draw_arc(_aim_start, ra, 0.0, TAU, 64, Color(1.0, 0.85, 0.5, 0.8), lw, true)
+		draw_line(_aim_start, knob, Color(1.0, 0.85, 0.5, 0.55), lw, true)
+		draw_circle(_aim_start, lw * 2.0, Color(1.0, 0.85, 0.5, 0.8))
+		draw_circle(knob, ra * 0.2, Color(1.0, 0.85, 0.5, 0.6))
 	var font: Font = ThemeDB.fallback_font
 	var k: float = _px_per_unit()
-	var font_size: int = ceili(LABEL_PX / k)
+	var layout: Array = _layout()
+	var label_px: float = LABEL_PX
+	if not layout.is_empty():
+		label_px = maxf(LABEL_PX, float(layout[0]["radius"]) * k * LABEL_OF_RADIUS)
+	var font_size: int = ceili(label_px / k)
 	var line: float = 2.5 / k
-	for b: Dictionary in _layout():
+	for b: Dictionary in layout:
 		var center: Vector2 = b["center"]
 		var held: bool = (buttons & int(b["bit"])) != 0
 		var radius: float = float(b["radius"]) * (1.08 if held else 1.0)

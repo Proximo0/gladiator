@@ -24,6 +24,12 @@ Project settings the export needs (in `project.godot`, owned by the lead):
 - `[display] window/handheld/orientation=4` (sensor landscape).
 - Already present: `renderer/rendering_method.mobile="gl_compatibility"`.
 
+## Check
+`tools/check_android.sh` builds the APK and checks its manifest (package, landscape, INTERNET, both ABIs), printing
+`ANDROID ok|skipped|FAIL`. Without the toolchain above it prints `ANDROID skipped (...)` and exits 0; `--setup` lets it
+fetch what is missing first. Touch is proven without a phone by `tests/sim/sim_touch.gd` (synthetic touch events into
+the real controls) and pictured by `tests/render/touch_capture.tscn` (`--safe-insets=L,T,R,B` fakes a notch).
+
 ## Install on a phone
 - USB: enable Developer options and USB debugging, then `~/android-sdk/platform-tools/adb install -r build/Sandblood-android.apk`.
 - Without adb: copy the APK to the phone (cable, cloud drive, `adb push`), open it in a file manager and allow
@@ -33,5 +39,6 @@ Project settings the export needs (in `project.godot`, owned by the lead):
 ## Not done yet
 - Play Store: release signing with an upload keystore, `--export-release`, and an AAB (needs the Gradle build
   template, the full Android SDK with NDK, and target SDK per current Play policy).
-- Touch controls are a game matter; the APK itself only guarantees the window, orientation and renderer.
+- Touch controls are a game matter (game/input/touch_controls.gd, sim-tested); the APK itself only guarantees the
+  window, orientation and renderer. Nobody has played them on a real phone yet.
 - Performance tuning on real devices (physics fighters on phones are untested).
