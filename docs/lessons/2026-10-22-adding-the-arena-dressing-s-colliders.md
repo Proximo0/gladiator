@@ -1,0 +1,2 @@
+What happened: Adding the arena dressing's colliders as a separate StaticBody3D flipped sim_net_feel's guard check (client step back 24.7 cm vs host 17.6) even with the body moved 100 m under the floor: one more body reorders Jolt's space
+Rule: Add static shapes to the existing static body (the wall) rather than a new body; to tell contact from reordering, re-run with the new shapes moved far away

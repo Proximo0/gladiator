@@ -1,0 +1,2 @@
+What happened: A grab held by a PD spring between two 1.7 kg forearms slipped in 0.15 s: gains stiff enough to hold an arm went unstable at 60 Hz (damping c·dt/m over 2), and the holding fist bounced off the held wrist and hilt
+Rule: Tie two bodies with a joint (limits for slack) and collision exceptions for what the hand wraps round; check an explicit spring's damping against the lighter body's mass

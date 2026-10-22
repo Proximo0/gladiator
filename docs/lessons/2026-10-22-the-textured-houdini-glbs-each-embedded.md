@@ -1,0 +1,2 @@
+What happened: The textured Houdini glbs each embedded their own copies of the library maps (203 images, 27 distinct); imported as is, Godot extracted 203 JPEGs, lossless and uncompressed in VRAM (~1.4 MB each), so every model on screen paid for its own steel and wood maps
+Rule: Check what a glb embeds before loading it (`images` in its JSON). Point glb materials at shared library textures through the import's external materials (`tools/textured_import.py`) and set library PNGs to VRAM compressed with mipmaps

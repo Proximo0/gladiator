@@ -21,7 +21,8 @@ The current step's contract is in `docs/core_brief.md`; read it before coding.
 - `game/<system>/`: one folder per system.
 - `tests/unit/`: one `test_<module>.gd` per module, `extends TestCase`. `tests/sim/`: regression sims.
 - `tools/`: shell and Python tools. Python uses the standard library only.
-- `docs/`: `agent_brief.md` (contracts and subagent rules), `lessons_learned.md`, `new_project_checklist.md`.
+- `docs/`: `agent_brief.md` (contracts and subagent rules), `lessons/` (one file per lesson; format in
+  `lessons_learned.md`), `new_project_checklist.md`.
 
 ## Rules
 - Static typing everywhere: typed vars, params and returns. Tabs for indentation.
@@ -36,4 +37,5 @@ The current step's contract is in `docs/core_brief.md`; read it before coding.
 - Compare state hashes only on frames where `Flags.commands == 0`.
 - Captures, tests and gates never write player data (`Flags.is_scripted_run()`).
 - Reproduce a bug (test, sim, bot, replay) before fixing it; fix the traced mechanism, not a guess.
-- Read `docs/lessons_learned.md` before starting; add a row whenever something goes wrong.
+- Read the lessons before starting (`python3 tools/lessons_index.py`); whenever something goes wrong, add one as a new
+  file in `docs/lessons/` (format in `docs/lessons_learned.md`).
