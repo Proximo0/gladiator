@@ -1,0 +1,47 @@
+# Order check for the sims: the gate (checks.yml) runs them in fixed shards, so a sim that passes only in its own
+# process, or only after a given neighbour, can hide there. This runs every sim in ONE process in a shuffled order
+# (seed = run number) after each push to main and nightly. It is not part of the gate. A red run names the order on
+# its SIMORDER line; reproduce with: tools/run_sims.sh --shuffle=<seed>
+name: sims-order
+
+on:
+  push:
+    branches: [main]
+    paths: ["game/**", "data/**", "tests/sim/**", "project.godot"]
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sims-order
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+  GODOT: godot
+
+jobs:
+  shuffled:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+      - name: All sims, one process, shuffled
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --import > /tmp/import.log 2>&1 || { cat /tmp/import.log; exit 1; }
+          rc=0
+          tools/run_sims.sh --shuffle=${{ github.run_number }} 2>&1 | tee out.log || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            grep -m1 '^SIMORDER' out.log >> "$GITHUB_STEP_SUMMARY" || true
+            python3 -I tools/ci_annotate.py "sims-order seed=${{ github.run_number }}" out.log
+          fi
+          exit "$rc"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sims-order
+          path: out.log
+          if-no-files-found: ignore

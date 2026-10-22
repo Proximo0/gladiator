@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sim isolation check: runs every sim file of tests/sim/sim_suite.gd alone (one process each), then the whole suite in
+# Sim isolation check: runs every sim file of the suite (sim_suite.tscn -- --list) alone (one process each), then the whole suite in
 # one process, and compares each file's SIM rows. Usage: tools/sim_isolation.sh [sim_name ...]
 # Prints the rows that differ, then "ISOLATION same=N differ=M files=T". Exit 1 if any file differs.
 # Wall-clock numbers are masked before comparing (ms_per_tick, rtt, us/tick and us/frame costs, the audio voice-steal
@@ -12,7 +12,7 @@ GODOT="${GODOT:-godot}"
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 if [[ $# -gt 0 ]]; then files=("$@"); else
-  mapfile -t files < <(sed -n '/^const SIM_FILES/,/^]/p' tests/sim/sim_suite.gd | grep -o '"sim_[a-z0-9_]*"' | tr -d '"')
+  mapfile -t files < <("$GODOT" --headless --path . res://tests/sim/sim_suite.tscn -- --list 2>/dev/null | grep '^sim_')
 fi
 mask() {
   sed -E -e 's/ms_per_tick=[0-9.]+/ms_per_tick=#/g; s/rtt=[0-9]+ms/rtt=#ms/g; s/(stolen|mean_players)=[0-9.]+/\1=#/g' \

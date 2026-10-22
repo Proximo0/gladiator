@@ -1,0 +1,2 @@
+# Append-only table: concurrent branches each add rows at the end; union keeps both sides' rows without a conflict.
+docs/lessons_learned.md merge=union

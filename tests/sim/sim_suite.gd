@@ -1,5 +1,5 @@
 extends Node
-## Runs the regression sims listed in SIM_FILES (each tests/sim/sim_<name>.gd extends sim_base.gd and returns
+## Runs the regression sims found by sim_files() (each tests/sim/sim_<name>.gd extends sim_base.gd and returns
 ## [[name, ok, detail], ...] from run()). Prints "SIM <name> PASS|FAIL <detail>" and "SIMS passed=N failed=M".
 ## Part of tools/run_sims.sh. Run alone: godot --headless --path . res://tests/sim/sim_suite.tscn [-- name ... | -name ...]
 ## Each file starts from the same process state (sim_globals.gd: statics, Engine, Flags, input, audio, a fresh physics
@@ -8,35 +8,12 @@ extends Node
 ## --sim-timeout=<s> (default 300 s of frames, counted at 60 per second whatever Engine.time_scale is) fails and ends
 ## the suite. --no-reset skips the reset (to measure leaks).
 
-const SIM_FILES: Array = [
-	"sim_example",
-	"sim_fighter_core",
-	"sim_close_combat",
-	"sim_fighter_replay",
-	"sim_match_smoke",
-	"sim_practice",
-	"sim_camera_degenerate",
-	"sim_camera_finale",
-	"sim_camera_follow",
-	"sim_killcam",
-	"sim_audio_bot",
-	"sim_hit_feel",
-	"sim_net_loopback",
-	"sim_net_presented",
-	"sim_net_menu",
-	"sim_net_drop",
-	"sim_net_quick",
-	"sim_net_feel",
-	"sim_net_cheat",
-	"sim_killcam_net",
-	"sim_net_quick_flow",
-	"sim_touch",
-	"sim_sandbox_isolation",
-	"sim_decor_clip",
-	"sim_menu_nav",
-	"sim_match_show",  # last: the audio bot sim before it is sensitive to what ran earlier in the process
-	"sim_armor_weight",
-]
+## The suite runs every tests/sim/sim_*.gd with a `func run(` in alphabetical order, so a new sim needs no edit here.
+## Markers in a sim's own text (not inherited by scripts that extend it): "## suite: skip" keeps a file out (a base
+## class or a long soak), "## suite: last" runs it after the others (alphabetical among themselves).
+const SIM_DIR: String = "res://tests/sim/"
+const SKIP_MARK: String = "## suite: skip"
+const LAST_MARK: String = "## suite: last"
 
 
 const DEFAULT_TIMEOUT_S: float = 300.0
@@ -81,9 +58,17 @@ func _ready() -> void:
 	var skip := PackedStringArray()
 	var reset: bool = true
 	var timeout_s: float = DEFAULT_TIMEOUT_S
+	var shuffle_seed: int = -1
+	var files: PackedStringArray = sim_files()
 	for a: String in OS.get_cmdline_user_args():
 		if a == "--no-reset":
 			reset = false
+		elif a == "--list":
+			print("\n".join(files))
+			get_tree().quit(0)
+			return
+		elif a.begins_with("--shuffle="):
+			shuffle_seed = int(a.trim_prefix("--shuffle="))
 		elif a.begins_with("--sim-timeout="):
 			timeout_s = float(a.trim_prefix("--sim-timeout="))
 		elif a.begins_with("--"):
@@ -93,12 +78,21 @@ func _ready() -> void:
 		else:
 			only.append(a)
 	for n: String in only + skip:
-		if not SIM_FILES.has(n):
-			_report(["sim_suite", false, "unknown sim name %s (not in SIM_FILES)" % n])
+		if not files.has(n):
+			_report(["sim_suite", false, "unknown sim name %s (no tests/sim/%s.gd with a run(), or marked skip)" % [n, n]])
 	var todo: Array = []
-	for f: String in SIM_FILES:
+	for f: String in files:
 		if (only.is_empty() or only.has(f)) and not skip.has(f):
 			todo.append(f)
+	if shuffle_seed >= 0:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = shuffle_seed
+		for i: int in range(todo.size() - 1, 0, -1):
+			var j: int = rng.randi_range(0, i)
+			var t: Variant = todo[i]
+			todo[i] = todo[j]
+			todo[j] = t
+		print("SIMORDER seed=%d %s" % [shuffle_seed, " ".join(PackedStringArray(todo))])
 	var log := SuiteErrorLog.new()
 	OS.add_logger(log)
 	var watchdog := Timer.new()
@@ -144,6 +138,27 @@ func _ready() -> void:
 	_current = ""
 	print("SIMS passed=%d failed=%d" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
+
+
+## Sim file names (no extension) in run order: every sim_*.gd under SIM_DIR whose own text has `func run(` and no
+## SKIP_MARK, alphabetical, then the LAST_MARK ones.
+static func sim_files() -> PackedStringArray:
+	var first := PackedStringArray()
+	var last := PackedStringArray()
+	for fn: String in DirAccess.get_files_at(SIM_DIR):
+		if not (fn.begins_with("sim_") and fn.ends_with(".gd")) or fn == "sim_suite.gd":
+			continue
+		var text: String = FileAccess.get_file_as_string(SIM_DIR + fn)
+		if text.find("\nfunc run(") < 0 or text.find(SKIP_MARK) >= 0:
+			continue
+		if text.find(LAST_MARK) >= 0:
+			last.append(fn.get_basename())
+		else:
+			first.append(fn.get_basename())
+	first.sort()
+	last.sort()
+	first.append_array(last)
+	return first
 
 
 func _report(r: Array) -> void:
