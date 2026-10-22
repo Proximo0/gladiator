@@ -6,3 +6,4 @@ __pycache__/
 
 # EOS credentials (docs/eos_setup.md): never commit them
 /config/eos_credentials.cfg
+/addons/epic-online-services-godot/

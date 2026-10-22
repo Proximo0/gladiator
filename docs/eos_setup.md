@@ -18,11 +18,31 @@ so nothing breaks on machines that do not have them. How the backend maps to EOS
    `HSessions` to `project.godot`. ServiceEos needs `EOSGRuntime`, `HPlatform`, `HAuth` and `HLobbies`.
 5. **Restart the editor** (the GDExtension loads at start).
 
-Git: until the first test passes, keep the plugin out of commits (add `addons/epic-online-services-godot/` to
-`.git/info/exclude`, and do not commit the `project.godot` autoload lines): a machine with the autoload lines but no
-binaries prints autoload errors at start. To ship it later, commit the addon **with** the binaries for the platforms you
-build (Windows, Linux for CI, Android), then commit the `project.godot` changes. Scripted and headless runs never pick
-EOS (`--online-service=auto`), so tests and sims stay on the LAN backend either way.
+Git: the addon (`addons/epic-online-services-godot/`) and `config/eos_credentials.cfg` are git-ignored on purpose (EOS SDK
+binaries stay out of the public repo), and the committed `project.godot` has no EOSG autoloads or `[editor_plugins]` entry:
+CI and headless Linux runs have no plugin binaries (the bundled addon is Windows-only), and a project with the autoloads
+but no binaries prints autoload parse errors at start. Scripted and headless runs never pick EOS (`--online-service=auto`),
+so tests and sims stay on the LAN backend. Do not commit the autoload lines the editor writes when you tick the plugin
+(step 4); for a Windows build with EOS use the build script in section 1b instead, which enables the plugin in a copy.
+
+## 1b. Build a Windows .exe with EOS (no editor needed)
+
+With the addon unzipped in place (step 2 above) and `config/eos_credentials.cfg` written (section 3), run from the
+project folder (Windows Git Bash or WSL need `godot` on the PATH; on the cloud box it already is):
+
+```
+tools/export_eos_windows.sh
+```
+
+It copies the repo to `build/eos_src`, adds the credentials there, writes the plugin's autoloads and
+`[editor_plugins]` entry into that copy's `project.godot`, runs `godot --import`, exports the "Windows Desktop" preset
+(release, embedded pack) and zips `build/eos_windows/` to **`build/SandbloodEOS-windows.zip`** (log:
+`build/eos_export.log`; the Linux "dynamic library not found" and `IEOS` parse errors in it are expected, because only the
+Windows DLLs exist). It needs the Windows export templates (`tools/export_windows.sh` downloads them once). The zip holds
+`Sandblood.exe`, `libeosg.windows.template_release.x86_64.dll`, `EOSSDK-Win64-Shipping.dll`, `xaudio2_9redist.dll`
+(all next to the exe, where Godot looks for exported GDExtension libraries), `eos_credentials.cfg`, and the `.bat`
+launchers. Keep all files together; the zip contains your client secret, so do not post it publicly.
+`tools/export_windows.sh` (no EOS, no plugin) still builds the plain LAN-only zip.
 
 ## 2. Portal (dev.epicgames.com/portal, your Sandblood product)
 
@@ -92,10 +112,10 @@ through `HPlatform` (set `HLog.log_level` in the editor's remote tree or add a l
 The second instance needs a second identity. `--eos-profile=<name>` gives it its own EOS cache folder
 (`user://eosg-cache-<name>`) and its own local profile (`user://eos_profile_<name>.json`).
 
-1. Editor: **Debug > Customize Run Instances...**, enable multiple instances, **2** instances; instance 1 with no
-   arguments, instance 2 with launch arguments `-- --eos-profile=p2`. Or two terminals:
-   `godot --path .` and `godot --path . -- --eos-profile=p2`. Exported build:
-   `Sandblood.exe` and `Sandblood.exe -- --eos-profile=p2`.
+1. Built game (easiest): unzip `SandbloodEOS-windows.zip` anywhere, double-click **`Sandblood.exe`** (instance 1), then
+   double-click **`Sandblood (2nd player test).bat`** (instance 2, which runs `Sandblood.exe -- --eos-profile=p2`).
+   From the editor instead: **Debug > Customize Run Instances...**, enable multiple instances, **2** instances; instance 1
+   with no arguments, instance 2 with launch arguments `-- --eos-profile=p2` (needs the plugin ticked, step 4 of section 1).
 2. Give the two players different names on the Online screen.
 3. **Quick Match on both** within a few seconds. Expected: one says "Waiting for an opponent" (it hosts), the other
    "Joining <name>"; both then show the other's name and rating; the host's lobby goes invite-only; the fight starts.
