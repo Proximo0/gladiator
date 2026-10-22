@@ -36,8 +36,9 @@ jobs:
         shell: bash
         run: |
           echo "JAVA_HOME_17=${JAVA_HOME_17_X64}" >> "$GITHUB_ENV"
-          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;${BUILD_TOOLS}" "platform-tools" > /tmp/sdk.log 2>&1 \
-            || { tail -n 30 /tmp/sdk.log; exit 1; }
+          set +o pipefail  # yes dies of SIGPIPE when sdkmanager exits
+          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;${BUILD_TOOLS}" "platform-tools" > /tmp/sdk.log 2>&1
+          [[ -x "${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS}/apksigner" ]] || { tail -n 30 /tmp/sdk.log; exit 1; }
       - name: CI export preset (x86_64 + android_ci feature; not committed)
         shell: bash
         run: |
