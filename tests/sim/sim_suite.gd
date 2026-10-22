@@ -20,6 +20,7 @@ const SIM_FILES: Array = [
 	"sim_net_drop",
 	"sim_net_quick",
 	"sim_killcam_net",
+	"sim_sandbox_isolation",
 ]
 
 
