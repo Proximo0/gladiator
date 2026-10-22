@@ -11,6 +11,7 @@ const WET_DECAY: float = 1.0 / 240.0  ## damp fraction lost per second
 const DRY_RATE: float = 1.0 / 120.0  ## dryness gained per second
 const MAX_DRAG_STAMPS: int = 80
 const BASE_SEED: int = 7
+const DISC_MARGIN: float = 0.35  ## the drawn disc reaches this far under the wall
 const FOOT_RADIUS_MAX: float = 0.075  ## drag radii up to this count as a foot, the rest as a body or weapon
 const TICK_S: float = 1.0 / 60.0
 const AMBIENT_TINT: Color = Color(1.0, 0.9, 0.82)  ## warm fill for shade (sky ambient is blue: olive on orange sand)
@@ -78,12 +79,16 @@ var _lift: float = 0.0  ## visual sand surface height above the flat collider, m
 var _last_puff_time: float = -10.0
 var _base_tex: ImageTexture
 var _ambient_clock: float = 99.0
+var setup_ms: Dictionary = {}  ## step -> ms of the last setup (Arena.build_profile)
+var _lap_us: int = 0
 
 
 ## Builds maps, mesh and material. radius = arena radius in metres. texels_per_m 40 gives 2.5 cm texels
 ## (use about 28 on weak phones); mesh_cell is the vertex spacing of the floor mesh in metres. Negative tpm or
 ## mesh_cell take the GfxQuality level's value. Grain, puff and shader detail counts always follow GfxQuality.
 func setup(arena_radius: float = 11.0, tpm: float = -1.0, mesh_cell: float = -1.0) -> void:
+	setup_ms.clear()
+	_lap_us = Time.get_ticks_usec()
 	if tpm < 0.0:
 		tpm = GfxQuality.pick_f(GfxQuality.SAND_TEXELS_PER_M)
 	if mesh_cell < 0.0:
@@ -120,6 +125,7 @@ func setup(arena_radius: float = 11.0, tpm: float = -1.0, mesh_cell: float = -1.
 		arr.fill(0)
 	_b_tile_time.resize(tiles)
 	_b_tile_time.fill(0.0)
+	_lap("arrays")
 	_h_img = Image.create(n, n, false, Image.FORMAT_RH)
 	_b_img = Image.create(n, n, false, Image.FORMAT_RGBA8)
 	_b_img.fill(Color(0.0, 0.0, 0.0, 0.0))
@@ -129,10 +135,16 @@ func setup(arena_radius: float = 11.0, tpm: float = -1.0, mesh_cell: float = -1.
 	_material.shader = FLOOR_SHADER
 	_material.set_shader_parameter("height_tex", _h_tex)
 	_material.set_shader_parameter("blood_tex", _b_tex)
-	_base = SandMap.build_base(radius, extent, BASE_SEED)
-	_base_tex = _make_base_texture()
+	_lap("map_textures")
+	# The static tables come from SandTables (cached per process, maybe prewarmed on a worker by the Arena).
+	var base_t: Dictionary = SandTables.base(radius, extent, BASE_SEED)
+	_lap("base_map")
+	_base = base_t["base"]
+	_base_tex = ImageTexture.create_from_image(base_t["image"] as Image)
 	_material.set_shader_parameter("base_tex", _base_tex)
+	_lap("base_texture")
 	_material.set_shader_parameter("noise_tex", make_noise_texture())
+	_lap("noise_texture")
 	_material.set_shader_parameter("extent", extent)
 	_material.set_shader_parameter("map_n", float(n))
 	_material.set_shader_parameter("arena_radius", radius)
@@ -143,14 +155,24 @@ func setup(arena_radius: float = 11.0, tpm: float = -1.0, mesh_cell: float = -1.
 	_material.set_shader_parameter("rim_light", tun.sand_rim_light)
 	_mesh_node = MeshInstance3D.new()
 	_mesh_node.name = "SandMesh"
-	_mesh_node.mesh = build_disc_mesh(radius + 0.35, mesh_cell)
+	_mesh_node.mesh = build_disc_mesh(radius + DISC_MARGIN, mesh_cell)
+	_lap("disc_mesh")
 	_mesh_node.material_override = _material
 	_mesh_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mesh_node.custom_aabb = AABB(Vector3(-extent, -0.5, -extent), Vector3(extent * 2.0, 1.0, extent * 2.0))
 	add_child(_mesh_node)
 	_build_particles()
+	_lap("particles")
 	refresh_ambient()
 	_fx.set_ground(Callable(self, "_ground_at"))
+	_lap("ambient")
+
+
+## Records the ms since the previous lap under `step` (setup profiling, Arena.build_profile).
+func _lap(step: String) -> void:
+	var now: int = Time.get_ticks_usec()
+	setup_ms[step] = float(now - _lap_us) / 1000.0
+	_lap_us = now
 
 
 ## Presses a round footprint, knee, weapon tip or body part into the sand. push biases the rim along it (length
@@ -475,13 +497,6 @@ func _update_grains(delta: float) -> void:
 		_dust_shown = dc
 
 
-func _make_base_texture() -> ImageTexture:
-	var nb: int = SandMap.base_size(extent)
-	var im: Image = Image.create_from_data(nb, nb, false, Image.FORMAT_RGBAF, SandMap.base_to_rgba_bytes(_base, extent))
-	im.convert(Image.FORMAT_RGBAH)
-	return ImageTexture.create_from_image(im)
-
-
 ## Writes dirty tiles to the images and uploads textures. Called from _process, public for tests and renders.
 func flush() -> void:
 	_since_upload = 0.0
@@ -727,34 +742,8 @@ func _build_particles() -> void:
 
 ## Grid disc mesh of cell size `cell` metres, cells kept when any corner lies within r. Flat at y = 0, up normals.
 static func build_disc_mesh(r: float, cell: float) -> ArrayMesh:
-	var gn: int = int(ceil(2.0 * r / cell)) + 1
-	var idx: PackedInt32Array = PackedInt32Array()
-	idx.resize(gn * gn)
-	idx.fill(-1)
-	var verts: PackedVector3Array = PackedVector3Array()
-	var indices: PackedInt32Array = PackedInt32Array()
-	var r2: float = r * r
-	for cz in range(gn - 1):
-		for cx in range(gn - 1):
-			var keep: bool = false
-			for k in range(4):
-				var px: float = -r + float(cx + (k & 1)) * cell
-				var pz: float = -r + float(cz + (k >> 1)) * cell
-				if px * px + pz * pz <= r2:
-					keep = true
-			if not keep:
-				continue
-			var q: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
-			for k in range(4):
-				var gx: int = cx + (k & 1)
-				var gz: int = cz + (k >> 1)
-				var gi: int = gz * gn + gx
-				if idx[gi] < 0:
-					idx[gi] = verts.size()
-					verts.append(Vector3(-r + float(gx) * cell, 0.0, -r + float(gz) * cell))
-				q[k] = idx[gi]
-			# Clockwise seen from above (+Y), Godot front faces.
-			indices.append_array(PackedInt32Array([q[0], q[1], q[2], q[1], q[3], q[2]]))
+	var d: Dictionary = SandTables.disc(r, cell)
+	var verts: PackedVector3Array = d["verts"]
 	var normals: PackedVector3Array = PackedVector3Array()
 	normals.resize(verts.size())
 	normals.fill(Vector3.UP)
@@ -762,7 +751,7 @@ static func build_disc_mesh(r: float, cell: float) -> ArrayMesh:
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_INDEX] = indices
+	arrays[Mesh.ARRAY_INDEX] = d["indices"]
 	var mesh: ArrayMesh = ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
@@ -770,23 +759,4 @@ static func build_disc_mesh(r: float, cell: float) -> ArrayMesh:
 
 ## 256 px tileable noise: R fine grain, G medium clumps, B large ripples. With mipmaps.
 static func make_noise_texture() -> ImageTexture:
-	var chans: Array[PackedByteArray] = []
-	var freqs: Array[float] = [0.09, 0.035, 0.012]
-	for k in range(3):
-		var fn: FastNoiseLite = FastNoiseLite.new()
-		fn.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		fn.seed = 11 + k * 7
-		fn.frequency = freqs[k]
-		fn.fractal_type = FastNoiseLite.FRACTAL_FBM if k > 0 else FastNoiseLite.FRACTAL_NONE
-		var im: Image = fn.get_seamless_image(256, 256, false, false, 0.1, true)
-		im.convert(Image.FORMAT_L8)
-		chans.append(im.get_data())
-	var bytes: PackedByteArray = PackedByteArray()
-	bytes.resize(256 * 256 * 3)
-	for i in range(256 * 256):
-		bytes[i * 3] = chans[0][i]
-		bytes[i * 3 + 1] = chans[1][i]
-		bytes[i * 3 + 2] = chans[2][i]
-	var img: Image = Image.create_from_data(256, 256, false, Image.FORMAT_RGB8, bytes)
-	img.generate_mipmaps()
-	return ImageTexture.create_from_image(img)
+	return ImageTexture.create_from_image(SandTables.noise()["image"] as Image)
