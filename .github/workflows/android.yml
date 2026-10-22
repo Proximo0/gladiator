@@ -28,10 +28,8 @@ jobs:
       - name: Cache export templates
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/godot-templates
-            ~/.local/share/godot/export_templates
-          key: godot-android-templates-${{ env.GODOT_VERSION }}
+          path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          key: godot-android-templates-only-${{ env.GODOT_VERSION }}
       - name: Android SDK pieces and JDK 17
         shell: bash
         run: |
@@ -82,6 +80,19 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: tools/android_ci_run.sh build/Sandblood-android.apk out/android 1500
+      - name: Show the Godot log and a small fight screenshot
+        if: always()
+        shell: bash
+        run: |
+          cat out/android/progress.txt 2>/dev/null || true
+          echo "--- godot logcat (first 150 lines) ---"
+          head -n 150 out/android/godot.txt 2>/dev/null || true
+          # Artifacts are not always reachable from where the log is read, so the mid-fight shot goes into the
+          # log as a 320 px base64 JPEG between markers (decode with base64 -d).
+          if [[ -s out/android/fight.png ]] && command -v convert >/dev/null; then
+            convert out/android/fight.png -resize 320x -quality 70 /tmp/fight_small.jpg
+            echo "FIGHT_JPG_BEGIN"; base64 -w 120 /tmp/fight_small.jpg; echo "FIGHT_JPG_END"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

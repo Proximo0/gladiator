@@ -37,7 +37,8 @@ done
 sleep 2
 [[ -s "${OUT}/end.png" ]] || adb exec-out screencap -p >"${OUT}/end.png" 2>/dev/null
 kill "${LOGPID}" 2>/dev/null
-grep -E "ANDROID_CI (start|progress)" "${OUT}/logcat.txt" | sed 's/^.*ANDROID_CI/ANDROID_CI/' >"${OUT}/progress.txt"
+grep -E "ANDROID_CI (start|progress|hitch)" "${OUT}/logcat.txt" | sed 's/^.*ANDROID_CI/ANDROID_CI/' >"${OUT}/progress.txt"
+grep -E "[A-Z]/godot" "${OUT}/logcat.txt" >"${OUT}/godot.txt"
 line="$(grep -E "ANDROID_CI (PASS|FAIL) " "${OUT}/logcat.txt" | tail -n 1 | sed 's/^.*ANDROID_CI/ANDROID_CI/')"
 errs="$(grep -cE "SCRIPT ERROR|USER SCRIPT ERROR|Parse Error" "${OUT}/logcat.txt")"
 [[ -n "${line}" ]] && echo "${line}"
