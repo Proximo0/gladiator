@@ -58,9 +58,9 @@ jobs:
               assert n == 1, k
           open(p, "w").write(head + sep + block + tail)
           PY
-          # Emulator-only: the emulator's GLES translator counts the light UBO arrays (32 lights x 3 types x 7 vec4)
-          # against GL_MAX_FRAGMENT_UNIFORM_VECTORS (261), so every lit scene shader failed to link. Phones count
-          # only the default uniform block. See docs/android.md.
+          # Optional emulator-only light cap (off by default). With the old swiftshader_indirect GPU every lit scene
+          # shader failed to link (uniforms over GL_MAX_FRAGMENT_UNIFORM_VECTORS=261); swangle_indirect has none.
+          # See docs/android.md.
           [[ -z "${EMU_MAX_LIGHTS}" ]] || python3 -I - project.godot "${EMU_MAX_LIGHTS}" <<'PY2'
           import sys
           p, n = sys.argv[1], sys.argv[2]

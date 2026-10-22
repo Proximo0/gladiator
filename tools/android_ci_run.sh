@@ -22,7 +22,7 @@ shot=0; seen_pid=0; t=0
 while (( t < LIMIT )); do
 	sleep 2; t=$((t + 2))
 	if (( shot == 0 )) && grep -q "ANDROID_CI shot" "${OUT}/logcat.txt"; then
-		adb exec-out screencap -p >"${OUT}/fight.png" 2>/dev/null; shot=1
+		adb exec-out screencap -p >"${OUT}/screen.png" 2>/dev/null; shot=1
 	fi
 	grep -qE "ANDROID_CI (PASS|FAIL) " "${OUT}/logcat.txt" && break
 	if adb shell pidof "${PKG}" >/dev/null 2>&1; then
@@ -34,16 +34,18 @@ while (( t < LIMIT )); do
 		fail "app exited without a result line after ${t}s"
 	fi
 done
+adb exec-out run-as "${PKG}" cat files/android_ci_fight.png >"${OUT}/fight.png" 2>/dev/null
+[[ -s "${OUT}/fight.png" ]] || rm -f "${OUT}/fight.png"
 sleep 2
 [[ -s "${OUT}/end.png" ]] || adb exec-out screencap -p >"${OUT}/end.png" 2>/dev/null
 kill "${LOGPID}" 2>/dev/null
 grep -E "ANDROID_CI (start|progress|hitch)" "${OUT}/logcat.txt" | sed 's/^.*ANDROID_CI/ANDROID_CI/' >"${OUT}/progress.txt"
 grep -E "[A-Z]/godot" "${OUT}/logcat.txt" >"${OUT}/godot.txt"
 line="$(grep -E "ANDROID_CI (PASS|FAIL) " "${OUT}/logcat.txt" | tail -n 1 | sed 's/^.*ANDROID_CI/ANDROID_CI/')"
-errs="$(grep -cE "SCRIPT ERROR|USER SCRIPT ERROR|Parse Error" "${OUT}/logcat.txt")"
+errs="$(grep -cE "SCRIPT ERROR|Parse Error|Program linking failed" "${OUT}/logcat.txt")"
 [[ -n "${line}" ]] && echo "${line}"
-[[ "${errs}" == 0 ]] || { grep -E -A2 "SCRIPT ERROR|Parse Error" "${OUT}/logcat.txt" | head -n 30; fail "${errs} script errors"; }
+[[ "${errs}" == 0 ]] || { grep -E -A2 "SCRIPT ERROR|Parse Error|Program linking failed" "${OUT}/logcat.txt" | head -n 30; fail "${errs} script errors or shader link failures"; }
 [[ -n "${line}" ]] || { tail -n 40 "${OUT}/logcat.txt"; fail "no result line after ${t}s"; }
 [[ "${line}" == "ANDROID_CI PASS "* ]] || fail "fight failed"
-(( shot == 1 )) || echo "android_ci: warning: no mid-fight screenshot (shot line not seen)"
+[[ -s "${OUT}/fight.png" ]] || echo "android_ci: warning: no in-game fight.png (shot line seen: ${shot})"
 echo "android_ci: ok in ${t}s"

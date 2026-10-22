@@ -4,9 +4,9 @@ extends Node
 ## `android_ci` boots straight into one presented bot vs bot match (Flags adds --mode=bot_vs_bot --android_ci
 ## --scripted). This node watches that match and prints to logcat (tag "godot"):
 ##   ANDROID_CI start renderer=<..> adapter=<..> size=<w>x<h>
-##   ANDROID_CI shot tick=<n>                      the workflow takes a screenshot when it sees this
+##   ANDROID_CI shot tick=<n> path=<png>           a 640 px frame saved to user:// (the workflow pulls it with run-as)
 ##   ANDROID_CI progress tick=<n> wall_s=<s> fps=<f>
-##   ANDROID_CI hitch tick=<n> wall_s=<s> ms=<frame ms>  every frame over HITCH_MS (shader compiles, loads)
+##   ANDROID_CI hitch tick=<n> wall_s=<s> ms=<frame ms>  the first HITCH_LINES frames over HITCH_MS (all are counted)
 ##   ANDROID_CI PASS|FAIL winner=.. reason=.. ticks=.. hits=.. frames=.. fps=.. frame_ms_avg/p50/p95/p99/max=..
 ##        ticks_per_s=.. why=..
 ## then quits. PASS needs match_over before the fallback limits, at least one hit and no physics explosions.
@@ -16,6 +16,9 @@ const PROGRESS_EVERY_S: float = 10.0
 const SPARE_TICKS: int = 600  ## ticks past the match time limit before it counts as hung
 const WALL_LIMIT_S: float = 900.0  ## wall-clock fallback when the emulator renders very slowly
 const HITCH_MS: float = 250.0
+const HITCH_LINES: int = 20
+const SHOT_PATH: String = "user://android_ci_fight.png"
+const SHOT_WIDTH: int = 640
 
 var _match: Match = null
 var _frame_ms: PackedFloat32Array = PackedFloat32Array()
@@ -51,10 +54,16 @@ func _process(_delta: float) -> void:
 	var wall_s: float = float(now - _t0_us) / 1000000.0
 	if dt_ms > HITCH_MS:
 		_hitches += 1
-		print("ANDROID_CI hitch tick=%d wall_s=%.1f ms=%.0f" % [_match.tick, wall_s, dt_ms])
+		if _hitches <= HITCH_LINES:
+			print("ANDROID_CI hitch tick=%d wall_s=%.1f ms=%.0f" % [_match.tick, wall_s, dt_ms])
 	if not _shot and _match.tick >= SHOT_TICK:
 		_shot = true
-		print("ANDROID_CI shot tick=%d" % _match.tick)
+		var img: Image = get_viewport().get_texture().get_image()  # null with the headless display driver
+		var err: Error = ERR_UNAVAILABLE
+		if img != null:
+			img.resize(SHOT_WIDTH, maxi(1, img.get_height() * SHOT_WIDTH / maxi(img.get_width(), 1)))
+			err = img.save_png(SHOT_PATH)
+		print("ANDROID_CI shot tick=%d path=%s err=%d" % [_match.tick, ProjectSettings.globalize_path(SHOT_PATH), err])
 	if wall_s >= _next_progress_s:
 		_next_progress_s += PROGRESS_EVERY_S
 		print("ANDROID_CI progress tick=%d wall_s=%.0f fps=%.1f" % [_match.tick, wall_s, Engine.get_frames_per_second()])
