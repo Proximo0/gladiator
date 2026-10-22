@@ -113,6 +113,7 @@ func _build_ui() -> void:
 	_online = OnlineScreen.new(state)
 	_online.back.connect(_show_title)
 	_online.start_pressed.connect(_on_online_start)
+	_online.result_changed.connect(_on_online_result_changed)
 	_root.add_child(_online)
 	_leaderboard = LeaderboardScreen.new()
 	_leaderboard.back.connect(_show_title)
@@ -517,8 +518,7 @@ func _on_shop_back() -> void:
 
 func _on_recorded(summary: Dictionary) -> void:
 	_rating_line = OnlineScreen.summary_text(summary)
-	if screen == Screen.RESULT and _is_online() and _quick and current_match != null:
-		_show_online_result(int(current_match.result.get("winner", -1)), current_match.names)  # the verdict came after the panel
+	_online.on_summary(summary)  # emits result_changed: a verdict that came after the panel redraws it
 
 
 func _end_session() -> void:
@@ -570,7 +570,13 @@ func _on_net_closed(reason: String) -> void:
 		_online.report_abandoned(Rating.KIND_DROPPED, current_match.tick if current_match != null else 0, _leader_side())
 	if screen == Screen.ONLINE:
 		_open_online(_quick)
-		_online.show_status(reason)
+		if _quick:
+			_online.requeue(reason)  # the connection to that opponent failed before the fight: plain words, search on
+		else:
+			_online.show_status(reason)
+		return
+	if _quick and screen == Screen.RESULT and current_match != null and current_match.over:
+		_online.on_session_closed(reason)  # redraws the result panel: no rematch, the rating stays
 		return
 	if screen == Screen.FIGHT or screen == Screen.PAUSED or screen == Screen.RESULT:
 		get_tree().paused = false
@@ -580,7 +586,9 @@ func _on_net_closed(reason: String) -> void:
 		_pause_btn.visible = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		_pause_dim.visible = true
-		_show_panel("VALE", "Connection closed", reason, [["online", "Online"], ["title", "Title"]])
+		var said: Dictionary = OnlineText.plain(reason)
+		_show_panel("VALE", str(said["title"]), "%s\n%s" % [str(said["body"]), _rating_line] if _rating_line != "" else str(said["body"]),
+			[["online", "Find another opponent" if _quick else "Online"], ["title", "Title"]])
 
 
 ## Who was ahead on points in the current match (MatchJudge.leader), -1 when level or no match.
@@ -640,22 +648,35 @@ func _show_result(result: Dictionary, token: int) -> void:
 
 
 func _show_online_result(w: int, names: Array) -> void:
-	var me: int = 0 if _net.role == NetSession.ROLE_HOST else 1
+	var me: int = _online.my_side() if _quick else (0 if _net.role == NetSession.ROLE_HOST else 1)
 	var latin: String = "AEQVO MARTE"
 	var english: String = "Evenly matched"
 	if w >= 0:
 		latin = "VICTORIA" if w == me else "MORS"
-		english = "You won" if w == me else "%s wins" % str(names[w])
+		var opp: String = _online.opponent_name() if _quick else (_net.remote_name if _net != null else "")
+		english = "You won" if w == me else "%s wins" % (opp if opp != "" else str(names[w]))  # the match names come from the seed
 	_pause_dim.visible = true
 	var entries: Array = [["online", "Find another opponent" if _quick else "Back to lobby"], ["title", "Leave"]]
-	var body: String = "" if _net.role == NetSession.ROLE_HOST else "The host picks a rematch"
+	var body: String = "" if _quick or _net.role == NetSession.ROLE_HOST else "The host picks a rematch"
 	if _quick:
-		body = _rating_line  # ranked fights have no rematch
+		body = _online.result_body()  # the rating change is a RatingChangeView below the heading
+		entries = _online.result_entries()
 	elif _net.role == NetSession.ROLE_HOST:
 		entries.push_front(["net_rematch", "Rematch"])
 	if _unlocked_line != "":
 		body = _unlocked_line if body == "" else "%s\n%s" % [body, _unlocked_line]
 	_show_panel(latin, english, body, entries)
+	var view: RatingChangeView = _online.make_result_view() if _quick else null
+	if view != null:
+		var col: Node = _pause.get_child(0)
+		col.add_child(view)
+		col.move_child(view, mini(2, col.get_child_count() - 1))  # under the English line
+
+
+## The rematch answer or the rating verdict changed while the online result panel is up.
+func _on_online_result_changed() -> void:
+	if screen == Screen.RESULT and _quick and current_match != null and current_match.over:
+		_show_online_result(int(current_match.result.get("winner", -1)), current_match.names)
 
 
 func _pause_game() -> void:
@@ -729,7 +750,10 @@ func _on_panel(id: String) -> void:
 		"quick", "quick_anyway":
 			_open_online(true)
 		"net_rematch":
-			_on_online_start()
+			if _quick:
+				_online.ask_rematch()  # a handshake: the host starts once both asked
+			else:
+				_on_online_start()
 		"rematch":
 			_begin_fight(state.last_mode if state.last_mode != ONLINE_MODE else "player_vs_cpu")
 		"loadout":

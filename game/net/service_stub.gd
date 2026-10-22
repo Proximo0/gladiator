@@ -8,6 +8,9 @@ extends OnlineService
 var auto_match: bool = true  ## quick_match answers at once (else call fulfil())
 var fail_login_with: String = ""  ## non-empty: login fails with this reason
 var fail_match_with: String = ""  ## non-empty: quick_match ends with this reason
+var fail_leaderboard_with: String = ""  ## non-empty: the leaderboard answers with this error and no rows
+var hold_leaderboard: bool = false  ## request_leaderboard does not answer (the loading state); release_leaderboard()
+var wait_s: float = 12.0  ## expected_wait_s()
 var opponent: Dictionary = {"id": "zzzz-stub-opponent", "name": "Verus", "rating": 1040, "games": 12}
 var role: String = ROLE_HOST
 var port: int = int(Flags.args.get("net-port", NetConfig.DEFAULT_PORT))  ## tests pass --net-port / a free port
@@ -21,6 +24,7 @@ var _mid: String = ""
 var _reports: Dictionary = {}  ## match_id -> {player id -> report}
 var _done: Dictionary = {}
 var _n: int = 0
+var _held: Array = []  ## the leaderboard request waiting for release_leaderboard()
 
 
 func backend_name() -> String:
@@ -128,19 +132,48 @@ func _emit_summary(match_id: String, status: String, winner: String, before: int
 	result_recorded.emit(s)
 
 
-func add_fake_player(id: String, player_name: String, rating: int, games: int, wins: int) -> void:
+func add_fake_player(id: String, player_name: String, rating: int, games: int, wins: int, streak: int = 0) -> void:
 	var e: Dictionary = board.ensure(id, player_name)
 	e["rating"] = rating
 	e["games"] = games
 	e["wins"] = wins
 	e["losses"] = games - wins
+	e["streak"] = streak
 
 
-func request_leaderboard(top_n: int = 20, around_me: int = 3) -> void:
+func request_leaderboard(top_n: int = 20, around_me: int = 3, offset: int = 0) -> void:
 	calls.append("request_leaderboard")
-	var data: Dictionary = board.leaderboard(str(profile.get("id", "")), top_n, around_me)
+	_held = [top_n, around_me, offset]
+	if not hold_leaderboard:
+		release_leaderboard()
+
+
+## Answers the last leaderboard request (after hold_leaderboard kept it waiting).
+func release_leaderboard() -> void:
+	if _held.is_empty():
+		return
+	var data: Dictionary = board.leaderboard(str(profile.get("id", "")), int(_held[0]), int(_held[1]), int(_held[2]))
+	_held = []
 	data["source"] = "stub"
+	if fail_leaderboard_with != "":
+		data = {"top": [], "around": [], "me": {}, "total": 0, "offset": 0, "source": "stub", "error": fail_leaderboard_with}
 	leaderboard_ready.emit(data)
+
+
+func expected_wait_s() -> float:
+	return wait_s
+
+
+## Rated rematches, derived from the match they follow (the stub's key is a function of the id).
+func rematch_info(info: Dictionary, n: int) -> Dictionary:
+	if str(info.get("match_id", "")).is_empty():
+		return {}
+	var mid: String = OnlineService.rematch_id(str(info["match_id"]).get_slice("-r", 0), n)
+	var out: Dictionary = info.duplicate()
+	out["match_id"] = mid
+	out["match_key"] = key_for(mid)
+	calls.append("rematch_info")
+	return out
 
 
 func _sync_profile() -> void:
@@ -149,3 +182,4 @@ func _sync_profile() -> void:
 	profile["games"] = int(e.get("games", 0))
 	profile["wins"] = int(e.get("wins", 0))
 	profile["losses"] = int(e.get("losses", 0))
+	profile["streak"] = int(e.get("streak", 0))

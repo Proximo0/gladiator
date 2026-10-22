@@ -17,7 +17,9 @@ const MIN_RATED_TICKS: int = 600  ## a "result" shorter than this (10 s at 60 Hz
 const WINDOW_START: int = 100  ## matchmaking: accept opponents within this many points at first ...
 const WINDOW_PER_S: int = 25  ## ... and widen by this much per second searched
 const PAIR_WEIGHTS: Array[float] = [1.0, 1.0, 0.5, 0.25, 0.1]  ## k multiplier for the n-th recent game vs the same opponent
-const TIERS: Array = [[1000, "Tiro"], [1200, "Gladiator"], [1400, "Veteranus"], [1600, "Primus Palus"]]
+## Roman ladder, low to high: [below this rating, name]. Tiro (recruit), Gladiator, Veteranus (survived bouts),
+## Primus Palus (first of his school), Rudiarius (freed with the wooden sword, fights by choice), Summa Rudis.
+const TIERS: Array = [[1000, "Tiro"], [1200, "Gladiator"], [1400, "Veteranus"], [1600, "Primus Palus"], [1800, "Rudiarius"]]
 const TOP_TIER: String = "Summa Rudis"
 
 const KIND_RESULT: String = "result"  ## "the fight ended and this is who won" (winner id, "" = draw)
@@ -73,6 +75,32 @@ static func tier(rating: int) -> String:
 		if rating < int(t[0]):
 			return str(t[1])
 	return TOP_TIER
+
+
+## 0 for the lowest tier .. TIERS.size() for the top one.
+static func tier_index(rating: int) -> int:
+	for i: int in TIERS.size():
+		if rating < int(TIERS[i][0]):
+			return i
+	return TIERS.size()
+
+
+## Every tier name, lowest first.
+static func tier_names() -> PackedStringArray:
+	var out := PackedStringArray()
+	for t: Array in TIERS:
+		out.append(str(t[1]))
+	out.append(TOP_TIER)
+	return out
+
+
+## {name, at, need} of the next tier up ({} at the top): "need" points from `rating` to reach it.
+static func next_tier(rating: int) -> Dictionary:
+	var i: int = tier_index(rating)
+	if i >= TIERS.size():
+		return {}
+	var at: int = int(TIERS[i][0])
+	return {"name": tier_names()[i + 1], "at": at, "need": at - rating}
 
 
 ## "1016" or "1000?" while provisional.

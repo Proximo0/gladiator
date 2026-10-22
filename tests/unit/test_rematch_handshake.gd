@@ -1,0 +1,57 @@
+extends TestCase
+
+
+func test_ask_then_other_accepts() -> void:
+	var h := RematchHandshake.new()
+	assert_true(h.can_ask())
+	assert_true(h.ask())
+	assert_eq(h.state, RematchHandshake.State.ASKED)
+	assert_false(h.ask(), "asking twice sends nothing")
+	assert_true(h.text("Verus").begins_with("Waiting for Verus"))
+	h.on_note(RematchHandshake.NOTE_ASK)
+	assert_eq(h.state, RematchHandshake.State.AGREED)
+	assert_eq(h.count, 1)
+
+
+func test_invited_then_accept() -> void:
+	var h := RematchHandshake.new()
+	h.on_note(RematchHandshake.NOTE_ASK)
+	assert_eq(h.state, RematchHandshake.State.INVITED)
+	assert_eq(h.button_text("Verus"), "Accept rematch")
+	assert_eq(h.text("Verus"), "Verus wants a rematch!")
+	assert_true(h.ask())
+	assert_eq(h.state, RematchHandshake.State.AGREED)
+	h.fight_started()
+	assert_eq(h.state, RematchHandshake.State.NONE)
+	h.on_note(RematchHandshake.NOTE_ASK)
+	h.ask()
+	assert_eq(h.count, 2, "counts the rematches with this opponent")
+	h.reset()
+	assert_eq(h.count, 0)
+
+
+func test_decline_expire_and_gone() -> void:
+	var h := RematchHandshake.new()
+	h.ask()
+	h.on_note(RematchHandshake.NOTE_DECLINE)
+	assert_eq(h.state, RematchHandshake.State.DECLINED)
+	assert_false(h.can_ask())
+	var e := RematchHandshake.new()
+	e.on_note(RematchHandshake.NOTE_ASK)
+	e.tick(RematchHandshake.ANSWER_S + 0.1)
+	assert_eq(e.state, RematchHandshake.State.EXPIRED)
+	assert_true(e.can_ask(), "an expired question can be asked again")
+	var g := RematchHandshake.new()
+	g.ask()
+	g.on_gone()
+	assert_eq(g.state, RematchHandshake.State.GONE)
+	assert_eq(g.text("Verus"), "Verus left. No rematch.")
+	var a := RematchHandshake.new()
+	a.on_note(RematchHandshake.NOTE_ASK)
+	a.ask()
+	a.on_gone()
+	assert_eq(a.state, RematchHandshake.State.AGREED, "agreed stays agreed")
+	var d := RematchHandshake.new()
+	d.on_note(RematchHandshake.NOTE_ASK)
+	assert_true(d.decline())
+	assert_false(d.decline())

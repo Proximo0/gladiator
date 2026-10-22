@@ -7,7 +7,7 @@ extends RefCounted
 const MAX_PLAYERS: int = 500
 const PAIR_MEMORY: int = 12  ## remembered recent opponents for the repeat-pair damper
 
-var players: Dictionary = {}  ## id -> {name, rating, games, wins, losses}
+var players: Dictionary = {}  ## id -> {name, rating, games, wins, losses, streak}
 var recent: Dictionary = {}  ## id -> Array of the last PAIR_MEMORY opponent ids
 
 
@@ -15,7 +15,8 @@ func ensure(id: String, player_name: String) -> Dictionary:
 	if not players.has(id):
 		if players.size() >= MAX_PLAYERS:
 			_evict()
-		players[id] = {"name": NetLobby.clean_name(player_name), "rating": Rating.START_RATING, "games": 0, "wins": 0, "losses": 0}
+		players[id] = {"name": NetLobby.clean_name(player_name), "rating": Rating.START_RATING, "games": 0, "wins": 0, "losses": 0,
+			"streak": 0}
 	elif player_name != "":
 		(players[id] as Dictionary)["name"] = NetLobby.clean_name(player_name)
 	return players[id]
@@ -52,9 +53,29 @@ func apply(a_id: String, b_id: String, score_a: float) -> Dictionary:
 	elif score_a < 0.5:
 		b["wins"] = int(b["wins"]) + 1
 		a["losses"] = int(a["losses"]) + 1
+	a["streak"] = next_streak(int(a.get("streak", 0)), score_a)
+	b["streak"] = next_streak(int(b.get("streak", 0)), 1.0 - score_a)
 	_remember(a_id, b_id)
 	_remember(b_id, a_id)
 	return out
+
+
+## Streak after one game: +n = n wins in a row, -n = n losses in a row; a draw ends either.
+static func next_streak(streak: int, score: float) -> int:
+	if score > 0.5:
+		return streak + 1 if streak > 0 else 1
+	if score < 0.5:
+		return streak - 1 if streak < 0 else -1
+	return 0
+
+
+## "W3" / "L2" / "" for a leaderboard cell.
+static func streak_text(streak: int) -> String:
+	if streak > 0:
+		return "W%d" % streak
+	if streak < 0:
+		return "L%d" % -streak
+	return ""
 
 
 func _count_recent(a_id: String, b_id: String) -> int:
@@ -82,7 +103,7 @@ func _evict() -> void:
 	recent.erase(worst)
 
 
-## Rows best first: {rank, id, name, rating, games, wins, losses, provisional, tier}.
+## Rows best first: {rank, id, name, rating, games, wins, losses, streak, provisional, tier}.
 func rows() -> Array:
 	var out: Array = []
 	for id: String in players:
@@ -90,7 +111,7 @@ func rows() -> Array:
 		if int(e["games"]) == 0:
 			continue
 		out.append({"id": id, "name": str(e["name"]), "rating": int(e["rating"]), "games": int(e["games"]),
-			"wins": int(e["wins"]), "losses": int(e["losses"]), "provisional": Rating.is_provisional(int(e["games"])),
+			"wins": int(e["wins"]), "losses": int(e["losses"]), "streak": int(e.get("streak", 0)), "provisional": Rating.is_provisional(int(e["games"])),
 			"tier": Rating.tier(int(e["rating"]))})
 	out.sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
 		if x["rating"] != y["rating"]:
@@ -103,11 +124,17 @@ func rows() -> Array:
 	return out
 
 
-## {top, around, me, total}: `around` is the window of `around_me` rows either side of `my_id` and is empty when the
-## player is already inside the top list; `me` is {} for a player with no rated game yet.
-func leaderboard(my_id: String, top_n: int, around_me: int) -> Dictionary:
-	var all: Array = rows()
-	var top: Array = all.slice(0, maxi(top_n, 0))
+## {top, around, me, total, offset}: `top` is the page of `top_n` rows from rank `offset` + 1; `around` is the window
+## of `around_me` rows either side of `my_id`, empty when the player is on the page; `me` is {} for a player with no
+## rated game yet.
+func leaderboard(my_id: String, top_n: int, around_me: int, offset: int = 0) -> Dictionary:
+	return page_view(rows(), my_id, top_n, around_me, offset)
+
+
+## The page / around-me cut of ranked `all` rows (best first), shared by every backend.
+static func page_view(all: Array, my_id: String, top_n: int, around_me: int, offset: int) -> Dictionary:
+	var off: int = clampi(offset, 0, maxi(all.size() - 1, 0))
+	var top: Array = all.slice(off, off + maxi(top_n, 0))
 	var me: Dictionary = {}
 	var my_i: int = -1
 	for i: int in all.size():
@@ -115,9 +142,14 @@ func leaderboard(my_id: String, top_n: int, around_me: int) -> Dictionary:
 			me = all[i]
 			my_i = i
 	var around: Array = []
-	if my_i >= top.size():
-		around = all.slice(maxi(my_i - around_me, top.size()), mini(my_i + around_me + 1, all.size()))
-	return {"top": top, "around": around, "me": me, "total": all.size()}
+	if my_i >= 0 and (my_i < off or my_i >= off + top.size()):
+		around = all.slice(maxi(my_i - around_me, 0), mini(my_i + around_me + 1, all.size()))
+		var on_page: Array = []
+		for r: Dictionary in around:
+			if not top.has(r):
+				on_page.append(r)
+		around = on_page
+	return {"top": top, "around": around, "me": me, "total": all.size(), "offset": off}
 
 
 func to_dict() -> Dictionary:
@@ -137,7 +169,7 @@ func from_dict(d: Dictionary) -> void:
 				players[str(id)] = {"name": NetLobby.clean_name(str(ed.get("name", ""))),
 					"rating": clampi(int(ed.get("rating", Rating.START_RATING)), Rating.MIN_RATING, 9999),
 					"games": maxi(int(ed.get("games", 0)), 0), "wins": maxi(int(ed.get("wins", 0)), 0),
-					"losses": maxi(int(ed.get("losses", 0)), 0)}
+					"losses": maxi(int(ed.get("losses", 0)), 0), "streak": clampi(int(ed.get("streak", 0)), -999, 999)}
 	var r: Variant = d.get("recent", {})
 	if r is Dictionary:
 		for id: Variant in r:

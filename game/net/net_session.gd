@@ -16,6 +16,7 @@ signal lobby_changed  ## the other side joined, left or changed its loadout
 signal match_requested(start: Dictionary)  ## build the match now (both sides; host: after start_match())
 signal match_result(result: Dictionary)  ## client: the host's result arrived
 signal closed(reason: String)  ## the connection is gone (left, refused, timed out, failed)
+signal note_received(note: Dictionary)  ## the other side sent a NOTE (ready, rematch: OnlineScreen's handshakes)
 
 const ROLE_HOST: String = "host"
 const ROLE_CLIENT: String = "client"
@@ -195,6 +196,12 @@ func start_match(seed_value: int, time_limit_s: float = 0.0) -> bool:
 	last_start = NetLobby.decode(bytes)
 	match_requested.emit(last_start)
 	return true
+
+
+## A small reliable note to the other side ({t: "ready"} ...); dropped when nobody is connected.
+func send_note(note: Dictionary) -> void:
+	if remote_joined:
+		send(NetLobby.encode(NetConfig.MSG_NOTE, note), true)
 
 
 ## Hang the host or client driver on a freshly set-up Match (call right after Match.setup()).
@@ -380,6 +387,9 @@ func _on_control(d: Dictionary) -> void:
 				if client_driver != null and is_instance_valid(client_driver):
 					client_driver.on_over(d)
 				match_result.emit(d)
+		NetConfig.MSG_NOTE:
+			if remote_joined:
+				note_received.emit(d)
 		NetConfig.MSG_LEAVE:
 			var why_left: String = str(d.get("reason", ""))
 			if why_left.begins_with("version mismatch"):

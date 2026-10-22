@@ -78,3 +78,45 @@ func test_note_opponent_does_not_overwrite_our_own_computation() -> void:
 	assert_eq(b.entry("b")["rating"], 980)
 	b.note_opponent("z", "Zed", 1500, 4)
 	assert_eq(b.entry("z")["rating"], 1500)
+
+
+func test_streaks() -> void:
+	var b: ServiceBoard = _board()
+	b.apply("a", "b", 1.0)
+	b.apply("a", "b", 1.0)
+	assert_eq(b.entry("a")["streak"], 2)
+	assert_eq(b.entry("b")["streak"], -2)
+	b.apply("a", "b", 0.0)
+	assert_eq(b.entry("a")["streak"], -1)
+	assert_eq(b.entry("b")["streak"], 1)
+	b.apply("a", "b", 0.5)
+	assert_eq(b.entry("a")["streak"], 0)
+	assert_eq(ServiceBoard.streak_text(3), "W3")
+	assert_eq(ServiceBoard.streak_text(-2), "L2")
+	assert_eq(ServiceBoard.streak_text(0), "")
+	var c := ServiceBoard.new()
+	c.from_dict(b.to_dict())
+	assert_eq(c.entry("b")["streak"], 0)
+	assert_eq(b.rows()[0].has("streak"), true)
+
+
+func test_pages_and_around_me() -> void:
+	var b := ServiceBoard.new()
+	for i: int in 50:
+		var e: Dictionary = b.ensure("p%02d" % i, "P%d" % i)
+		e["rating"] = 2000 - i * 10
+		e["games"] = 5
+	var p2: Dictionary = b.leaderboard("p45", 20, 2, 20)
+	assert_eq(p2["offset"], 20)
+	assert_eq((p2["top"] as Array).size(), 20)
+	assert_eq(p2["top"][0]["rank"], 21)
+	assert_eq(p2["me"]["rank"], 46)
+	assert_eq((p2["around"] as Array).size(), 5, "me off the page: the rows around me")
+	var p3: Dictionary = b.leaderboard("p45", 20, 2, 40)
+	assert_eq((p3["top"] as Array).size(), 10, "the last page is short")
+	assert_eq(p3["around"], [], "me on the page: nothing around")
+	var edge: Dictionary = b.leaderboard("p21", 20, 2, 0)
+	assert_eq((edge["around"] as Array).size(), 4, "the window never repeats rows of the page")
+	assert_eq(edge["around"][0]["rank"], 21)
+	var far: Dictionary = b.leaderboard("p00", 20, 2, 999)
+	assert_eq(far["offset"], 49, "an offset past the end is clamped")
