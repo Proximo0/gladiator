@@ -299,13 +299,14 @@
 		},
 		{
 			"id": "retiarius_arm",
-			"name": "Galerus and manica",
+			"name": "Galerus and manicae",
 			"part": "upper_arm_l",
 			"covers": [
 				"upper_arm_l",
-				"forearm_l"
+				"forearm_l",
+				"forearm_r"
 			],
-			"mass": 2.4,
+			"mass": 3.0,
 			"kind": "plate",
 			"cut_resist": 0.95,
 			"pierce_resist": 0.9,
@@ -314,7 +315,8 @@
 			"strap": 280,
 			"art": {
 				"upper_arm_l": "galerus_l",
-				"forearm_l": "manica_l"
+				"forearm_l": "manica_l",
+				"forearm_r": "manica_r"
 			},
 			"unlock": {
 				"stat": "wins",
@@ -323,22 +325,26 @@
 		},
 		{
 			"id": "spaulders",
-			"name": "Bronze spaulders",
+			"name": "Spaulders and manicae",
 			"part": "upper_arm_l",
 			"covers": [
 				"upper_arm_l",
-				"upper_arm_r"
+				"upper_arm_r",
+				"forearm_l",
+				"forearm_r"
 			],
-			"mass": 2.2,
+			"mass": 4.2,
 			"kind": "plate",
-			"cut_resist": 0.92,
-			"pierce_resist": 0.85,
-			"blunt_resist": 0.35,
-			"durability": 200,
-			"strap": 260,
+			"cut_resist": 0.88,
+			"pierce_resist": 0.8,
+			"blunt_resist": 0.45,
+			"durability": 220,
+			"strap": 280,
 			"art": {
 				"upper_arm_l": "spaulder_l",
-				"upper_arm_r": "spaulder_r"
+				"upper_arm_r": "spaulder_r",
+				"forearm_l": "manica_l",
+				"forearm_r": "manica_r"
 			},
 			"unlock": {
 				"stat": "matches",

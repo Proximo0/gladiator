@@ -15,7 +15,7 @@ func test_art_maps_point_at_covered_parts_and_assets() -> void:
 			var path: String = FighterArt.ARMOR_ART_DIR + str((ad["art"] as Dictionary)[pn]) + ".glb"
 			assert_true(ResourceLoader.exists(path), path + " exists")
 			seen += 1
-	assert_eq(seen, 19, "galea, manicae, greaves, then 3 helmets, 2 loricae + belt/loincloth, belt, galerus + manica, spaulders, fasciae")
+	assert_eq(seen, 22, "galea, manicae, greaves, then 3 helmets, 2 loricae + belt/loincloth, belt, galerus + manicae, spaulders + manicae, fasciae")
 
 
 func test_armor_art_is_opaque_and_per_caller() -> void:

@@ -42,8 +42,8 @@ piece: the segmentata with the balteus, the squamata with the subligaculum.
 | `lorica_segmentata` Lorica segmentata | torso | chest, belly | plate | 0.9 / 0.75 / 0.35 | 220 / 400 | Win 5 fights |
 | `lorica_squamata` Lorica squamata | torso | chest, belly | mail | 0.8 / 0.5 / 0.2 | 180 / 550 | Play 6 fights |
 | `balteus` Balteus belt | torso | belly | plate | 0.9 / 0.8 / 0.35 | 160 / 300 | Play 3 fights |
-| `retiarius_arm` Galerus and manica | arms | left arm | plate | 0.95 / 0.9 / 0.4 | 240 / 280 | Win 2 fights |
-| `spaulders` Bronze spaulders | arms | both upper arms | plate | 0.92 / 0.85 / 0.35 | 200 / 260 | Play 2 fights |
+| `retiarius_arm` Galerus and manicae | arms | left arm, right forearm | plate | 0.95 / 0.9 / 0.4 | 240 / 280 | Win 2 fights |
+| `spaulders` Spaulders and manicae | arms | both arms | plate | 0.88 / 0.8 / 0.45 | 220 / 280 | Play 2 fights |
 | `fasciae` Fasciae wraps | legs | both thighs | leather | 0.4 / 0.3 / 0.3 | 80 / 140 | Play 1 fight |
 
 The helmets trade against the galea: the murmillo's wide brim takes blunt blows best but is the easiest to knock off,
