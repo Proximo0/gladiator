@@ -98,18 +98,17 @@ jobs:
         if: always()
         shell: bash
         run: |
-          ls -la out/android; command -v ffmpeg || echo "ffmpeg missing"
+          ls -la out/android
           cat out/android/progress.txt 2>/dev/null || true
           echo "--- godot logcat (first 150 lines) ---"
           grep -vE "SceneShaderGLES3|GL_MAX_FRAGMENT|shader_gles3|Method/function failed|^.{0,40}godot +\( *[0-9]+\): *([0-9]+: *)?$" out/android/godot.txt | head -n 80 || true
           echo "shader link failures: $(grep -c 'Program linking failed' out/android/godot.txt || true)"
-          # Artifacts are not always reachable from where the log is read, so the mid-fight shot goes into the
-          # log as a 320 px base64 JPEG between markers (decode with base64 -d).
-          if [[ -s out/android/fight.png ]] && command -v ffmpeg >/dev/null; then
-            ffmpeg -loglevel error -y -i out/android/fight.png -vf scale=320:-1 -q:v 6 /tmp/fight_small.jpg
-            echo "FIGHT_JPG_BEGIN"; base64 -w 120 /tmp/fight_small.jpg; echo "FIGHT_JPG_END"
+          # Artifacts are not always reachable from where the log is read, so the game's 256 px mid-fight JPEG
+          # goes into the log as base64 between markers (decode with base64 -d).
+          if [[ -s out/android/fight_small.jpg ]]; then
+            echo "FIGHT_JPG_BEGIN"; base64 -w 120 out/android/fight_small.jpg; echo "FIGHT_JPG_END"
           else
-            echo "no fight.png or no ffmpeg"
+            echo "no fight_small.jpg"
           fi
       - uses: actions/upload-artifact@v4
         if: always()
@@ -118,4 +117,5 @@ jobs:
           path: |
             out/android/*.txt
             out/android/*.png
+            out/android/*.jpg
           if-no-files-found: ignore

@@ -19,6 +19,8 @@ const HITCH_MS: float = 250.0
 const HITCH_LINES: int = 20
 const SHOT_PATH: String = "user://android_ci_fight.png"
 const SHOT_WIDTH: int = 640
+const THUMB_PATH: String = "user://android_ci_fight_small.jpg"  ## printed into the CI log as base64
+const THUMB_WIDTH: int = 256
 
 var _match: Match = null
 var _frame_ms: PackedFloat32Array = PackedFloat32Array()
@@ -63,6 +65,8 @@ func _process(_delta: float) -> void:
 		if img != null:
 			img.resize(SHOT_WIDTH, maxi(1, img.get_height() * SHOT_WIDTH / maxi(img.get_width(), 1)))
 			err = img.save_png(SHOT_PATH)
+			img.resize(THUMB_WIDTH, maxi(1, img.get_height() * THUMB_WIDTH / maxi(img.get_width(), 1)))
+			img.save_jpg(THUMB_PATH, 0.6)
 		print("ANDROID_CI shot tick=%d path=%s err=%d" % [_match.tick, ProjectSettings.globalize_path(SHOT_PATH), err])
 	if wall_s >= _next_progress_s:
 		_next_progress_s += PROGRESS_EVERY_S

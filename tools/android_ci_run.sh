@@ -36,6 +36,8 @@ while (( t < LIMIT )); do
 done
 adb exec-out run-as "${PKG}" cat files/android_ci_fight.png >"${OUT}/fight.png" 2>/dev/null
 [[ -s "${OUT}/fight.png" ]] || rm -f "${OUT}/fight.png"
+adb exec-out run-as "${PKG}" cat files/android_ci_fight_small.jpg >"${OUT}/fight_small.jpg" 2>/dev/null
+[[ -s "${OUT}/fight_small.jpg" ]] || rm -f "${OUT}/fight_small.jpg"
 sleep 2
 [[ -s "${OUT}/end.png" ]] || adb exec-out screencap -p >"${OUT}/end.png" 2>/dev/null
 kill "${LOGPID}" 2>/dev/null
