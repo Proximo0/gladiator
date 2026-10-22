@@ -92,7 +92,7 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), bg)
 	draw_rect(Rect2(Vector2.ZERO, size), border, false, 5.0 if focused else 3.0)
 	var font: Font = MenuTheme.caps_font()
-	var fs: int = MenuTheme.FONT_SMALL
+	var fs: int = clampi(int(size.y * 0.36), MenuTheme.FONT_SMALL, 40)  # finger-sized rows on a phone get larger text
 	var col: Color = MenuTheme.PARCHMENT if enabled else MenuTheme.DIM_TEXT
 	var ty: float = size.y * 0.5 + float(fs) * 0.36
 	draw_string(font, Vector2(16.0, ty), title, HORIZONTAL_ALIGNMENT_LEFT, size.x * 0.34, fs, MenuTheme.OCHRE if enabled else MenuTheme.DIM_TEXT)
