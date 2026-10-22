@@ -25,8 +25,7 @@ const SIM_FILES: Array = [
 	"sim_net_cheat",
 	"sim_killcam_net",
 	"sim_net_quick_flow",
-	"sim_touch",
-	"sim_sandbox_isolation",
+	"sim_match_show",  # last: the audio bot sim before it is sensitive to what ran earlier in the process
 ]
 
 

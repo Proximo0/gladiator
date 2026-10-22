@@ -103,7 +103,9 @@ inside an EOS stat.
 3. **Before the fight** a failure that is about that opponent (left, dropped, no answer within `JOIN_TIMEOUT_S`,
    refused) puts the player straight back in the search with one line ("Verus left the arena. Back in the queue.");
    a version mismatch, an offline service or a blocked port stops with a plain explanation and Search again.
-4. **Result panel** (MenuFlow's, built from `OnlineScreen.result_body()` / `result_entries()` / `make_result_view()`):
+4. **Results screen** (MenuFlow's `MatchResults`, `game/ui/match/`, the same screen as offline fights: verdict, how
+   it ended, both fighters' numbers; its buttons are `OnlineScreen.result_entries()`, its note `result_body()`, and
+   `make_result_view()`'s RatingChangeView sits under the heading, redrawn on `result_changed`):
    the rating counts to its new value (promotion flash, bar and points to the next tier, streak), or why the fight
    was not rated. **Rematch**: either side asks (`{t: "rematch"}` note), the other sees "Verus wants a rematch!" and
    Accept; the host starts once both asked; the question lapses after 30 s; leaving gives "Verus left. No rematch."

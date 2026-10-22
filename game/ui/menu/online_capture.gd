@@ -83,7 +83,7 @@ func _fulfil() -> void:
 
 ## Puts the panel's rating view `t` seconds into its count.
 func _view_at(t: float) -> void:
-	var p: Node = _flow.get("_pause")
+	var p: Node = _flow.get("_results")
 	if p == null:
 		return
 	for v: Node in p.find_children("*", "RatingChangeView", true, false):
