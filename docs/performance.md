@@ -279,3 +279,18 @@ F7 MSAA toggle turns MSAA on to `GfxQuality.MSAA` for the current level, so it s
 - Do not hide geometry by scaling to zero in the vertex shader; the vertices are still processed.
 - Time script cost on its own (see `fx_ms`); software GL frame time says nothing about a phone.
 - Re-run `tools/perf.sh --quality=all` after adding an effect and put the new row in this file.
+
+## Arena look pass (2026-10-22, software GL, seed 1002, CPU contended)
+
+| | before | after |
+|---|---|---|
+| Low: draw calls | 255 | 215 |
+| Low: crowd triangles drawn | 28k | 39.7k (Houdini lod1/lod2 plus 2-triangle impostor cards) |
+| Low `--heavy`: calls / MultiMesh triangles / fx_ms (budget 250 / 100k / 8) | 216 / 77k / 7.54 | 227 / 95.9k / 5.11 |
+| High: draw calls | 341 | 317 |
+| High: crowd triangles drawn | 231k | 231.7k |
+| High: MultiMesh triangles / VRAM | - | 289k / 26.2 MB |
+
+`CROWD_TIER_LOD` level 1 now means Houdini lod2 (about 30% of the triangles, heads kept) and level 2 a 2-triangle
+impostor card. Dressing (`ArenaDressing`) costs about 20 draw calls on high and 12 on low; on low the standards and
+braziers fall back to merged code meshes and statues and the trophy are skipped (`LOW_CODE_PROPS`).
