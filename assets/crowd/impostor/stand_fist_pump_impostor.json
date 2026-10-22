@@ -1,0 +1,27 @@
+{
+ "variant": "stand_fist_pump",
+ "mapping": "hemi_octahedral",
+ "grid": 8,
+ "resolution": 1024,
+ "cell_px": 128,
+ "cell_size_m": 1.9810278950875555,
+ "pivot_m": [
+  0.08471949398517609,
+  0.8789946159231476,
+  0.03236748278141022
+ ],
+ "bounding_radius_m": 0.9524172572536325,
+ "front_cell": [
+  0,
+  7
+ ],
+ "cell_order": "col i from left, row j from bottom of image; e = ((i+0.5)/grid*2-1, (j+0.5)/grid*2-1)",
+ "view_basis": "forward d toward viewer, right = norm(cross(+Y, d)) (pole: +X), up = cross(d, right)",
+ "passes": {
+  "color": "stand_fist_pump_impostor_color.png",
+  "normal": "stand_fist_pump_impostor_normal.png",
+  "depth": "stand_fist_pump_impostor_depth.png"
+ },
+ "normal_encoding": "view space n*0.5+0.5 (x right, y up, z toward viewer)",
+ "depth_encoding": "0.5 + z_view / cell_size_m (1 = nearest viewer)"
+}

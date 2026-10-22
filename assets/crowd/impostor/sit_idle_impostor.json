@@ -1,0 +1,27 @@
+{
+ "variant": "sit_idle",
+ "mapping": "hemi_octahedral",
+ "grid": 8,
+ "resolution": 1024,
+ "cell_px": 128,
+ "cell_size_m": 1.5518806395868363,
+ "pivot_m": [
+  7.450580596923828e-08,
+  0.6546192487585358,
+  0.24587270617485046
+ ],
+ "bounding_radius_m": 0.7460964613398251,
+ "front_cell": [
+  0,
+  7
+ ],
+ "cell_order": "col i from left, row j from bottom of image; e = ((i+0.5)/grid*2-1, (j+0.5)/grid*2-1)",
+ "view_basis": "forward d toward viewer, right = norm(cross(+Y, d)) (pole: +X), up = cross(d, right)",
+ "passes": {
+  "color": "sit_idle_impostor_color.png",
+  "normal": "sit_idle_impostor_normal.png",
+  "depth": "sit_idle_impostor_depth.png"
+ },
+ "normal_encoding": "view space n*0.5+0.5 (x right, y up, z toward viewer)",
+ "depth_encoding": "0.5 + z_view / cell_size_m (1 = nearest viewer)"
+}
