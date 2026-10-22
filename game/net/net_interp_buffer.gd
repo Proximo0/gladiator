@@ -9,6 +9,7 @@ extends RefCounted
 ## Pure: the caller passes its own tick count; nothing reads the clock.
 
 const CAPACITY: int = 32
+const MAX_EVENTS: int = 512  ## queued hit and gore events kept at most (the oldest go first)
 const OFFSET_EASE: float = 0.02  ## per snapshot, host-minus-local tick offset rising (packets came early)
 const OFFSET_FALL: float = 0.3  ## ... and falling (a packet came late)
 const JITTER_EASE: float = 0.1
@@ -85,6 +86,8 @@ func push(s: NetSnapshot, local_tick: int) -> void:
 
 func push_event(tick: int, side: int, kind: String, ev: Dictionary) -> void:
 	_events.append([tick, side, kind, ev])
+	if _events.size() > MAX_EVENTS:
+		_events.pop_front()  # a host stamping events far in the future must not grow the queue for ever
 
 
 ## Where the render clock wants to be at `local_tick`.

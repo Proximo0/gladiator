@@ -349,6 +349,10 @@ func test_fists_pummel_finishes_downed_foe_head_only() -> void:
 	h["blood_frac"] = 0.1
 	assert_eq(_r(h)["finisher"], "")
 	h["target_down"] = true
-	var up: Dictionary = _r(h)
+	assert_eq(_r(h)["finisher"], "pummel")
+	var w: Dictionary = _hit("head", "club", "blunt", 14.0, 1.6)
+	w["blood_frac"] = 0.1
+	w["target_down"] = true
+	assert_eq(_r(w)["finisher"], "skull_crush")  # weapons keep skull_crush even on a downed foe
 	h["part"] = "torso"
 	assert_eq(_r(h)["finisher"], "")

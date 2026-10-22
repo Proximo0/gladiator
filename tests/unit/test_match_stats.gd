@@ -121,6 +121,10 @@ func test_finisher_and_severs() -> void:
 	t.on_gore({"kind": "behead", "part": "head"})
 	assert_eq(t.to_dict()["finisher"], "behead")
 	assert_eq(t.to_dict()["severs"], 1)
+	var p := MatchStats.new()
+	p.on_gore({"kind": "pummel", "part": "head"})
+	assert_eq(p.to_dict()["finisher"], "pummel")
+	assert_eq(p.to_dict()["severs"], 0)
 
 
 func test_swing_speed_stats() -> void:

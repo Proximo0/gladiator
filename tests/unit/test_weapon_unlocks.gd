@@ -23,7 +23,42 @@ func test_new_weapons_have_data_and_rules() -> void:
 		assert_true(float(d["balance_point"]) < float(d["length"]) - float(d["grip_offset"]), id + " balance inside the weapon")
 		assert_true(WeaponUnlocks.is_unlockable(id), id + " is unlockable")
 		assert_false(LoadoutRules.is_premium_weapon(id))
-	assert_eq(WeaponUnlocks.unlockable_ids(), Array(NEW_WEAPONS), "data order")
+	assert_eq(WeaponUnlocks.unlockable_ids(), Array(NEW_WEAPONS) + ["scutum"], "data order (the scutum is an earned shield)")
+
+
+## The scutum: an earned off-hand shield, a side-grade to the round shield (bigger and heavier), gated like a weapon.
+func test_scutum_is_an_earned_shield() -> void:
+	var d: Dictionary = CombatData.weapon("scutum")
+	var round_d: Dictionary = CombatData.weapon("shield_round")
+	assert_true(LoadoutRules.is_shield("scutum"))
+	assert_true(WeaponUnlocks.is_unlockable("scutum"))
+	assert_true(float(d["mass"]) > float(round_d["mass"]), "heavier than the round shield")
+	assert_true(float(d["length"]) > float(round_d["length"]), "taller than the round shield")
+	assert_true(ResourceLoader.exists(str(d["art"])), "art exists")
+	assert_true(LoadoutRules.offhands().has("scutum"))
+	assert_false(LoadoutRules.picker_weapons().has("scutum"), "never a main weapon")
+	var fresh: Array = WeaponUnlocks.access([], {}, false)
+	var want: Dictionary = {"weapon": "gladius", "offhand": "scutum"}
+	assert_eq(str(LoadoutRules.sanitize(want, fresh)["offhand"]), LoadoutRules.DEFAULT_OFFHAND, "locked: round shield")
+	assert_eq(str(LoadoutRules.sanitize(want, WeaponUnlocks.access([], _p(5, 2), false))["offhand"]), "scutum")
+	assert_eq(str(LoadoutRules.sanitize(want)["offhand"]), "scutum", "null owned trusts the loadout")
+	assert_eq(LoadoutRules.lock_reason("scutum", fresh, _p(3, 1)), "Win 2 fights (1/2)")
+
+
+func test_scutum_builds_a_box_shield() -> void:
+	var w := Weapon.new()
+	w.build(CombatData.weapon("scutum"))
+	assert_eq(w.shape_kind, "shield")
+	assert_true(w.get_node_or_null("Art") != null, "Houdini art on the shield")
+	var boxes: int = 0
+	for c: Node in w.get_children():
+		if c is CollisionShape3D and (c as CollisionShape3D).shape is BoxShape3D:
+			var sz: Vector3 = ((c as CollisionShape3D).shape as BoxShape3D).size
+			if sz.y > 1.0:
+				boxes += 1
+				assert_true(sz.x > 0.6 and sz.z < 0.1, "a tall flat board")
+	assert_eq(boxes, 1, "one board collider")
+	w.free()
 
 
 func test_realistic_numbers() -> void:

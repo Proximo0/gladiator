@@ -567,7 +567,7 @@ func _on_net_closed(reason: String) -> void:
 		_net.queue_free()
 		_net = null
 	if _quick and _online.has_open_match():
-		_online.report_abandoned(Rating.KIND_DROPPED)
+		_online.report_abandoned(Rating.KIND_DROPPED, current_match.tick if current_match != null else 0, _leader_side())
 	if screen == Screen.ONLINE:
 		_open_online(_quick)
 		_online.show_status(reason)
@@ -581,6 +581,16 @@ func _on_net_closed(reason: String) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		_pause_dim.visible = true
 		_show_panel("VALE", "Connection closed", reason, [["online", "Online"], ["title", "Title"]])
+
+
+## Who was ahead on points in the current match (MatchJudge.leader), -1 when level or no match.
+func _leader_side() -> int:
+	if current_match == null or current_match.fighters.size() < 2:
+		return -1
+	var frames: Array = []
+	for f: Fighter in current_match.fighters:
+		frames.append({"blood": f.health.blood, "hp": f.health.hp_total_frac()})
+	return MatchJudge.leader(frames)
 
 
 func _on_match_over(result: Dictionary, token: int) -> void:
