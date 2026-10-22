@@ -207,6 +207,15 @@ const FIELDS: Array = [
 	["match_pause_s", 4.0, 1.0, 15.0, 0.5, "Match", "Pause after a match before the next bot match starts, s."],
 	["match_slowmo_scale", 0.4, 0.1, 1.0, 0.05, "Match", "Time scale during the finisher slow motion."],
 	["match_slowmo_s", 1.0, 0.0, 5.0, 0.1, "Match", "Length of the finisher slow motion, game seconds."],
+	["killcam_on", 1.0, 0.0, 1.0, 1.0, "Replay", "1 = instant replay of the finishing blow before the result panel, 0 = off."],
+	["killcam_buffer_s", 8.0, 5.0, 20.0, 0.5, "Replay", "Seconds of shown fight kept for the replay (ring buffer)."],
+	["killcam_lead_s", 3.5, 1.0, 6.0, 0.1, "Replay", "Game seconds replayed before the killing blow."],
+	["killcam_tail_s", 1.6, 0.3, 3.0, 0.1, "Replay", "Game seconds replayed after the killing blow."],
+	["killcam_slow_rate", 0.25, 0.05, 1.0, 0.05, "Replay", "Playback speed of the slow motion at the impact."],
+	["killcam_slow_pre_s", 0.2, 0.0, 1.0, 0.05, "Replay", "Game seconds of slow motion before the impact."],
+	["killcam_slow_post_s", 0.5, 0.1, 2.0, 0.05, "Replay", "Game seconds of slow motion after the impact."],
+	["killcam_tail_rate", 0.6, 0.1, 1.0, 0.05, "Replay", "Playback speed after the slow motion."],
+	["killcam_ramp_s", 0.25, 0.05, 1.0, 0.05, "Replay", "Game seconds the speed takes to ease in and out of slow motion."],
 	["feel_shake_scale", 1.0, 0.0, 2.0, 0.05, "Feel", "Master scale of camera kick, shake and zoom punch. 0 turns them all off (reduced motion forces 0)."],
 	["feel_impact_energy_ref", 90.0, 10.0, 400.0, 5.0, "Feel", "Hit energy (J) at which the impact reads about 63 percent."],
 	["feel_impact_total_ref", 25.0, 5.0, 100.0, 1.0, "Feel", "Damage points at which the impact reads about 63 percent."],
@@ -542,6 +551,15 @@ var knockback_scale: float
 var match_pause_s: float
 var match_slowmo_scale: float
 var match_slowmo_s: float
+var killcam_on: float
+var killcam_buffer_s: float
+var killcam_lead_s: float
+var killcam_tail_s: float
+var killcam_slow_rate: float
+var killcam_slow_pre_s: float
+var killcam_slow_post_s: float
+var killcam_tail_rate: float
+var killcam_ramp_s: float
 var feel_shake_scale: float
 var feel_impact_energy_ref: float
 var feel_impact_total_ref: float
