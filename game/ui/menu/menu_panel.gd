@@ -13,11 +13,16 @@ func build(latin: String, english: String, body: String, entries: Array) -> void
 	var v := VBoxContainer.new()
 	v.custom_minimum_size = Vector2(620.0, 0.0)
 	add_child(v)
-	var h := MenuTheme.label(latin, 76, MenuTheme.PARCHMENT)
+	var h := MenuTheme.label(latin, 76, MenuTheme.RED.lightened(0.25) if latin == "MORS" else MenuTheme.PARCHMENT)
 	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	h.add_theme_color_override("font_outline_color", Color(0.12, 0.05, 0.03, 0.9))
 	h.add_theme_constant_override("outline_size", 10)
 	v.add_child(h)
+	var rule := Control.new()
+	rule.custom_minimum_size = Vector2(0.0, 34.0)
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rule.draw.connect(func() -> void: MenuTheme.draw_meander(rule, rule.size.x * 0.12, 4.0, rule.size.x * 0.76))
+	v.add_child(rule)
 	if english != "":
 		var e := MenuTheme.label(english, MenuTheme.FONT_SMALL, MenuTheme.OCHRE)
 		e.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -31,7 +36,10 @@ func build(latin: String, english: String, body: String, entries: Array) -> void
 	gap.custom_minimum_size = Vector2(0.0, 16.0)
 	v.add_child(gap)
 	for entry: Array in entries:
-		var btn: Button = MenuTheme.button(str(entry[1]))
+		var btn := TitleMenuItem.new(str(entry[1]).to_upper())
+		btn.tile = true
+		btn.font_px = 34
+		btn.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
 		btn.pressed.connect(func() -> void: chosen.emit(str(entry[0])))
 		v.add_child(btn)
 		_buttons.append(btn)
@@ -47,3 +55,5 @@ func build(latin: String, english: String, body: String, entries: Array) -> void
 func focus_first() -> void:
 	if not _buttons.is_empty():
 		_buttons[0].grab_focus()
+		for b: Button in _buttons:
+			(b as TitleMenuItem).snap()

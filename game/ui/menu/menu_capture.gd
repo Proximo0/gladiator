@@ -109,6 +109,6 @@ func _run() -> void:
 				await _frames(20)
 				_flow._practice.skip_all()
 				await _frames(120)
-		await _snap(s, 4 if s == "fight" else 40)
+		await _snap(s, 4 if s == "fight" else 16)
 	get_tree().paused = false
 	get_tree().quit()

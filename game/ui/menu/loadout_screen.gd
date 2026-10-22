@@ -11,7 +11,7 @@ signal shop  ## the player wants the outfit shop ("Get in shop" on a locked outf
 var mode: String = "player_vs_cpu"
 var state: MenuState
 
-var _title: Label
+var _title: ScreenHeader
 var _scroll: ScrollContainer
 var _body: BoxContainer
 var _panel_a: LoadoutPanel
@@ -55,8 +55,7 @@ func _init(p_state: MenuState) -> void:
 	root.offset_bottom = -16.0
 	root.add_theme_constant_override("separation", 10)
 	add_child(root)
-	_title = MenuTheme.label("ARMA / Choose your arms", 52, MenuTheme.PARCHMENT)
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title = ScreenHeader.new("ARMA / Choose your arms")
 	root.add_child(_title)
 	_scroll = ScrollContainer.new()
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -418,7 +417,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _relayout() -> void:
 	var portrait: bool = size.x < size.y * 1.05
 	_body.vertical = portrait
-	_title.add_theme_font_size_override("font_size", 40 if portrait else 52)
+	_title.set_compact(portrait)
 	if portrait:
 		_body.move_child(_mid, 0)
 		_frame.custom_minimum_size = Vector2(300.0, 400.0)
