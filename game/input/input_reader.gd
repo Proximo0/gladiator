@@ -15,6 +15,7 @@ var device: String = "kbm"
 var _aim: Vector2 = Vector2.ZERO
 var _mouse_delta: Vector2 = Vector2.ZERO
 var _touch: TouchControls = null
+var _mouse_emulated: bool = false  ## the last mouse button event was Godot's mouse made from a touch
 
 
 func _ready() -> void:
@@ -51,6 +52,8 @@ func set_captured(on: bool) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		_mouse_emulated = event.device == InputEvent.DEVICE_ID_EMULATION
 	if (device != "kbm" and device != "auto") or not (event is InputEventMouseMotion):
 		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
@@ -151,7 +154,7 @@ func _read_touch() -> FighterInput:
 	f.move_y = _touch.move.y
 	f.aim_x = _touch.aim.x
 	f.aim_y = _touch.aim.y
-	f.buttons = _touch.buttons
+	f.buttons = _touch.tick_buttons()
 	return f
 
 
@@ -160,11 +163,18 @@ func _kbm_down(action: String) -> bool:
 	for k: int in keys:
 		if Input.is_physical_key_pressed(k):
 			return true
-	var buttons: Array = InputBindings.MOUSE.get(action, [])
-	for b: int in buttons:
-		if Input.is_mouse_button_pressed(b):
-			return true
+	if mouse_button_counts(_mouse_emulated):
+		var buttons: Array = InputBindings.MOUSE.get(action, [])
+		for b: int in buttons:
+			if Input.is_mouse_button_pressed(b):
+				return true
 	return false
+
+
+## A phone turns its first finger into a left mouse button. Read as LMB it would hold SWING while the thumb walks, so
+## mouse buttons only count when they came from a real mouse.
+static func mouse_button_counts(emulated: bool) -> bool:
+	return not emulated
 
 
 func _pad_down(action: String, id: int) -> bool:
