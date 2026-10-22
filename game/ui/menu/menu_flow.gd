@@ -548,7 +548,7 @@ func _end_session() -> void:
 
 func _on_online_start() -> void:
 	if _net != null:
-		_net.start_match(_new_seed())
+		_net.start_match(_new_seed(), 0.0, roundi(Tuning.shared().intro_s * float(NetConfig.TICK_HZ)))
 
 
 ## Both sides: the host pressed FIGHT (or Rematch). Build the match from the START message.
@@ -581,7 +581,7 @@ func _on_net_closed(reason: String) -> void:
 		_net.queue_free()
 		_net = null
 	if _quick and _online.has_open_match():
-		_online.report_abandoned(Rating.KIND_DROPPED, current_match.tick if current_match != null else 0, _leader_side())
+		_online.report_abandoned(Rating.KIND_DROPPED, current_match.fight_ticks() if current_match != null else 0, _leader_side())
 	if screen == Screen.ONLINE:
 		_open_online(_quick)
 		if _quick:
@@ -619,7 +619,8 @@ func _on_match_over(result: Dictionary, token: int) -> void:
 	_record_progress(result, token)
 	if _quick and _is_online() and _online.has_open_match():
 		var suspect: bool = result.has("suspect")  # NetResultCheck: a draw claim makes the reports disagree (disputed)
-		_online.report_finished(-1 if suspect else int(result.get("winner", -1)), int(result.get("ticks", 0)), "suspect" if suspect else str(result.get("reason", "")))
+		_online.report_finished(-1 if suspect else int(result.get("winner", -1)),
+				int(result.get("fight_ticks", result.get("ticks", 0))), "suspect" if suspect else str(result.get("reason", "")))
 	if current_match == null or bool(current_match.config.get("loop", false)):
 		return
 	var t: SceneTreeTimer = get_tree().create_timer(RESULT_DELAY_S, true, false, true)
@@ -723,7 +724,10 @@ func _attach_show(m: Match, mode: String, intro: bool) -> void:
 		ratings[me] = _service.my_rating()
 		ratings[1 - me] = _match_info.get("opponent", {})
 	_show.local_side = me
-	_show.play_intro(_show.plates(mode, me, ratings), Tuning.shared().intro_s, Tuning.shared().intro_fight_s)
+	var intro_s: float = Tuning.shared().intro_s
+	if mode == ONLINE_MODE:  # the host's START fixed the release tick: both peers' plates end on it
+		intro_s = float(m.fight_start_tick) / float(NetConfig.TICK_HZ)
+	_show.play_intro(_show.plates(mode, me, ratings), intro_s, Tuning.shared().intro_fight_s)
 
 
 func _after_intro() -> void:
