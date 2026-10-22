@@ -87,7 +87,13 @@ const PRESETS: Dictionary = {
 }
 
 var _rng := RandomNumberGenerator.new()
+var _drng := RandomNumberGenerator.new()  ## difficulty rolls only, so "normal" draws exactly what it always drew
 var _p: Dictionary = {}
+var _d: Dictionary = {}  ## AiDifficulty parameters
+var _finish_ok: bool = true  ## difficulty: the brain currently notices that the foe is beaten
+var _finish_t: int = 0
+var _opp_ok: bool = true  ## difficulty: the brain currently notices openings
+var _opp_t: int = 0
 var _ring: Array = []
 var _ring_n: int = 0
 var _delay: int = -1
@@ -153,10 +159,29 @@ func _init(seed: int, personality: Dictionary = {}) -> void:
 	for k: Variant in personality:
 		if str(k) != "preset":
 			_p[k] = personality[k]
+	_apply_difficulty(seed)
 	_ring.resize(RING)
 	_circle_dir = 1 if _rng.randf() < 0.5 else -1
 	_wait = _new_wait()
 	_phase_t = _span("engage")
+
+
+## Fold the AiDifficulty table into the personality (knobs scaled once) and keep the table for the runtime hooks.
+func _apply_difficulty(seed: int) -> void:
+	_d = AiDifficulty.params(str(_p.get("difficulty", AiDifficulty.DEFAULT_ID)))
+	_drng.seed = seed ^ 0x5bd1e995
+	if float(_d["aggr_add"]) != 0.0:
+		_p["aggression"] = clampf(_pf("aggression") + float(_d["aggr_add"]), 0.0, 1.0)
+	if float(_d["aim_noise_scale"]) != 1.0:
+		_p["aim_noise"] = _pf("aim_noise") * float(_d["aim_noise_scale"])
+	if float(_d["stamina_mgmt"]) != 1.0:
+		_p["retreat_stamina"] = clampf(_pf("retreat_stamina") * float(_d["stamina_mgmt"]), 0.0, 0.8)
+	if float(_d["wait_scale"]) != 1.0:
+		_p["commit_ticks"] = roundi(_pf("commit_ticks") * float(_d["wait_scale"]))
+
+
+func difficulty() -> String:
+	return AiDifficulty.normalize(str(_p.get("difficulty", AiDifficulty.DEFAULT_ID)))
 
 
 func state_name() -> String:
@@ -175,7 +200,8 @@ func personality() -> Dictionary:
 func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 	_tick += 1
 	if _delay < 0:
-		_delay = clampi(roundi(_pf("reaction_ms") / 1000.0 / maxf(delta, 0.0001)), 0, RING - 8)
+		var ms: float = maxf(_pf("reaction_ms") * float(_d["reaction_scale"]), float(_d["reaction_min_ms"]))
+		_delay = clampi(roundi(ms / 1000.0 / maxf(delta, 0.0001)), 0, RING - 8)
 	_ring[_ring_n % RING] = foe.duplicate()  # shallow: callers may reuse and mutate their dict
 	_ring_n += 1
 	var out := FighterInput.new()
@@ -204,6 +230,7 @@ func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 		return out
 	_geometry(me, obs)
 	_track_stale(me, foe)
+	_notice_rolls()
 	if _tick <= int(_p.get("spawn_hold", SPAWN_HOLD_TICKS)):
 		_neutral_aim(out)
 		return out
@@ -290,6 +317,10 @@ func _update_state(me: Dictionary, obs: Dictionary) -> void:
 	var thr: bool = _threat(me, obs)
 	if thr and not _thr_prev:
 		_reflex_ok = _rng.randf() <= clampf(1.0 - _pf("risk") * 0.7, 0.2, 1.0) * (1.0 - 0.7 * _desperation())
+		if float(_d["guard_miss"]) > 0.0 and _drng.randf() < float(_d["guard_miss"]):
+			_reflex_ok = false
+		elif float(_d["guard_boost"]) > 0.0 and not _reflex_ok and _drng.randf() < float(_d["guard_boost"]):
+			_reflex_ok = true
 	_thr_prev = thr
 	if thr and _reflex_ok and _state != ST_GUARD:
 		if not (_state == ST_STRIKE and _pf("risk") > 0.5):
@@ -322,7 +353,7 @@ func _update_state(me: Dictionary, obs: Dictionary) -> void:
 
 
 func _after_guard(me: Dictionary, obs: Dictionary) -> void:
-	var p_rip: float = _pf("patience") * 0.6 + _pf("aggression") * 0.2
+	var p_rip: float = clampf(_pf("patience") * 0.6 + _pf("aggression") * 0.2 + float(_d["riposte"]), 0.0, 1.0)
 	if _want_finish(obs):
 		p_rip = maxf(p_rip, 0.9)  # the foe is beaten: answer his last swing with the killing blow
 	if not _tired and _dist <= _reach * 1.15 and _rng.randf() <= p_rip:
@@ -341,7 +372,23 @@ func _enter(s: int, len_ticks: int) -> void:
 	_st_len = len_ticks
 
 
+## Difficulty: whether the brain notices a beaten foe / an opening, re-rolled every so often (never when always).
+func _notice_rolls() -> void:
+	_finish_t -= 1
+	if _finish_t <= 0:
+		_finish_t = 90
+		_finish_ok = float(_d["finish_seek"]) >= 1.0 or _drng.randf() < float(_d["finish_seek"])
+	_opp_t -= 1
+	if _opp_t <= 0:
+		_opp_t = 30
+		_opp_ok = float(_d["opp_seek"]) >= 1.0 or _drng.randf() < float(_d["opp_seek"])
+
+
 func _want_finish(obs: Dictionary) -> bool:
+	return _finish_ok and _beaten(obs)
+
+
+func _beaten(obs: Dictionary) -> bool:
 	var st: String = str(obs.get("state", "standing"))
 	if st == "down" or st == "ko" or st == "getting_up":
 		return true
@@ -360,7 +407,7 @@ func _foe_blood(obs: Dictionary) -> float:
 
 ## True when the foe's tip is fast, close to me and not moving away.
 func _threat(me: Dictionary, obs: Dictionary) -> bool:
-	if float(obs.get("tip_speed", 0.0)) < 4.0:
+	if float(obs.get("tip_speed", 0.0)) < float(_d["threat_speed"]):
 		return false
 	var torso: Vector3 = _part_pos(me, "torso", Vector3(0.0, 1.2, 0.0))
 	var tip: Vector3 = obs.get("tip_pos", Vector3.ZERO)
@@ -378,7 +425,7 @@ func _threat(me: Dictionary, obs: Dictionary) -> bool:
 
 ## True when the foe swung hard in the last 45 ticks and is now slow (an opening).
 func _opportunity(obs: Dictionary) -> bool:
-	if float(obs.get("tip_speed", 0.0)) > 2.0:
+	if not _opp_ok or float(obs.get("tip_speed", 0.0)) > 2.0:
 		return false
 	var j: int = 0
 	while j <= 45 and j < _ring_n - _delay:
@@ -471,11 +518,12 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	if _wait > 0:
 		return
 	var opp: bool = _opportunity(obs)
-	var p: float = lerpf(0.3, 1.0, _pf("aggression")) + (0.3 if opp else 0.0)
+	var p: float = lerpf(0.3, 1.0, _pf("aggression")) + (float(_d["punish"]) if opp else 0.0)
 	if not opp and not finishing:
 		p *= lerpf(1.0, 0.25, _pf("patience"))
 	if committed:
 		p = maxf(p, 0.5)
+	p *= float(_d["p_scale"])
 	var in_reach: bool = _dist <= _reach * 1.05
 	var lunge: bool = _dist <= _reach * (1.3 if finishing else 1.9) and (_pf("aggression") > 0.5 or opp or finishing or committed)
 	if _rng.randf() <= p and (in_reach or lunge):
@@ -539,7 +587,7 @@ func _pick_spot() -> Vector3:
 func _venue_lean() -> Vector3:
 	var v: Vector3 = _venue - _mp
 	v.y = 0.0
-	return v.normalized() if v.length() > 1.5 else Vector3.ZERO
+	return v.normalized() * (float(_d["footwork"]) * 2.0) if v.length() > 1.5 else Vector3.ZERO
 
 
 func _span(key: String) -> int:
@@ -584,7 +632,7 @@ func _steer(wdir: Vector3, speed: float, out: FighterInput) -> void:
 func _pin_target(hold: float, out: FighterInput) -> bool:
 	var fr: float = Vector2(_fp.x, _fp.z).length()
 	var mr: float = Vector2(_mp.x, _mp.z).length()
-	if fr < PIN_RADIUS or mr > fr - 1.0 or _dist < hold + 1.0:
+	if float(_d["footwork"]) < 0.5 or fr < PIN_RADIUS or mr > fr - 1.0 or _dist < hold + 1.0:
 		return false
 	var inward: Vector3 = Vector3(-_fp.x, 0.0, -_fp.z) / fr
 	var goal: Vector3 = _fp + inward * hold
@@ -668,7 +716,7 @@ func _do_strike(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	if _st_ticks + 1 >= _st_len:
 		var def: Dictionary = CombatData.weapon(str(me.get("weapon_id", "fists")))
 		var rec: float = (14.0 + float(def.get("mass", 1.0)) * 8.0) * (1.3 - _pf("aggression") * 0.6)
-		_enter(ST_RECOVER, clampi(roundi(rec), 10, 50))
+		_enter(ST_RECOVER, clampi(roundi(rec * float(_d["recover_scale"])), 8, 65))
 
 
 func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
@@ -696,7 +744,7 @@ func _do_guard(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var a: Vector2 = _clamp_aim(Vector2((tip - _origin).dot(_right) / GUARD_W * 0.7, (tip.y - _origin.y) / GUARD_H * 0.7))
 	if _reach > LONG_REACH:
 		a *= LONG_GUARD_SCALE  # a spear parried far off centre swings its butt and shaft through the own body
-	_set_aim(out, _last_aim.move_toward(a, SLEW_GUARD))
+	_set_aim(out, _last_aim.move_toward(a, SLEW_GUARD * float(_d["guard_slew"])))
 	out.buttons |= FighterInput.SWING | FighterInput.OFFHAND
 	# Guard on the move: slip back and to the side rather than standing in the foe's swing. A long weapon swung round
 	# by footwork hits the own body (spear self hits), so it only gives ground.
@@ -708,7 +756,7 @@ func _do_guard(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 
 
 func _do_retreat(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
-	_set_aim(out, _last_aim.move_toward(Vector2(0.0, 0.2), SLEW_NEUTRAL))
+	_set_aim(out, _last_aim.move_toward(Vector2(0.0, 0.2), SLEW_NEUTRAL * float(_d["hand_return"])))
 	_shield_up(me, out)
 	# Breaking off to recover: keep well out of reach, circling slowly rather than backing into the wall.
 	var keep: float = _reach * 2.2 + 1.0 - _pf("risk") + (1.0 if _pf("range_frac") > 1.0 else 0.0)
@@ -793,6 +841,8 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 	var blunt: bool = not edged and not pointy
 	var mirror: float = 1.0 if _rng.randf() < 0.5 else -1.0
 	var noise := Vector2(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0)) * (_pf("aim_noise") * 0.45)
+	if float(_d["aim_err"]) > 0.0:
+		noise += Vector2(_drng.randf_range(-1.0, 1.0), _drng.randf_range(-1.0, 1.0)) * float(_d["aim_err"])
 	var kind: String = ""
 	var part: String = ""
 	var neck: bool = false
@@ -895,6 +945,7 @@ func _kind_weights(def: Dictionary) -> Dictionary:
 func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool) -> String:
 	var parts: Dictionary = obs.get("parts", {})
 	var w: Dictionary = {}
+	var skill: float = float(_d["target_skill"])
 	for name: Variant in PART_BASE:
 		var n: String = str(name)
 		var wt: float = float(PART_BASE[n])
@@ -914,12 +965,15 @@ func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool) -
 				wt *= 0.4 if leg else 1.2
 			"thrust":
 				wt *= 1.6 if n == "torso" else (0.3 if leg else (0.4 if arm else 1.0))
+		if n == "head" or n == "torso" or n == "pelvis":
+			wt *= float(_d["core_bias"])
 		if leg:
 			wt *= 1.0 + _pf("cripple") * 2.5
 		if blunt and n == "head":
 			wt *= BLUNT_HEAD_BIAS
 		var sc: float = _armor_score(armor, n, blunt)
-		wt *= 1.3 if sc <= 0.0 else (1.0 - 0.85 * sc)
+		var armor_w: float = 1.3 if sc <= 0.0 else (1.0 - 0.85 * sc)
+		wt *= armor_w if skill == 1.0 else pow(armor_w, skill)
 		var info: Dictionary = CombatData.part_info(n)
 		var hp0: float = float(info.get("hp", 0.0))
 		if hp0 > 0.0 and pd.has("hp"):
@@ -1030,6 +1084,8 @@ func _clamp_aim(v: Vector2) -> Vector2:
 
 func _set_aim(out: FighterInput, v: Vector2) -> void:
 	var c: Vector2 = _clamp_aim(v)
+	if float(_d["aim_slew"]) < 5.0:  # a slower hand (easy): it cannot jump or whip across the aim plane
+		c = _last_aim.move_toward(c, float(_d["aim_slew"]))
 	c.x = maxf(c.x, AIM_LEFT_LIMIT)
 	c.y = maxf(c.y, heavy_low_limit(c.x, _heavy_short))
 	# a hand driven to the lowest aim drags the blade through the own thigh and pelvis  # the weapon hand stays off the offhand arm/shield side of the body
@@ -1049,7 +1105,7 @@ static func heavy_low_limit(x: float, heavy_short: bool) -> float:
 
 func _neutral_aim(out: FighterInput, step: float = SLEW_NEUTRAL) -> void:
 	var s: float = sin(float(_tick) * 0.05) * 0.08 * _pf("aim_noise")
-	_set_aim(out, _last_aim.move_toward(Vector2(s, 0.15), step))
+	_set_aim(out, _last_aim.move_toward(Vector2(s, 0.15), step * float(_d["hand_return"])))
 
 
 func _shield_up(me: Dictionary, out: FighterInput) -> void:
@@ -1095,13 +1151,13 @@ func _strike_len(me: Dictionary) -> int:
 	var m: float = float(def.get("mass", 1.0))
 	var fast: float = FINISH_STRIKE_SCALE if bool(_plan.get("finishing", false)) else 1.0  # a killing blow wants speed
 	if _plan.get("kind", "") == "thrust":
-		return clampi(roundi((8.0 + m * 2.0) * fast), 6, 16)
-	return clampi(roundi((12.0 + m * 5.0) * fast), 9, 30)
+		return clampi(roundi((8.0 + m * 2.0) * fast * float(_d["swing_scale"])), 6, 26)
+	return clampi(roundi((12.0 + m * 5.0) * fast * float(_d["swing_scale"])), 9, 48)
 
 
 func _new_wait() -> int:
 	var base: float = _rng.randf_range(20.0, 70.0)
-	return roundi(base * (0.4 + _pf("patience") * 1.4) * (1.35 - _pf("aggression") * 0.9))
+	return roundi(base * (0.4 + _pf("patience") * 1.4) * (1.35 - _pf("aggression") * 0.9) * float(_d["wait_scale"]))
 
 
 func _lagged(k: int) -> Dictionary:

@@ -5,6 +5,9 @@ extends Node
 ##   --seed=S                base seed (default 1000); global match g uses seed S+g
 ##   --time_limit=<s>        game seconds per match (default 60)
 ##   --keep                  also write the flight recording of passing matches
+##   --difficulty=<id>       AI difficulty (easy, normal, hard) of the side given by --side; the other side
+##                           is normal. Without it nothing changes (the seeded personalities as before).
+##   --side=0|1              which side gets --difficulty (default 0)
 ## Prints one `BOT match ...` line per match and `BOT score=<pass fraction> matches=N failed=F ...`.
 ## Writes out/bot/<seed>.json (result + MatchStats) and out/bot/<seed>.rec.json (flight recording) for every FAIL.
 ## A match that fails is also explained on a `BOT why seed=.. ...` line (it never contains the word FAIL in capitals
@@ -65,7 +68,15 @@ func _start() -> void:
 	_world.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(_world)
 	_world.add_child(_match)
-	_match.call("setup", {"mode": "bot_vs_bot", "seed": seed_v, "presentation": false, "loop": false, "time_limit_s": _time_limit})
+	var cfg: Dictionary = {"mode": "bot_vs_bot", "seed": seed_v, "presentation": false, "loop": false, "time_limit_s": _time_limit}
+	var diff: String = Flags.get_arg("difficulty", "")
+	if diff != "":
+		var side: int = clampi(int(Flags.get_arg("side", "0")), 0, 1)
+		var pers: Array = (MatchConfig.normalize({"seed": seed_v}, seed_v)["personalities"] as Array).duplicate(true)
+		(pers[side] as Dictionary)["difficulty"] = diff
+		(pers[1 - side] as Dictionary)["difficulty"] = "normal"
+		cfg["personalities"] = pers
+	_match.call("setup", cfg)
 	_recorder = FlightRecorder.new()
 	add_child(_recorder)
 	_recorder.attach(_match)

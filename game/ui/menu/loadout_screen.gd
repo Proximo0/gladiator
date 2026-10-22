@@ -21,6 +21,7 @@ var _vs: Label
 var _reroll: Button
 var _cpu_mode: MenuPicker
 var _cpu_diff: MenuPicker
+var _cpu_level: MenuPicker
 var _diff_note: Label
 var _start: Button
 var _back: Button
@@ -92,11 +93,19 @@ func _init(p_state: MenuState) -> void:
 		dl.append([str(p[0]), str(p[1])])
 	_cpu_diff.setup("Style", dl)
 	_cpu_diff.changed.connect(_on_diff)
+	_cpu_level = MenuPicker.new()
+	_cpu_level.custom_minimum_size = Vector2(0.0, LoadoutPanel.ROW_H)
+	var ll: Array = []
+	for d: Array in MenuState.DIFFICULTIES:
+		ll.append([str(d[0]), str(d[1])])
+	_cpu_level.setup("Difficulty", ll)
+	_cpu_level.changed.connect(_on_level)
+	_panel_b.add_row(_cpu_level)
 	_panel_b.add_row(_cpu_diff)
 	_panel_b.add_row(_cpu_mode)
 	_diff_note = MenuTheme.label("", 22, MenuTheme.DIM_TEXT)
 	_diff_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_diff_note.custom_minimum_size = Vector2(0.0, 56.0)
+	_diff_note.custom_minimum_size = Vector2(0.0, 84.0)
 	_panel_b.add_row(_diff_note, false)
 	_body.add_child(_panel_b)
 
@@ -124,10 +133,12 @@ func open(p_mode: String) -> void:
 	_panel_a.set_loadout(state.loadouts[0])
 	_cpu_mode.visible = not two
 	_cpu_diff.visible = not two
+	_cpu_level.visible = not two
 	_diff_note.visible = not two
 	_reroll.visible = not two
 	_cpu_mode.select(state.cpu_loadout_mode, false)
 	_cpu_diff.select(state.cpu_personality, false)
+	_cpu_level.select(state.cpu_difficulty, false)
 	_sync_opponent()
 	_relayout()
 	_panel_a.first_focus().grab_focus()
@@ -144,7 +155,7 @@ func _sync_opponent() -> void:
 	_panel_b.set_loadout(state.cpu_shown_loadout() if not two else state.loadouts[1])
 	_panel_b.set_locked(random_cpu)
 	_reroll.visible = random_cpu
-	_diff_note.text = _note_for(state.cpu_personality)
+	_diff_note.text = _note_text()
 	_refresh_preview()
 
 
@@ -153,6 +164,10 @@ func _note_for(id: String) -> String:
 		if str(p[0]) == id:
 			return str(p[2])
 	return ""
+
+
+func _note_text() -> String:
+	return "%s  %s" % [_note_for(state.cpu_personality), AiDifficulty.note(state.cpu_difficulty)]
 
 
 func _refresh_preview() -> void:
@@ -184,7 +199,12 @@ func _on_cpu_mode(id: String) -> void:
 
 func _on_diff(id: String) -> void:
 	state.cpu_personality = id
-	_diff_note.text = _note_for(id)
+	_diff_note.text = _note_text()
+
+
+func _on_level(id: String) -> void:
+	state.cpu_difficulty = AiDifficulty.normalize(id)
+	_diff_note.text = _note_text()
 
 
 func _on_reroll() -> void:

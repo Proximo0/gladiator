@@ -10,12 +10,14 @@ const PERSONALITIES: Array = [
 	["coward", "Coward", "Keeps its distance, goes for your legs and flees"],
 	["berserker", "Berserker", "Never stops coming, ignores its own wounds"],
 ]
+const DIFFICULTIES: Array = AiDifficulty.LIST  ## [id, label, note]: easy, normal, hard
 const CPU_RANDOM: String = "random"
 const CPU_CUSTOM: String = "custom"
 
 var loadouts: Array = [LoadoutRules.default_loadout(), LoadoutRules.default_loadout()]
 var cpu_loadout_mode: String = CPU_RANDOM  ## CPU_RANDOM or CPU_CUSTOM
 var cpu_personality: String = "random"  ## "random" or a FighterBrain preset name
+var cpu_difficulty: String = AiDifficulty.DEFAULT_ID  ## an AiDifficulty id, kept for the session
 var cpu_seed: int = 1  ## the seed the "random" opponent preview was rolled with
 var last_mode: String = "player_vs_cpu"
 
@@ -45,7 +47,7 @@ func cpu_shown_loadout() -> Dictionary:
 
 ## Match.setup() dictionary for `mode` and `seed_value`. Player vs CPU sends the human loadout and, unless the CPU
 ## is custom, leaves the CPU's loadout to the seed (so what the preview rolled is what fights). Personality: a named
-## preset, or left to the seed.
+## preset, or left to the seed (drawn the way Match does); the difficulty rides along in it.
 func to_config(mode: String, seed_value: int) -> Dictionary:
 	last_mode = mode
 	var cfg: Dictionary = {"mode": mode, "seed": seed_value}
@@ -57,9 +59,14 @@ func to_config(mode: String, seed_value: int) -> Dictionary:
 				cfg["loadouts"] = [loadouts[0].duplicate(true), loadouts[1].duplicate(true)]
 			else:
 				cfg["loadouts"] = [loadouts[0].duplicate(true)]
-			if cpu_personality != "random":
-				cfg["personalities"] = [{}, {"preset": cpu_personality}]
+			var pers: Dictionary = {"preset": cpu_personality} if cpu_personality != "random" else rolled_personality(seed_value)
+			pers["difficulty"] = AiDifficulty.normalize(cpu_difficulty)
+			cfg["personalities"] = [{}, pers]
 	return cfg
+
+
+static func difficulty_label(id: String) -> String:
+	return AiDifficulty.label(id)
 
 
 static func personality_label(id: String) -> String:

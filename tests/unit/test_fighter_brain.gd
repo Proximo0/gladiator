@@ -42,7 +42,7 @@ func test_approaches_when_far() -> void:
 
 
 func test_winds_up_then_sweeps_through() -> void:
-	var b := _brain({"preset": "berserker", "preferred_attacks": ["horizontal"]})
+	var b := _brain({"preset": "berserker", "preferred_attacks": ["horizontal"], "difficulty": "normal"})
 	var f: Array = _pair(1.2)
 	var wind: Vector2 = Vector2.ZERO
 	var end: Vector2 = Vector2.ZERO

@@ -4,13 +4,15 @@
 #   --matches     total matches (default 6), seeds S .. S+N-1 (default S = 1000)
 #   --time_limit  game seconds per match (default 60)
 #   --shards      parallel Godot processes (default 1, keep it at 2 or less on a small box)
+#   --difficulty  AI difficulty (easy|normal|hard) for --side (default 0); the other side is normal
+#   --side        which side gets --difficulty (default 0)
 #   --keep        also save the flight recording of passing matches (out/bot/<seed>.rec.json)
 # Quiet: failing match lines, then the table. Per-match stats: out/bot/<seed>.json; every FAIL also writes
 # out/bot/<seed>.rec.json (replay it with tools/replay.sh). Exit 1 when any match fails.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-godot}"
-matches=6; seed=1000; limit=60; shards=1; keep=()
+matches=6; seed=1000; limit=60; shards=1; keep=(); extra=()
 for a in "$@"; do
   case "$a" in
     --matches=*) matches="${a#*=}" ;;
@@ -18,6 +20,7 @@ for a in "$@"; do
     --time_limit=*) limit="${a#*=}" ;;
     --shards=*) shards="${a#*=}" ;;
     --keep) keep=(--keep) ;;
+    --difficulty=*|--side=*) extra+=("$a") ;;
     *) echo "unknown argument $a"; exit 2 ;;
   esac
 done
@@ -30,7 +33,7 @@ for ((i = 0; i < shards; i++)); do
   n=$(( matches / shards + (i < matches % shards ? 1 : 0) ))
   (( n == 0 )) && continue
   ( timeout 1700 "$GODOT" --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=$i --nshards=$shards \
-      --matches=$n --seed=$seed --time_limit=$limit "${keep[@]}" 2>&1 | grep -vE "$FILTER" >"$log/shard$i.log"
+      --matches=$n --seed=$seed --time_limit=$limit "${keep[@]}" "${extra[@]}" 2>&1 | grep -vE "$FILTER" >"$log/shard$i.log"
     echo "${PIPESTATUS[0]}" >"$log/shard$i.rc" ) &
   pids+=($!)
 done
