@@ -6,6 +6,7 @@ extends Node
 var _out: String = "/tmp/aim_capture/"
 var _name: String = "shot"
 var _cpu: bool = false
+var _menu_cpu: bool = false  ## start the CPU fight through the menu flow (default loadout), like a new player
 var _main: Node = null
 var _frame: int = 0
 
@@ -18,6 +19,8 @@ func _ready() -> void:
 			_name = a.substr(7)
 		elif a == "--mode=player_vs_cpu":
 			_cpu = true
+		elif a == "--menu-cpu":
+			_menu_cpu = true
 	DirAccess.make_dir_recursive_absolute(_out)
 	RenderingServer.render_loop_enabled = false  # software GL is slow: draw only the frames we save
 	_main = (load("res://game/main.tscn") as PackedScene).instantiate()
@@ -25,7 +28,7 @@ func _ready() -> void:
 
 
 func _match() -> Match:
-	if _cpu:
+	if _cpu and not _menu_cpu:
 		return _main.get("_match") as Match
 	var flow: Object = _main.get("_flow")
 	return flow.get("current_match") as Match if flow != null else null
@@ -35,13 +38,18 @@ func _process(_d: float) -> void:
 	_frame += 1
 	if _frame % 100 == 0:
 		print("AIMCAP frame ", _frame)
-	if _frame == 20 and not _cpu:
+	if _frame == 20 and _menu_cpu:
+		(_main.get("_flow") as Object).call("_begin_fight", "player_vs_cpu")
+	elif _frame == 20 and not _cpu:
 		(_main.get("_flow") as Object).call("_begin_practice")
 	if _frame == 120 or _frame == 330:
 		RenderingServer.render_loop_enabled = true
 	if _frame == 124:
 		_save("armed")
 		RenderingServer.render_loop_enabled = false
+	if _frame == 125 and _match() != null:
+		var f0: Fighter = _match().fighters[0] as Fighter
+		print("AIMCAP player weapon=", f0.weapon.weapon_id if f0.weapon != null else "none", " state=", f0.state_name())
 	if _frame == 130 and _match() != null:
 		(_match().fighters[0] as Fighter).drop_weapon()
 	if _frame == 334:

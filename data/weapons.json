@@ -104,7 +104,7 @@
       "shape": "bat",
       "edge_len": 0.0,
       "point": false,
-      "blunt_factor": 1.0,
+      "blunt_factor": 1.2,
       "cut_factor": 0.0,
       "pierce_factor": 0.0,
       "two_handed": false,

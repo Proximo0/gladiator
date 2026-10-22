@@ -192,7 +192,7 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 			fin = "skull_crush"
 		elif part == "head" and str(wdef.get("shape", "")) == "fist" and bool(hit.get("target_down", false)) \
 				and blunt >= _tv(tuning, "dmg_skull_crush") * s * _tv(tuning, "dmg_pummel_scale"):
-			fin = "skull_crush"  # ground and pound: fists finish a downed foe on the head
+			fin = "pummel"  # ground and pound: fists finish a downed foe on the head
 		elif is_torso and contact == "point" and pierce >= gut_need:
 			fin = "run_through"
 		elif is_torso and contact == "edge" and cut >= gut_need:
