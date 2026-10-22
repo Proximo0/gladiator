@@ -910,8 +910,11 @@ func _do_windup(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		elif _st_ticks + 1 >= _st_len:
 			if room and _spear_aligned(me, tgt, 2.0):
 				_begin_drive(me)  # near enough on line: go before the foe walks past the point
-			else:
+			elif _spear:
 				_enter(ST_APPROACH, 0)  # a drive off line only bats the foe with the shaft: set again
+			else:
+				_plan["committed"] = false  # no line in time: stab with a swing of the arm as before
+				_enter(ST_STRIKE, _strike_len(me))
 		return
 	var t: Vector2 = _plan_target(me, obs)
 	var wind: Vector2 = _windup_aim(t)

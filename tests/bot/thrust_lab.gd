@@ -19,6 +19,7 @@ var _ticks: int = 600
 var _max_tip: float = 0.0
 var _strike_tips: Array = []
 var _cur_strike_max: float = -1.0
+var _close_hist: Dictionary = {}
 
 
 func _initialize() -> void:
@@ -77,6 +78,8 @@ func _tick() -> void:
 	if _brain != null:
 		f0.apply_input(_brain.think(me, foe, 1.0 / 60.0))
 		var striking: bool = _brain.state_name() == "strike"
+		var ck: String = "%d/%s" % [_brain._close_step, _brain.state_name()]
+		_close_hist[ck] = int(_close_hist.get(ck, 0)) + 1
 		if _args.has("trace") and (_brain.state_name() in ["windup", "strike", "recover"] or (_t % 5 == 0 and _args.get("trace") == "all")):
 			var mp: Vector3 = me["pelvis_pos"]
 			var fp: Vector3 = foe["pelvis_pos"]
@@ -105,6 +108,11 @@ func _tick() -> void:
 			st += "%s:%.1f " % [str(s[1]).substr(0, 2), float(s[0])]
 		print("LAB summary w=%s hits=%d point=%d point_speed=%.2f max_tip=%.2f strikes=[%s]" % [str(_args.get("w", "spear")),
 			_hits.size(), pts.size(), ps / maxf(pts.size(), 1), _max_tip, st])
+		var by: Dictionary = {}
+		for h: Array in _hits:
+			var k: String = "%s:%s" % [h[0], h[1]]
+			by[k] = int(by.get(k, 0)) + 1
+		print("LAB close ", _close_hist, " hits ", by)
 		quit()
 
 
