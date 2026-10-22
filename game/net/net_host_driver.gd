@@ -76,11 +76,12 @@ func _flush_events() -> void:
 	if _over_sent:
 		_pending.clear()
 		return
-	while not _pending.is_empty() and session != null:
-		var chunk: Array = _pending.slice(0, NetEvents.MAX_PER_PACKET)
-		_pending = _pending.slice(chunk.size())
-		session.send(NetEvents.encode(chunk), true)
-		events_sent += chunk.size()
+	if _pending.is_empty() or session == null:
+		return
+	for pkt: PackedByteArray in NetEvents.encode_chunks(_pending):
+		session.send(pkt, true)
+	events_sent += _pending.size()
+	_pending.clear()
 
 
 ## While the Esc menu is open the host's own reader reads a device that does not exist (neutral input), so its keys

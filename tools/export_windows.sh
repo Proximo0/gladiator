@@ -50,6 +50,12 @@ fi
 
 rm -f "${ZIP_OUT}"
 cp "${ROOT}"/tools/windows/*.bat build/windows/ 2>/dev/null || true  # mode launchers
+# EOS credentials (docs/eos_setup.md), when the owner has them: next to the exe, where EosConfig looks after
+# res://config/. A client secret is not a secret in a client build; the git-ignored source file stays out of git.
+rm -f build/windows/eos_credentials.cfg
+if [[ -f "${ROOT}/config/eos_credentials.cfg" ]]; then
+	cp "${ROOT}/config/eos_credentials.cfg" build/windows/eos_credentials.cfg
+fi
 (cd build && zip -q -r "$(basename "${ZIP_OUT}")" windows) || fail "zip not produced"
 [[ -f "${ZIP_OUT}" ]] || fail "zip not produced"
 

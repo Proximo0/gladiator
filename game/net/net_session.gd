@@ -5,6 +5,10 @@ extends Node
 ## runs the lobby (HELLO / LOBBY / LOADOUT / START) and routes match traffic to the NetHostDriver or NetClientDriver
 ## hung on the current Match. The host is side 0 and simulates both fighters; the client is side 1 and only
 ## renders. See docs/online_brief.md.
+## Relay play (EOS P2P and other backends): adopt_peer() takes a ready MultiplayerPeer instead of host()/join(). Only
+## the packet API is used then; the ENet extras (flush, round trip time, throttle) are skipped, and unreliable traffic
+## goes out TRANSFER_MODE_UNRELIABLE because relay peers have no "unreliable ordered" (EOSG turns it into reliable,
+## which would queue every snapshot behind a lost one). Inputs and snapshots carry ticks and tolerate reordering.
 ## Dev flags: --net-lag=<ms one way> --net-jitter=<ms> --net-loss=<0..1> fake a bad link on what this side sends.
 
 signal status_changed(text: String)
@@ -17,6 +21,8 @@ const ROLE_HOST: String = "host"
 const ROLE_CLIENT: String = "client"
 const HOST_PEER: int = 1
 const DATA_DIR: String = "res://data/"
+const RELAY_MAX_PACKET: int = 1164  ## EOS P2P: 1170 bytes per packet minus EOSG's 6-byte header
+const RELAY_CLOSE_DELAY_S: float = 0.3  ## a relay peer sends on the SDK tick: give a LEAVE time to go out before closing
 
 var role: String = ""
 var local_name: String = "Gladiator"
@@ -38,7 +44,8 @@ var input_blocked: bool = false:  ## the Esc menu is open over the match: this s
 var last_start: Dictionary = {}
 var close_reason: String = ""
 
-var _peer: ENetMultiplayerPeer = null
+var _peer: MultiplayerPeer = null
+var _relay_oversize_warned: bool = false
 var _remote_id: int = 0
 var _last_heard: int = 0
 var _connect_started: int = 0
@@ -66,13 +73,13 @@ func _ready() -> void:
 
 func host(port: int = NetConfig.DEFAULT_PORT, bind_ip: String = "*") -> Error:
 	_reset()
-	_peer = ENetMultiplayerPeer.new()
-	_peer.set_bind_ip(bind_ip)
-	var err: Error = _peer.create_server(port, 1)
+	var enet := ENetMultiplayerPeer.new()
+	enet.set_bind_ip(bind_ip)
+	var err: Error = enet.create_server(port, 1)
 	if err != OK:
-		_peer = null
 		_fail("Could not listen on port %d (%s)" % [port, error_string(err)])
 		return err
+	_peer = enet
 	role = ROLE_HOST
 	_peer.peer_connected.connect(_on_peer_connected)
 	_peer.peer_disconnected.connect(_on_peer_disconnected)
@@ -82,12 +89,12 @@ func host(port: int = NetConfig.DEFAULT_PORT, bind_ip: String = "*") -> Error:
 
 func join(address: String, port: int = NetConfig.DEFAULT_PORT) -> Error:
 	_reset()
-	_peer = ENetMultiplayerPeer.new()
-	var err: Error = _peer.create_client(address, port)
+	var enet := ENetMultiplayerPeer.new()
+	var err: Error = enet.create_client(address, port)
 	if err != OK:
-		_peer = null
 		_fail("Could not reach %s:%d (%s)" % [address, port, error_string(err)])
 		return err
+	_peer = enet
 	role = ROLE_CLIENT
 	_remote_id = HOST_PEER
 	_connect_started = local_tick
@@ -95,6 +102,35 @@ func join(address: String, port: int = NetConfig.DEFAULT_PORT) -> Error:
 	_peer.peer_disconnected.connect(_on_peer_disconnected)
 	status_changed.emit("Connecting to %s:%d" % [address, port])
 	return OK
+
+
+## Run the session over a peer someone else connected (a relay backend: EOS P2P, Steam). `as_role` is "host" or
+## "client". The host waits for peer_connected; the client talks to the host's peer id (1, as on any Godot-style
+## peer). The service must not poll the peer before handing it over, or peer_connected fires before we listen;
+## a client peer that is already connected is greeted at once.
+func adopt_peer(p: MultiplayerPeer, as_role: String) -> Error:
+	_reset()
+	if p == null or (as_role != ROLE_HOST and as_role != ROLE_CLIENT):
+		_fail("No relay connection to use")
+		return ERR_INVALID_PARAMETER
+	_peer = p
+	role = as_role
+	_peer.peer_connected.connect(_on_peer_connected)
+	_peer.peer_disconnected.connect(_on_peer_disconnected)
+	if role == ROLE_CLIENT:
+		_remote_id = HOST_PEER
+		_connect_started = local_tick
+		status_changed.emit("Connecting through the relay")
+		if _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+			_on_peer_connected(HOST_PEER)
+	else:
+		status_changed.emit("Waiting for the other player (relay)")
+	return OK
+
+
+## True when the session runs over a non-ENet peer (relay backends).
+func is_relay() -> bool:
+	return _peer != null and not (_peer is ENetMultiplayerPeer)
 
 
 func is_open() -> bool:
@@ -105,11 +141,11 @@ func connected() -> bool:
 	return is_open() and _remote_id != 0 and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
 
-## Round trip time to the other side in ms, from ENet (0 until known).
+## Round trip time to the other side in ms, from ENet (0 until known, and always 0 on a relay peer).
 func rtt_ms() -> int:
-	if not connected():
+	if not connected() or not (_peer is ENetMultiplayerPeer):
 		return 0
-	var p: ENetPacketPeer = _peer.get_peer(_remote_id)
+	var p: ENetPacketPeer = (_peer as ENetMultiplayerPeer).get_peer(_remote_id)
 	return int(p.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)) if p != null else 0
 
 
@@ -206,12 +242,23 @@ func _tag(bytes: PackedByteArray, reliable: bool) -> PackedByteArray:
 func _put(bytes: PackedByteArray, reliable: bool) -> void:
 	_peer.set_target_peer(_remote_id)
 	_peer.transfer_channel = 0
-	_peer.transfer_mode = MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
+	_peer.transfer_mode = transfer_mode_for(_peer is ENetMultiplayerPeer, reliable)
+	if not (_peer is ENetMultiplayerPeer) and bytes.size() > RELAY_MAX_PACKET and not _relay_oversize_warned:
+		_relay_oversize_warned = true
+		push_warning("NetSession: %d-byte packet is over the relay limit (%d); the relay drops it" % [bytes.size(), RELAY_MAX_PACKET])
 	_peer.put_packet(bytes)
 	# Send now instead of at the next poll, a tick later: saves up to a tick each way.
-	var h: ENetConnection = _peer.host
-	if h != null:
-		h.flush()
+	if _peer is ENetMultiplayerPeer:
+		var h: ENetConnection = (_peer as ENetMultiplayerPeer).host
+		if h != null:
+			h.flush()
+
+
+## ENet keeps unreliable packets in order (late ones are dropped); relay peers only have plain unreliable.
+static func transfer_mode_for(enet: bool, reliable: bool) -> MultiplayerPeer.TransferMode:
+	if reliable:
+		return MultiplayerPeer.TRANSFER_MODE_RELIABLE
+	return MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED if enet else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE
 
 
 func _physics_process(_delta: float) -> void:
@@ -335,7 +382,9 @@ func _on_peer_connected(id: int) -> void:
 ## 20 KB/s that never helps, and a frame hitch looks the same, so the snapshot stream lost half its packets for no
 ## reason: the throttle may rise again but never falls.
 func _no_throttle(id: int) -> void:
-	var p: ENetPacketPeer = _peer.get_peer(id) if _peer != null else null
+	if not (_peer is ENetMultiplayerPeer):
+		return
+	var p: ENetPacketPeer = (_peer as ENetMultiplayerPeer).get_peer(id)
 	if p != null:
 		p.throttle_configure(NetConfig.THROTTLE_INTERVAL_MS, NetConfig.THROTTLE_ACCELERATION, 0)
 
@@ -359,6 +408,7 @@ func _reset() -> void:
 		_close_later.call_deferred(_peer)
 	_peer = null
 	_closed = false
+	_relay_oversize_warned = false
 	close_reason = ""
 	_remote_id = 0
 	remote_joined = false
@@ -385,7 +435,11 @@ func _close(reason: String) -> void:
 	closed.emit(reason)
 
 
-func _close_later(p: ENetMultiplayerPeer) -> void:
+func _close_later(p: MultiplayerPeer) -> void:
+	if not (p is ENetMultiplayerPeer) and is_inside_tree():
+		# A relay peer sends on the SDK's own tick: closing now would drop a LEAVE still in its queue.
+		get_tree().create_timer(RELAY_CLOSE_DELAY_S, true).timeout.connect(p.close)
+		return
 	p.close()
 
 

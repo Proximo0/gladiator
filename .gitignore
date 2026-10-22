@@ -3,3 +3,6 @@
 /out/
 
 __pycache__/
+
+# EOS credentials (docs/eos_setup.md): never commit them
+/config/eos_credentials.cfg

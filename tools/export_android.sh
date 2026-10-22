@@ -123,6 +123,11 @@ PY
 
 # 5. Export.
 cd "${ROOT}"
+# EOS credentials (docs/eos_setup.md): an APK has no folder beside it, so the file must go into the pack, which
+# needs include_filter="config/eos_credentials.cfg" in the Android preset. Say so when it is missing.
+if [[ -f config/eos_credentials.cfg ]] && ! awk '/^\[preset\./{a=0} /^name="Android"/{a=1} a && /^include_filter=/ && /eos_credentials\.cfg|config\/\*/{f=1} END{exit !f}' export_presets.cfg; then
+	echo "export_android: config/eos_credentials.cfg is not in the Android preset's include_filter; the APK will fall back to the LAN service" >&2
+fi
 mkdir -p "$(dirname "${APK_OUT}")"
 rm -f "${APK_OUT}" "${APK_OUT}.idsig"
 LOG="$(mktemp)"

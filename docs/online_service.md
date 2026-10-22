@@ -3,14 +3,17 @@
 Sandblood is mainly a multiplayer game: Quick Match, a rating and a leaderboard. The fight itself is the host-authoritative
 ENet model in `docs/online_brief.md`; this layer decides **who you play, who hosts, how the result is judged and what the
 leaderboard shows**. The menus talk only to `OnlineService`; a backend is a subclass. **Chosen backend: Epic Online
-Services (EOS)**, as `ServiceEos` (not written yet; this document says exactly what it needs). Until then `ServiceLocal`
-makes Quick Match playable on a LAN, and `ServiceStub` is the test double.
+Services (EOS)**, as `ServiceEos` (written against EOSG 2.3.1; install and test plan in `docs/eos_setup.md`). Without
+the plugin binaries or the credentials file the game uses `ServiceLocal` (Quick Match on a LAN), and `ServiceStub` is
+the test double.
 
 ## Files
 
 | File | What |
 | --- | --- |
 | `game/net/online_service.gd` | `OnlineService` (Node): the interface, signals, and the two dictionary shapes (`match_info`, `result_summary`). |
+| `game/net/service_eos.gd` | EOS backend (EOSG plugin, loaded only when its classes and autoloads exist): Connect device-id login, lobby Quick Match, P2P relay peer, stats and leaderboard. |
+| `game/net/eos_config.gd` | Reads the git-ignored `config/eos_credentials.cfg` (product, sandbox, deployment, client id and secret). |
 | `game/net/service_local.gd` | LAN / dev backend: UDP broadcast matchmaking, ratings kept on this device. |
 | `game/net/service_stub.gd` | Scriptable fake for tests; also models the server rules (two reports, `Rating.reconcile`). |
 | `game/net/service_board.gd` | Pure rating table + leaderboard views (used by Local and Stub; a custom server could reuse it). |
@@ -18,6 +21,7 @@ makes Quick Match playable on a LAN, and `ServiceStub` is the test double.
 | `game/ui/menu/online_screen.gd` | Direct-IP lobby, and Quick Match mode (`open_quick`): spinner, opponent card, connect, report. |
 | `game/ui/menu/leaderboard_screen.gd` | The ranking screen. |
 | `tests/unit/test_rating.gd`, `test_online_service_board.gd`, `test_online_service_stub.gd` | Unit tests. |
+| `tests/unit/test_net_service_eos.gd`, `test_eos_config.gd`, `test_net_session_adopt.gd` | EOS helpers without the plugin, the credentials parser, NetSession over a relay peer. |
 | `tests/sim/sim_net_quick.gd` (+ `_peer`, `_peer_node`) | Two engine processes quick-match over loopback, play, report; plus the menu against the stub. |
 
 ## The interface
@@ -53,18 +57,21 @@ with `Rating.sign_report(match_key, report)` (HMAC-SHA256).
 
 ### Running NetSession over the peer the service gives
 
-Today `OnlineScreen` does `session.host(port)` / `session.join(address, port)` for a direct match. For a relay match it
-calls `session.adopt_peer(info.peer, info.role)` (it checks the method exists and says so on screen if not). NetSession
-only needs the `MultiplayerPeer` packet API (`put_packet`, `get_packet`, transfer modes, `peer_connected`). The change to
-`game/net/net_session.gd` (owned by the net worker, not done here):
+`OnlineScreen` does `session.host(port)` / `session.join(address, port)` for a direct match and
+`session.adopt_peer(info.peer, info.role)` for a relay match. NetSession only uses the `MultiplayerPeer` packet API
+(`put_packet`, `get_packet`, transfer modes, `peer_connected`). What `adopt_peer` does (done):
 
-1. `_peer` typed `MultiplayerPeer`; `host()`/`join()` keep creating `ENetMultiplayerPeer`.
-2. `adopt_peer(p: MultiplayerPeer, as_role: String)`: `_reset()`, `_peer = p`, `role = as_role`, connect `peer_connected` /
-   `peer_disconnected`, for a client set `_remote_id` to the host's peer id (1 on a Godot-style peer; for EOS use the id the
-   peer reports), `_connect_started = local_tick`.
-3. Guard the ENet-only bits with `if _peer is ENetMultiplayerPeer`: `_put`'s `host.flush()`, `rtt_ms()` (EOS gives ping
-   through its own stats), `_no_throttle()`.
-4. Relayed links add latency; the interpolation buffer already adapts (`NetInterpBuffer`).
+1. `_peer` is typed `MultiplayerPeer`; `host()`/`join()` still create `ENetMultiplayerPeer`.
+2. `adopt_peer(p, as_role)`: `_reset()`, `_peer = p`, `role = as_role`, connect `peer_connected` / `peer_disconnected`; a
+   client talks to peer id 1 (EOSG's server id too) and times out like a direct join; a client peer that is already
+   connected is greeted at once. The service must not `poll()` the peer before the hand-over.
+3. ENet-only bits run only on `ENetMultiplayerPeer`: `_put`'s `host.flush()`, `rtt_ms()` (0 on a relay), `_no_throttle()`.
+4. Unreliable traffic goes `TRANSFER_MODE_UNRELIABLE` on a relay peer: EOSG has no "unreliable ordered" and turns it into
+   **reliable** (with a warning), which would queue every snapshot behind a lost one. Snapshots and inputs carry ticks,
+   and `NetInterpBuffer` / `NetInputBuffer` drop old and duplicate ones, so reordering is harmless.
+5. EOS P2P packets are at most 1170 bytes, 6 of them EOSG's header: NetSession warns once about a packet over 1164
+   (a worst-case snapshot is about 1114). A relay peer is closed 0.3 s after `leave()` so the LEAVE gets out first.
+6. Relayed links add latency; the interpolation buffer already adapts (`NetInterpBuffer`).
 
 ## Rating (`Rating`)
 
@@ -98,9 +105,35 @@ apply the signature, duplicate and leave rules.
 
 ## EOS (primary): what `ServiceEos` maps to
 
-Use the **EOSG GDExtension** (EOS for Godot 4; it wraps the EOS C SDK and ships a `MultiplayerPeer` over EOS P2P).
-Class and method names below follow the EOS C SDK; EOSG exposes the same calls, so check the exact GDScript names in the
-installed version. No EOS plugin is installed in this repo yet.
+`ServiceEos` uses the **EOSG GDExtension 2.3.1** (github.com/3ddelano/epic-online-services-godot, EOS SDK wrapper with a
+`MultiplayerPeer` over EOS P2P). The plugin is not in the repo (its binaries are installed on the owner's PC,
+`docs/eos_setup.md`), so the script never names a plugin class: it reaches the `IEOS` singleton, the `eos.gd` option
+classes (`load()`), the `HPlatform` / `HAuth` / `HLobbies` autoloads and `ClassDB.instantiate("EOSGMultiplayerPeer")`
+at run time, and parses and lints without them. `MenuFlow` builds it only when `ServiceEos.create_for()` finds the
+plugin and complete credentials (`--online-service=auto|eos|local|stub`; auto never picks EOS in scripted runs).
+
+EOSG calls used: `HPlatform.setup_eos_async(HCredentials)` (cache folder per `--eos-profile`),
+`IEOS.p2p_interface_set_relay_control(AllowRelays)`, `IEOS.connect_interface_create_device_id` (+ `_callback`; an
+existing id answers `DuplicateNotAllowed`), `HAuth.login_game_services_async(Connect.LoginOptions{DeviceidAccessToken,
+UserLoginInfo.display_name})` (creates the user on `InvalidUser`; a first login is then repeated, because EOSG's
+`create_user` path fires no connect-login callback and `EOSGRuntime` / the P2P mediator would not know the user),
+`IEOS.stats_interface_query_stats` / `copy_stat_by_name` / `ingest_stat`, `IEOS.lobby_interface_create_lobby_search`
++ `EOSGLobbySearch.set_parameter` + `HLobbies.search_async`, `HLobbies.create_lobby_async` / `join_async`,
+`HLobby.add_attribute` / `add_current_member_attribute` / `update_async` / `leave_async` / `destroy_async`,
+`EOSGMultiplayerPeer.create_server(socket)` / `create_client(socket, owner_puid)`,
+`IEOS.leaderboards_interface_query_leaderboard_ranks` / `get_leaderboard_record_count` / `copy_leaderboard_record_by_index`
+/ `query_leaderboard_user_scores` / `copy_leaderboard_user_score_by_user_id`. Every SDK wait has a timeout (15 s).
+
+As built (differences from the plan below): the bucket is `sb_quick:<first 16 of build_id>`; the search adds
+`minslotsavailable >= 1` and sorts by `rating` distance, and the window is applied on the results; the socket id is
+`"sb" + lobby id` (letters and digits, 32 at most); the lobby is created with presence, invites and join-by-id off and
+host migration off, and is set **invite-only** once full; while waiting in its own lobby a player still searches and
+gives its lobby up only for one whose owner id is smaller (the larger id joins); the match key is a random
+16-byte hex lobby attribute. Results are Tier 0: report in member attribute `rep`, wait up to 20 s for the other's,
+`Rating.reconcile(final)`, `ServiceBoard.apply` for the new rating (repeat-pair memory in `user://eos_profile*.json`),
+ingest `sb_rating` (new value) + `sb_games` 1 + `sb_wins` or `sb_losses` 1, stay 3 s so the other can read ours, then
+leave (the owner destroys the lobby). The leaderboard shows `user_display_name` (the Connect display name) and fetches
+games / wins / losses only for the rows on screen.
 
 | `OnlineService` | EOS |
 | --- | --- |
@@ -202,7 +235,8 @@ the candidate is skipped for a second. After 120 s without a match it gives up. 
 client joins after the beat, and the host starts the fight when the client is in. Ratings and everyone met live in
 `user://online_local.json` (not in scripted runs: headless, `--capture`, `--scripted`). Dev flags: `--device-id=<id>` fixes
 the identity (two instances on one machine need different ids; they get different random ones anyway),
-`--online-service=stub` shows the menus against `ServiceStub` with fake players. Broadcast does not cross routers or most
+`--online-service=stub` shows the menus against `ServiceStub` with fake players, `--online-service=local` forces the LAN
+backend when EOS is installed, and `--eos-profile=<name>` gives a second EOS identity on one PC (`docs/eos_setup.md`). Broadcast does not cross routers or most
 guest Wi-Fi networks; that is what the real backend is for.
 
 ## Tests

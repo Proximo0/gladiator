@@ -24,6 +24,23 @@ const KEYS: Array = [
 ]
 const KINDS: PackedStringArray = ["hit", "gore"]
 const MAX_PER_PACKET: int = 32
+## Largest events packet: the EOS P2P relay drops anything over 1164 bytes, even reliable packets.
+const MAX_BYTES: int = 1100
+
+
+## Splits `records` into encoded packets of at most MAX_PER_PACKET records and MAX_BYTES bytes each.
+static func encode_chunks(records: Array) -> Array[PackedByteArray]:
+	var out: Array[PackedByteArray] = []
+	var rest: Array = records.duplicate()
+	while not rest.is_empty():
+		var n: int = mini(rest.size(), MAX_PER_PACKET)
+		var pkt: PackedByteArray = encode(rest.slice(0, n))
+		while pkt.size() > MAX_BYTES and n > 1:
+			n = n / 2
+			pkt = encode(rest.slice(0, n))
+		out.append(pkt)
+		rest = rest.slice(n)
+	return out
 
 
 ## One packet for `records` ([[tick, side, kind, ev], ...]); at most MAX_PER_PACKET are written.

@@ -323,13 +323,19 @@ func _open_online(quick: bool = false) -> void:
 func _ensure_service() -> void:
 	if _service != null:
 		return
-	if Flags.get_arg("online-service", "local") == "stub":
+	var which: String = Flags.get_arg("online-service", "auto")  # auto | eos | local | stub
+	var eos: ServiceEos = null
+	if which != "stub":
+		eos = ServiceEos.create_for(get_tree(), which, Flags.get_arg("eos-profile", ""), Flags.is_scripted_run())
+	if which == "stub":
 		var st := ServiceStub.new()
 		st.auto_match = false
 		for i: int in 14:
 			st.add_fake_player("fake%02d" % i, ["Verus", "Cato", "Brutus", "Livia", "Marcus", "Titus", "Aurelia", "Gaius", "Nero", "Crispus", "Julia", "Felix", "Sabina", "Lucan"][i],
 				1620 - i * 38, 60 - i * 3, 40 - i * 2)
 		_service = st
+	elif eos != null:
+		_service = eos  # the EOSG plugin and config/eos_credentials.cfg are there (docs/eos_setup.md)
 	else:
 		var loc := ServiceLocal.new()
 		loc.entropy = int(Time.get_ticks_usec() & 0x7fffffff) ^ (OS.get_process_id() << 8)

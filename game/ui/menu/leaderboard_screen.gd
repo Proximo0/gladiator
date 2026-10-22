@@ -7,12 +7,24 @@ signal back
 
 const TOP_ROWS: int = 12
 const AROUND_ROWS: int = 3
-const COLS: Array = [["#", 90.0, 0], ["Gladiator", 0.0, 0], ["Rank", 280.0, 0], ["Rating", 170.0, 2], ["W - L", 170.0, 2]]
+const HEADERS: PackedStringArray = ["#", "Gladiator", "Rank", "Rating", "W - L"]
+## [width, alignment] per column; width 0 = takes the rest (the name), -1 = as wide as the longest tier name.
+const COLS_WIDE: Array = [[90.0, 0], [0.0, 0], [-1.0, 0], [170.0, 2], [170.0, 2]]
+const COLS_PORTRAIT: Array = [[52.0, 0], [0.0, 0], [-1.0, 0], [104.0, 2], [118.0, 2]]  ## ~1000 units across (MenuFlow)
+const BODY_WIDE: int = 30
+const BODY_PORTRAIT: int = 26
+const SEP_WIDE: int = 18
+const SEP_PORTRAIT: int = 12
+const NAME_MIN: float = 160.0  ## the name column never gets less than this; the tier column gives way first
 
 var service: OnlineService = null
 
 var _title: Label
 var _rows: VBoxContainer
+var _inner: VBoxContainer
+var _header: HBoxContainer
+var _portrait: bool = false
+var _data: Dictionary = {}  ## the last data shown, redrawn when the orientation flips
 var _me_line: Label
 var _source: Label
 var _back: Button
@@ -44,7 +56,9 @@ func _init() -> void:
 	root.add_child(panel)
 	var inner := VBoxContainer.new()
 	panel.add_child(inner)
-	inner.add_child(_line(["#", "Gladiator", "Rank", "Rating", "W - L"], MenuTheme.OCHRE, false))
+	_inner = inner
+	_header = _line(Array(HEADERS), MenuTheme.OCHRE, false)
+	inner.add_child(_header)
 	var rule := ColorRect.new()
 	rule.color = MenuTheme.BRONZE
 	rule.custom_minimum_size = Vector2(0.0, 3.0)
@@ -85,6 +99,7 @@ func open(p_service: OnlineService) -> void:
 
 ## Draws {top, around, me, total, source}.
 func show_data(data: Dictionary) -> void:
+	_data = data
 	_clear()
 	var top: Array = data.get("top", [])
 	var around: Array = data.get("around", [])
@@ -131,17 +146,41 @@ func _player_row(r: Dictionary, mine: bool) -> Control:
 
 func _line(cells: Array, colour: Color, body: bool) -> HBoxContainer:
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 10)
-	for i: int in COLS.size():
-		var col: Array = COLS[i]
-		var l := MenuTheme.label(str(cells[i]), 30 if body else MenuTheme.FONT_SMALL, colour)
+	h.add_theme_constant_override("separation", SEP_PORTRAIT if _portrait else SEP_WIDE)
+	var size_px: int = (BODY_PORTRAIT if _portrait else BODY_WIDE) if body else MenuTheme.FONT_SMALL - (4 if _portrait else 0)
+	var widths: Array = column_widths(_portrait, _tier_width(BODY_PORTRAIT if _portrait else BODY_WIDE))
+	var cols: Array = COLS_PORTRAIT if _portrait else COLS_WIDE
+	for i: int in cols.size():
+		var l := MenuTheme.label(str(cells[i]), size_px, colour)
 		l.clip_text = true
-		l.custom_minimum_size = Vector2(float(col[1]), 0.0)
-		if float(col[1]) == 0.0:
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS  # a long name ends in "..." instead of running on
+		l.custom_minimum_size = Vector2(float(widths[i]), 0.0)
+		if float(widths[i]) == 0.0:
 			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if int(col[2]) == 2 else HORIZONTAL_ALIGNMENT_LEFT
+			l.custom_minimum_size = Vector2(NAME_MIN, 0.0)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if int(cols[i][1]) == 2 else HORIZONTAL_ALIGNMENT_LEFT
 		h.add_child(l)
 	return h
+
+
+## Fixed widths per column (0 = the name column, which takes the rest). The tier column is as wide as the longest
+## tier name at the body size (`tier_px`), so "Primus Palus" never runs into the rating.
+static func column_widths(portrait: bool, tier_px: float) -> Array:
+	var out: Array = []
+	for col: Array in (COLS_PORTRAIT if portrait else COLS_WIDE):
+		out.append(ceilf(tier_px) + 4.0 if float(col[0]) < 0.0 else float(col[0]))
+	return out
+
+
+func _tier_width(size_px: int) -> float:
+	var f: Font = MenuTheme.caps_font()
+	var w: float = 0.0
+	var names: PackedStringArray = [Rating.TOP_TIER, HEADERS[2]]
+	for t: Array in Rating.TIERS:
+		names.append(str(t[1]))
+	for n: String in names:
+		w = maxf(w, f.get_string_size(n, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x)
+	return w
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -151,4 +190,17 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _relayout() -> void:
-	_title.add_theme_font_size_override("font_size", 40 if size.x < size.y * 1.05 else 52)
+	var portrait: bool = size.x < size.y * 1.05
+	_title.add_theme_font_size_override("font_size", 40 if portrait else 52)
+	if portrait == _portrait:
+		return
+	_portrait = portrait
+	# Widths and sizes are set per line: rebuild the header and the rows for the new orientation.
+	var fresh: HBoxContainer = _line(Array(HEADERS), MenuTheme.OCHRE, false)
+	_inner.add_child(fresh)
+	_inner.move_child(fresh, _header.get_index())
+	_inner.remove_child(_header)
+	_header.queue_free()
+	_header = fresh
+	if not _data.is_empty():
+		show_data(_data)

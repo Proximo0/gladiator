@@ -49,3 +49,15 @@ func test_caps_records_per_packet() -> void:
 	for i: int in range(40):
 		many.append([i, 0, "gore", {"kind": "bleed"}])
 	assert_eq(NetEvents.decode(NetEvents.encode(many)).size(), NetEvents.MAX_PER_PACKET)
+
+
+func test_chunks_fit_the_relay_and_keep_every_record() -> void:
+	var many: Array = []
+	for i: int in range(70):
+		many.append([i, i % 2, "hit", _hit()])
+	var pkts: Array[PackedByteArray] = NetEvents.encode_chunks(many)
+	var back: int = 0
+	for p: PackedByteArray in pkts:
+		assert_true(p.size() <= NetEvents.MAX_BYTES, "packet %d bytes over the relay limit" % p.size())
+		back += NetEvents.decode(p).size()
+	assert_eq(back, 70)
