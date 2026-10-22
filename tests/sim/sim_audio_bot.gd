@@ -71,7 +71,7 @@ func _play(seed_value: int, wa: String, wb: String) -> Dictionary:
 		if SfxLogic.variant_count(str(k)) <= 0:
 			missing += 1
 	var out: Dictionary = {"counts": counts, "missing": missing, "peak": peak_playing, "max_per_s": max_per_s,
-		"dropped": d.dropped_count, "capped": d.capped_count, "stolen": d.stolen_count, "lost": d.lost_important.duplicate(), "inversions": d.inversions, "finisher_plays": d.finisher_plays, "dropped_keys": d.dropped_keys, "peak_use": peak_use, "pool_mean": float(sum_playing) / maxf(float(n_samples), 1.0), "pool_size": SfxDirector.POOL_SIZE, "secs": float(m.tick) / 60.0, "mean": float(d.played_count) / maxf(float(m.tick) / 60.0, MEAN_MIN_SECS)}
+		"dropped": d.dropped_count, "capped": d.capped_count, "stolen": d.stolen_count, "lost": d.lost_important.duplicate(), "lost_log": d.lost_log.duplicate(), "inversions": d.inversions, "finisher_plays": d.finisher_plays, "dropped_keys": d.dropped_keys, "peak_use": peak_use, "pool_mean": float(sum_playing) / maxf(float(n_samples), 1.0), "pool_size": SfxDirector.POOL_SIZE, "secs": float(m.tick) / 60.0, "mean": float(d.played_count) / maxf(float(m.tick) / 60.0, MEAN_MIN_SECS)}
 	await clear()
 	return out
 
@@ -93,11 +93,13 @@ func run() -> Array:
 		missing += int(o["missing"])
 		peak = maxi(peak, int(o["peak"]))
 		var steps: int = int((o["counts"] as Dictionary).get("move/footstep_sand", 0)) + int((o["counts"] as Dictionary).get("move/footstep_run", 0))
-		worst_steps = maxf(worst_steps, float(steps) / maxf(float(o["secs"]), 1.0))
+		worst_steps = maxf(worst_steps, float(steps) / maxf(float(o["secs"]), MEAN_MIN_SECS))  # a 3 s fight is all opening footwork
 		for k: Variant in o["counts"]:
 			all_keys[k] = int(all_keys.get(k, 0)) + int(o["counts"][k])
 		rows.append(row("audio %s v %s" % [c[1], c[2]], null, "secs=%.1f peak_players=%d/%d mean_players=%.1f max/s=%.0f mean/s=%.1f pool_full_drops=%d capped=%d stolen=%d finisher_plays=%d lost_important=%s inversions=%d peak_use=%s" % [o["secs"], o["peak"], o["pool_size"], o["pool_mean"], o["max_per_s"], o["mean"], o["dropped"], o["capped"], o["stolen"], o["finisher_plays"], o["lost"], o["inversions"], o["peak_use"]]))
 		lost_total += _sum(o["lost"] as Dictionary)
+		for ll: String in (o["lost_log"] as PackedStringArray):
+			rows.append(row("audio lost %s v %s" % [c[1], c[2]], null, ll))
 		inversions += int(o["inversions"])
 		var cc: Dictionary = o["counts"]
 		var wh: String = ""

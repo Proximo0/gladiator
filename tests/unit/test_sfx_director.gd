@@ -223,3 +223,28 @@ func test_feel_director_sibling_is_found_by_group() -> void:
 	host.add_child(feel)
 	assert_true(d._finisher_roar_is_external())
 	host.free()
+
+
+func test_heavy_hit_burst_uses_a_reserve_voice_not_another_heavy_hit() -> void:
+	# CI seed: nine heavy warhammer blows fill the impact group; a louder one 30 ms later used to cut one of them.
+	var d: SfxDirector = _in_tree()
+	var cap: int = SfxLogic.group_cap("impact")
+	for i: int in range(cap):
+		d.play_key("impact/heavy_thump", Vector3.ZERO, 0.0, 1.0, "SFX", SfxLogic.HEAVY_BOOST_DB)
+	d.play_key("impact/heavy_thump", Vector3.ZERO, 4.0, 1.0, "SFX", SfxLogic.HEAVY_BOOST_DB)
+	assert_eq(_playing(d, "impact/heavy_thump"), cap + 1, "the tenth blow got a reserve voice")
+	assert_true(d.lost_important.is_empty(), str(d.lost_log))
+	_drop_tree(d)
+
+
+func test_soft_cap_holds_for_ordinary_sounds() -> void:
+	var d: SfxDirector = _in_tree()
+	var keys: Array[String] = ["move/whoosh_heavy", "move/roll_thud", "voice/grunt", "gore/gut_squelch", "impact/leather_slap"]
+	var n: int = 0
+	while d._total_playing() < SfxLogic.SOFT_TOTAL_CAP and n < 200:
+		d.play_key(keys[n % keys.size()], Vector3.ZERO, -14.0)
+		n += 1
+	var busy: int = d._total_playing()
+	d.play_key("move/whoosh_heavy", Vector3.ZERO, 0.0)  # louder than the quietest: it replaces, not adds
+	assert_eq(d._total_playing(), busy)
+	_drop_tree(d)
