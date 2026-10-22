@@ -17,7 +17,8 @@ env:
   GODOT_VERSION: 4.7.2
   BUILD_TOOLS: 35.0.1
   API_LEVEL: 30
-  EMU_MAX_LIGHTS: 4
+  EMU_MAX_LIGHTS: ""  # set to cap rendering/limits/opengl/max_renderable_lights in the CI copy only
+  EMU_GPU: swangle_indirect
 
 jobs:
   emulator:
@@ -60,7 +61,7 @@ jobs:
           # Emulator-only: the emulator's GLES translator counts the light UBO arrays (32 lights x 3 types x 7 vec4)
           # against GL_MAX_FRAGMENT_UNIFORM_VECTORS (261), so every lit scene shader failed to link. Phones count
           # only the default uniform block. See docs/android.md.
-          python3 -I - project.godot "${EMU_MAX_LIGHTS}" <<'PY2'
+          [[ -z "${EMU_MAX_LIGHTS}" ]] || python3 -I - project.godot "${EMU_MAX_LIGHTS}" <<'PY2'
           import sys
           p, n = sys.argv[1], sys.argv[2]
           text = open(p).read()
@@ -91,12 +92,13 @@ jobs:
           ram-size: 4096M
           cores: 4
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu ${{ env.EMU_GPU }} -no-snapshot -noaudio -no-boot-anim
           script: tools/android_ci_run.sh build/Sandblood-android.apk out/android 1500
       - name: Show the Godot log and a small fight screenshot
         if: always()
         shell: bash
         run: |
+          ls -la out/android; command -v ffmpeg || echo "ffmpeg missing"
           cat out/android/progress.txt 2>/dev/null || true
           echo "--- godot logcat (first 150 lines) ---"
           grep -vE "SceneShaderGLES3|GL_MAX_FRAGMENT|shader_gles3|Method/function failed|^.{0,40}godot +\( *[0-9]+\): *([0-9]+: *)?$" out/android/godot.txt | head -n 80 || true
