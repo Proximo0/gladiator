@@ -15,6 +15,9 @@ uniform vec4 wd[8];  // trickle direction (down), trickle length
 uniform vec4 we[8];  // dryness, seed, palette slot, severity
 uniform bool armor = false;
 uniform float swell = 0.016;  // bruise swelling at full severity (m)
+uniform float core_scale = 1.0;  // open slit / hole width multiplier (Tuning wound_core_scale)
+uniform float rim_glow = 0.0;  // emission of a fresh wound's wet rim (Tuning wound_rim_glow)
+uniform float rim_glow_dry = 0.05;  // dryness at which that glow is gone (WoundMarks.dryness of wound_rim_glow_s)
 uniform vec3 fresh0 : source_color = vec3(0.80, 0.012, 0.027);
 uniform vec3 dried0 : source_color = vec3(0.24, 0.035, 0.03);
 uniform vec3 flesh0 : source_color = vec3(0.75, 0.04, 0.04);
@@ -63,6 +66,7 @@ void fragment() {
 	float alpha = 0.0;
 	float wet = 0.0;
 	float glow_sum = 0.0;
+	vec3 rim_em = vec3(0.0);
 	for (int i = 0; i < 8; i++) {
 		if (i >= count) {
 			break;
@@ -92,12 +96,13 @@ void fragment() {
 		vec3 c = blood;
 		float a = 0.0;
 		float w = 0.0;  // wet share of this layer
+		float rim = 0.0;  // the wet rim of an open wound (glows while fresh)
 		if (kind < 0.5) {
 			// Gash: a lens along the cut with ragged edges, dark open flesh in the slit, a bright wet rim and a smear
 			// of blood around it.
 			float uu = u / sz;
 			float lens = max(1.0 - uu * uu, 0.0);
-			float hw = wb[i].w * sqrt(lens) * (1.0 + 0.3 * wn(u * 140.0, seed));
+			float hw = wb[i].w * core_scale * sqrt(lens) * (1.0 + 0.3 * wn(u * 140.0, seed));
 			float av = abs(v);
 			float halo_w = wb[i].w * (1.0 + 2.2 * sqrt(max(1.0 - uu * uu * 0.6, 0.0))) + 0.014 * sev;
 			float halo = (1.0 - smoothstep(halo_w * 0.6, halo_w, av)) * (1.0 - smoothstep(0.95, 1.35, abs(uu)));
@@ -105,6 +110,7 @@ void fragment() {
 			a = clamp(halo, 0.0, 1.0) * 0.9;
 			c = blood;
 			w = 1.0;
+			rim = (1.0 - smoothstep(hw, hw * 1.7 + 0.004, av)) * (1.0 - smoothstep(0.85, 1.1, abs(uu)));
 			if (!armor && av < hw && abs(uu) < 1.0) {
 				float k = av / max(hw, 0.0005);
 				vec3 inner = mix(flesh * 0.22, flesh * 0.95, smoothstep(0.25, 0.75, k));
@@ -115,13 +121,14 @@ void fragment() {
 			}
 		} else if (kind < 1.5) {
 			// Puncture: a dark round hole, a flesh lip, a ring of blood with ragged lobes.
-			float r = length(vec2(u, v)) / sz;
+			float r = length(vec2(u, v)) / (sz * core_scale);
 			float ang = atan(v, u);
 			float lobe = 1.0 + 0.35 * wn(ang * 2.5 + 7.0, seed) * step(0.5, r);
 			r /= lobe;
 			a = (1.0 - smoothstep(1.4, 1.9, r)) * 0.92;
 			c = blood;
 			w = 1.0;
+			rim = (1.0 - smoothstep(0.75, 1.3, r)) * smoothstep(0.5, 0.75, r);
 			if (!armor && r < 0.75) {
 				c = mix(vec3(0.05, 0.0, 0.01), flesh * 0.8, smoothstep(0.35, 0.7, r));
 				c = mix(c, blood * 0.6, dry * 0.4);
@@ -144,8 +151,9 @@ void fragment() {
 			a = (1.0 - smoothstep(0.7, 1.05, r)) * (0.7 + 0.3 * sev);
 			w = 0.0;
 		} else {
-			// Smear: splashed blood with lobes and satellite drops.
-			float r = length(vec2(u, v)) / sz;
+			// Smear: splashed blood with lobes and satellite drops, streaked along `t` when it landed fast (narrower
+			// across: wb.w < size).
+			float r = length(vec2(u / sz, v / max(wb[i].w, 0.002)));
 			float ang = atan(v, u);
 			float lobe = 1.0 + 0.45 * wn(ang * 3.0, seed) + 0.25 * wn(ang * 9.0, seed + 5.0);
 			a = (1.0 - smoothstep(0.75, 1.0, r / max(lobe, 0.3))) * 0.9;
@@ -179,6 +187,7 @@ void fragment() {
 		alpha = alpha + a * (1.0 - alpha);
 		wet = max(wet, w * a * (1.0 - dry));
 		glow_sum = max(glow_sum, glow * a * w * (1.0 - dry));
+		rim_em = max(rim_em, blood * (rim * side * rim_glow * (1.0 - smoothstep(0.0, max(rim_glow_dry, 0.0001), dry))));
 	}
 	if (alpha <= 0.002) {
 		discard;
@@ -186,6 +195,6 @@ void fragment() {
 	ALBEDO = col / max(alpha, 0.001);  // col is premultiplied (front layers drawn over older ones)
 	ROUGHNESS = mix(0.82, 0.3, wet);
 	SPECULAR = mix(0.12, 0.35, wet);
-	EMISSION = ALBEDO * glow_sum;
+	EMISSION = ALBEDO * glow_sum + rim_em;
 	ALPHA = clamp(alpha, 0.0, 1.0);
 }

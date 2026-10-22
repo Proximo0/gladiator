@@ -83,6 +83,7 @@ func build(camera_mode: String) -> void:
 	wounds = WoundFx.new()
 	wounds.name = "WoundFx"
 	add_child(wounds)
+	blood.body_marks = wounds
 	blood.set_quality(GfxQuality.blood_level())
 	sfx = SfxDirector.new()
 	sfx.name = "SfxDirector"

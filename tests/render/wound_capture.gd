@@ -5,7 +5,7 @@ extends Node
 ## Options: --seed=N, --secs=20, --alien (side 1 wears the alien outfit). Never part of the check suite; writes only
 ## the PNGs it is told to.
 
-const SHOTS: Array = [["f0", 0, 1.25], ["f1", 1, 1.25], ["w0", 0, 0.55], ["w1", 1, 0.55]]
+const SHOTS: Array = [["cam", 0, 0.0], ["f0", 0, 1.25], ["f1", 1, 1.25], ["w0", 0, 0.55], ["w1", 1, 0.55]]  ## cam: the fight camera
 
 var _out: String = "/tmp/wound_capture/"
 var _name: String = "shot"
@@ -69,7 +69,10 @@ func _process(_d: float) -> void:
 		return
 	var spec: Array = SHOTS[_shot]
 	if _frame == _shot_frame + 1:
-		_aim(int(spec[1]), float(spec[2]), str(spec[0]).begins_with("w"))
+		if str(spec[0]) == "cam":
+			_match.presenter.camera.current = true
+		else:
+			_aim(int(spec[1]), float(spec[2]), str(spec[0]).begins_with("w"))
 		RenderingServer.render_loop_enabled = true
 	elif _frame == _shot_frame + 4:
 		_save(str(spec[0]))
@@ -80,8 +83,14 @@ func _process(_d: float) -> void:
 			get_tree().quit()
 
 
-## Marks and coats per fighter (when the tree has WoundFx; the before-tree prints nothing).
+## Marks and coats per fighter (when the tree has WoundFx; the before-tree prints nothing), and the BloodFx stain quads
+## left on each fighter's body parts.
 func _report() -> void:
+	for side: int in 2:
+		var quads: int = 0
+		for b: Variant in (_match.fighters[side] as Fighter).parts.values():
+			quads += ((b as Node).get_meta("bfx_stains", []) as Array).size()
+		print("WOUNDCAP side=%d body_stain_quads=%d" % [side, quads])
 	var wfx: Variant = _match.presenter.get("wounds") if _match.presenter != null else null
 	if not (wfx is Node):
 		return
