@@ -45,6 +45,16 @@ func hp_frac(part: String) -> float:
 	return clampf(hp(part) / full, 0.0, 1.0) if full > 0.0 else 1.0
 
 
+## Fraction of the fighter's whole hp pool left (all parts), for deciding a timed-out fight on damage taken.
+func hp_total_frac() -> float:
+	var left: float = 0.0
+	var full: float = 0.0
+	for p: Variant in parts:
+		left += hp(str(p))
+		full += float(CombatData.part_info(str(p)).get("hp", 0.0))
+	return clampf(left / full, 0.0, 1.0) if full > 0.0 else 1.0
+
+
 ## Blood left above the death line: 1 = full, 0 = at blood_death. Feed this to DamageModel as "blood_frac".
 func blood_frac() -> float:
 	var death: float = _tv("blood_death")

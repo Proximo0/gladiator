@@ -65,3 +65,13 @@ func test_faint_from_blood_loss_is_blood_loss() -> void:
 	for i: int in 4:
 		r = k.update([_fr("ko", 4.5), _fr("standing", 1.0)], i, 0.1)
 	assert_eq(r, {"winner": 1, "reason": "ko"}, "a blow knock-out with plenty of blood stays a ko")
+
+
+func test_time_limit_blood_level_falls_back_to_hp() -> void:
+	var j := MatchJudge.new(10.0)
+	var a: Dictionary = {"state": "standing", "blood": 5.0, "hp": 0.9}
+	var b: Dictionary = {"state": "standing", "blood": 5.0, "hp": 0.7}
+	assert_eq(j.update([a, b], 100, 0.1), {"winner": 0, "reason": "time"})
+	assert_eq(j.update([b, a], 100, 0.1), {"winner": 1, "reason": "time"})
+	a["hp"] = 0.703
+	assert_eq(j.update([a, b], 100, 0.1), {"winner": -1, "reason": "time"})

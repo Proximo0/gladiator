@@ -226,6 +226,7 @@ func _physics_process(delta: float) -> void:
 	var frames: Array = [(fighters[0] as Fighter).debug_frame(), (fighters[1] as Fighter).debug_frame()]
 	for i: int in 2:
 		frames[i]["blood"] = (fighters[i] as Fighter).health.blood
+		frames[i]["hp"] = (fighters[i] as Fighter).health.hp_total_frac()
 	stats.on_frames(frames, delta)
 	if presenter != null:
 		presenter.tick(frames, delta)

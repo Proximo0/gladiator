@@ -7,6 +7,7 @@ extends RefCounted
 
 const DEFAULT_KO_HOLD_S: float = 2.5
 const DRAW_BLOOD_L: float = 0.25  ## at the time limit, the blood lead needed to win on points
+const DRAW_HP_FRAC: float = 0.005  ## at the time limit, with blood level, the whole-body hp lead needed to win (fists never bleed)
 const FAINT_BLOOD_L: float = 2.75  ## a knocked-out fighter below this much blood fainted from blood loss (cap 0.2 at 2.7 L)
 const CAUSES: PackedStringArray = ["behead", "gut", "run_through", "skull_crush"]
 
@@ -27,7 +28,7 @@ func note_cause(side: int, cause: String) -> void:
 		_causes[side] = cause
 
 
-## frames: both debug_frames in side order, each optionally carrying "blood" (litres) for the time-limit decision.
+## frames: both debug_frames in side order, each optionally carrying "blood" (litres) and "hp" (0..1 whole-body hp left, the tie-break) for the time-limit decision.
 func update(frames: Array, tick: int, delta: float) -> Dictionary:
 	var dead: Array = [false, false]
 	for i: int in 2:
@@ -56,6 +57,13 @@ func update(frames: Array, tick: int, delta: float) -> Dictionary:
 			winner = 0
 		elif b1 - b0 > DRAW_BLOOD_L:
 			winner = 1
+		else:
+			var h0: float = float(frames[0].get("hp", 1.0))
+			var h1: float = float(frames[1].get("hp", 1.0))
+			if h0 - h1 > DRAW_HP_FRAC:
+				winner = 0
+			elif h1 - h0 > DRAW_HP_FRAC:
+				winner = 1
 		return {"winner": winner, "reason": "time"}
 	return {}
 

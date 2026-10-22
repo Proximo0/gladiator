@@ -196,3 +196,10 @@ func test_same_hit_at_full_blood_no_finisher() -> void:
 	hit["blood_frac"] = h.blood_frac()
 	h.apply(DamageModel.resolve(hit, Tuning.new()), "head")
 	assert_false(h.dead)
+
+
+func test_hp_total_frac() -> void:
+	var h := _new()
+	assert_near(h.hp_total_frac(), 1.0)
+	h.parts["torso"] = 0.0
+	assert_true(h.hp_total_frac() < 1.0 and h.hp_total_frac() > 0.8)
