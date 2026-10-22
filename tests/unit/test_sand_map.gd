@@ -268,3 +268,17 @@ func test_apply_blood_matches_exact_edge_and_stays_in_rect() -> void:
 			elif w[y * n + x] > 0.0:
 				assert_true(r.has_point(Vector2i(x, y)))
 	assert_near(b[32 * n + 32], 0.9, 0.05)
+
+
+func test_edge_table_is_cached_per_seed_bucket() -> void:
+	var a: PackedFloat32Array = SandMap.edge_table(1.0)
+	assert_eq(a.size(), SandMap.EDGE_BINS)
+	var w: float = TAU / float(SandMap.EDGE_SEED_BUCKETS)
+	var centre: float = (floorf(1.0 / w) + 0.5) * w
+	assert_near(a[0], SandMap.blood_edge(-PI, centre), 0.0001)
+	assert_near(a[64], SandMap.blood_edge(64.0 / SandMap.EDGE_BINS * TAU - PI, centre), 0.0001)
+	assert_eq(SandMap.edge_table(centre + w * 0.3), a, "same bucket, same table")
+	assert_eq(SandMap.edge_table(1.0 + TAU), a, "seeds wrap around TAU")
+	assert_true(SandMap.edge_table(1.0 + w) != a, "the next bucket has its own shape")
+	for v: float in a:
+		assert_true(v > 0.6 and v <= SandMap.EDGE_MAX)

@@ -313,3 +313,58 @@ func test_set_quality_swaps_droplet_shader() -> void:
 func test_splat_texel_budget_follows_quality() -> void:
 	assert_true(BloodMath.splat_texels(0) < BloodMath.splat_texels(1) and BloodMath.splat_texels(1) < BloodMath.splat_texels(2))
 	assert_true(BloodMath.splat_cost(0.3, 40.0) > 10.0 * BloodMath.splat_cost(0.02, 40.0), "a pool costs far more than a drop")
+
+
+
+func test_gore_bursts_spread_over_frames_with_the_same_total() -> void:
+	var fx: BloodFx = BloodFx.new()
+	fx.auto_step = false
+	fx._build()
+	fx.set_quality(1)
+	var frames: int = roundi(Tuning.shared().gore_spawn_frames)
+	assert_true(frames >= 2, "a gore moment is spread over more than one frame")
+	fx._burst(Vector3(0, 50, 0), Vector3.UP, 100, 0.0, 0.1, 0.5, 0.005)  # high up: no drop lands in these frames
+	fx._ground_splash(Vector3(0, 60, 0), 30)
+	assert_eq(fx.sim.count, 0, "nothing goes out before the next step")
+	var counts: Array[int] = []
+	for i: int in frames + 2:
+		fx.step(1.0 / 60.0)
+		counts.append(fx.sim.count)
+	assert_eq(counts[0], ceili(100.0 / frames) + ceili(30.0 / frames), "one share per frame")
+	assert_eq(counts[frames - 1], 130, "the whole burst and splash after %d frames" % frames)
+	assert_eq(counts[frames + 1], 130, "and nothing more")
+	assert_eq(fx.mist.count, 16, "mist total unchanged (n / 5, at most 16)")
+	assert_eq(fx._bursts.size(), 0)
+	fx.free()
+
+
+## Godot culls back faces by winding: the droplet must wind like Godot's own SphereMesh, or cull_back hides the near
+## half and the far half is lit with normals facing away (low-tier drops were darker, mean red 132 vs 146).
+func test_droplet_mesh_winds_like_godot_front_faces() -> void:
+	var ref: SphereMesh = SphereMesh.new()
+	var ra: Array = ref.surface_get_arrays(0)
+	var ref_sign: float = signf(_bf_winding(ra[Mesh.ARRAY_VERTEX], ra[Mesh.ARRAY_INDEX]))
+	assert_true(ref_sign != 0.0)
+	for q: int in 3:
+		var a: Array = BloodMesh.teardrop(int(BloodMesh.DETAIL[q][0]), int(BloodMesh.DETAIL[q][1]), int(BloodMesh.DETAIL[q][2])).surface_get_arrays(0)
+		var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+		var wrong: int = 0
+		for t: int in idx.size() / 3:
+			var s: float = _bf_winding(v, idx.slice(t * 3, t * 3 + 3))
+			if s != 0.0 and signf(s) != ref_sign:
+				wrong += 1
+		assert_eq(wrong, 0, "back-wound triangles at detail %d" % q)
+
+
+## Sum over triangles of (b - a) x (c - a) . centroid: its sign says which way the faces wind seen from outside.
+func _bf_winding(v: PackedVector3Array, idx: PackedInt32Array) -> float:
+	var s: float = 0.0
+	for t: int in idx.size() / 3:
+		var a: Vector3 = v[idx[t * 3]]
+		var b: Vector3 = v[idx[t * 3 + 1]]
+		var c: Vector3 = v[idx[t * 3 + 2]]
+		var n: Vector3 = (b - a).cross(c - a)
+		if n.length_squared() > 1e-12:
+			s += n.dot((a + b + c) / 3.0)
+	return s
