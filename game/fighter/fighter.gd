@@ -16,7 +16,8 @@ signal hit(event: Dictionary)
 signal gore(event: Dictionary)
 signal died
 ## A shove, kick or grab: {"kind": "shove"|"kick"|"grab"|"hold"|"break"|"slip", "attacker": side, "target": side,
-## "point": Vector3, "landed": bool}. Kicks that connect also emit `hit` like any blow.
+## "point": Vector3, "landed": bool, "blocked": bool (a kick met a shield or weapon)}. Kicks that connect also emit
+## `hit` like any blow.
 signal close(event: Dictionary)
 
 const LAYER_BODIES: int = 2
@@ -1759,7 +1760,7 @@ func _kick_contacts() -> void:
 			var ow: Weapon = obj as Weapon
 			if ow.holder != null and ow.holder != self:
 				_close.kick_landed = true  # blocked: no miss, no blow
-				_emit_close("kick", st.get_contact_local_position(i), false)
+				_emit_close("kick", st.get_contact_local_position(i), false, true)
 				return
 			continue
 		if not obj is RigidBody3D or not (obj as Node).has_meta("fighter"):
@@ -1809,9 +1810,9 @@ func _kick_shin() -> String:
 	return "shin_l" if KICK_LEG == 0 else "shin_r"
 
 
-func _emit_close(kind: String, p: Vector3, landed: bool) -> void:
+func _emit_close(kind: String, p: Vector3, landed: bool, blocked: bool = false) -> void:
 	close.emit({"kind": kind, "attacker": side, "target": opponent.side if opponent != null else 1 - side, "point": p,
-		"landed": landed})
+		"landed": landed, "blocked": blocked})
 
 
 # --- contacts and damage ----------------------------------------------------------------------------------------
