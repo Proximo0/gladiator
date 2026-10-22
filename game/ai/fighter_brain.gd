@@ -67,6 +67,19 @@ const ROLL_RANGE: float = 2.6  ## pelvis distance inside which a roll is an esca
 const ROLL_THREAT_CHANCE: float = 0.012  ## per tick while a fast blow is coming in
 const ROLL_ESCAPE_CHANCE: float = 0.003  ## per tick while breaking off
 const ROLL_COOLDOWN_TICKS: int = 240
+const CLOSE_COOLDOWN_TICKS: int = 300  ## between the brain's shoves, kicks and grabs (used sparingly)
+const CLOSE_MIN_STAMINA: float = 0.4
+const SHOVE_RANGE: float = 1.25  ## pelvis distance inside which a shove can reach
+const SHOVE_CHANCE: float = 0.006  ## per tick in range
+const SHOVE_STUMBLE_CHANCE: float = 0.05  ## per tick in range while the foe stumbles (a shove floors them)
+const KICK_MIN: float = 1.0  ## front kick distance band (pelvis to pelvis, m)
+const KICK_MAX: float = 1.3
+const KICK_CHANCE: float = 0.004
+const GRAB_RANGE: float = 1.2
+const GRAB_CHANCE: float = 0.005  ## only with a free left hand
+const HOLD_TICKS_MIN: int = 45  ## how long the brain keeps a hold (it keeps attacking with the weapon meanwhile)
+const HOLD_TICKS_MAX: int = 110
+const STRUGGLE_SHOVE_CHANCE: float = 0.05  ## per tick while held: shove the holder off (pulling back all the while)
 const BRAWLER_LEN_RATIO: float = 2.0  ## foe weapon length over fist length that sends a fist fighter rushing in
 const FIST_HEAD_BIAS: float = 2.5  ## extra on top of the blunt bias for bare fists: brawlers go for the jaw (concussion, bloody nose)
 const BLUNT_HEAD_BIAS: float = 4.0  ## blunt weapons do not bleed: they win by knocking the head (consciousness)
@@ -113,6 +126,10 @@ var _rng := RandomNumberGenerator.new()
 var _drng := RandomNumberGenerator.new()  ## difficulty rolls only, so "normal" draws exactly what it always drew
 var _roll_rng := RandomNumberGenerator.new()  ## dodge-roll choices only (own stream: the rest of the brain draws as before)
 var _roll_cd: int = 0  ## ticks before the brain considers another dodge roll
+var _close_rng := RandomNumberGenerator.new()  ## shove, kick and grab choices only (own stream)
+var _close_cd: int = 0
+var _hold_left: int = 0  ## ticks the brain keeps CLINCH held
+var _hold_grace: int = 0
 var _p: Dictionary = {}
 var _d: Dictionary = {}  ## AiDifficulty parameters
 var _finish_ok: bool = true  ## difficulty: the brain currently notices that the foe is beaten
@@ -182,6 +199,7 @@ static func preset(preset_name: String) -> Dictionary:
 func _init(seed: int, personality: Dictionary = {}) -> void:
 	_rng.seed = seed
 	_roll_rng.seed = seed * 7919 + 17
+	_close_rng.seed = seed * 104729 + 31
 	_p = preset(str(personality.get("preset", "duelist")))
 	for k: Variant in personality:
 		if str(k) != "preset":
@@ -285,7 +303,52 @@ func think(me: Dictionary, foe: Dictionary, delta: float) -> FighterInput:
 	if out.move_y < 300:
 		_wall_adjust(me, out)
 	_maybe_roll(me, obs, out)
+	_maybe_close(me, obs, out)
 	return out
+
+
+## Now and then a shove, a front kick or a grab at close range, sparingly (a cooldown, a small chance per tick);
+## a shove is likelier on a stumbling foe, since it floors them. Held by the foe, it pulls back and shoves.
+func _maybe_close(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
+	var cl: Dictionary = me.get("close", {})
+	if str(cl.get("held", "")) != "":
+		out.move_y = -1000
+		if _close_rng.randf() < STRUGGLE_SHOVE_CHANCE:
+			out.buttons |= FighterInput.SHOVE
+		return
+	if _hold_left > 0:
+		if str(cl.get("holding", "")) != "" or bool(cl.get("reaching", false)) or _hold_grace > 0:
+			_hold_left -= 1
+			_hold_grace -= 1
+			out.buttons |= FighterInput.CLINCH
+			return
+		_hold_left = 0
+	if _close_cd > 0:
+		_close_cd -= 1
+		return
+	if bool(me.get("rolling", false)) or str(me.get("state", "standing")) != "standing":
+		return
+	if _state == ST_WINDUP or _state == ST_STRIKE or _state == ST_FINISH or _state == ST_WEAPON:
+		return
+	var foe_state: String = str(obs.get("state", "standing"))
+	if float(me.get("stamina", 1.0)) < CLOSE_MIN_STAMINA or (foe_state != "standing" and foe_state != "stumbling"):
+		return
+	# One draw, stacked chances: shove, then kick, then grab (each only in its own range).
+	var r: float = _close_rng.randf()
+	var shove_p: float = (SHOVE_STUMBLE_CHANCE if foe_state == "stumbling" else SHOVE_CHANCE) if _dist < SHOVE_RANGE else 0.0
+	var kick_p: float = shove_p + (KICK_CHANCE if _dist >= KICK_MIN and _dist <= KICK_MAX else 0.0)
+	var grab_p: float = kick_p + (GRAB_CHANCE if _dist < GRAB_RANGE and str(me.get("offhand_id", "")) == "" else 0.0)
+	if r < shove_p:
+		out.buttons |= FighterInput.SHOVE
+	elif r < kick_p:
+		out.buttons |= FighterInput.KICK
+	elif r < grab_p:
+		out.buttons |= FighterInput.CLINCH
+		_hold_left = _close_rng.randi_range(HOLD_TICKS_MIN, HOLD_TICKS_MAX)
+		_hold_grace = 3  # the reach shows in the frame from the next tick
+	else:
+		return
+	_close_cd = CLOSE_COOLDOWN_TICKS
 
 
 ## Now and then a dodge roll out of trouble: a fast blow coming in at close range, or a hurt or tired fighter

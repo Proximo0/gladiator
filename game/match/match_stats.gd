@@ -65,6 +65,7 @@ var _stuck_run: float = 0.0
 var _prev_pos: Dictionary = {}
 var _prev_state: Array = ["", ""]
 var _weapon_log: Array = [{}, {}]
+var _close_log: Array = [{}, {}]  ## each fighter's latest debug_frame "close_log" (shoves, kicks, grabs)
 var _stamina0_run: Array = [0.0, 0.0]
 
 
@@ -133,6 +134,9 @@ func on_frames(frames: Array, dt: float) -> void:
 			var wl: Variant = fr.get("weapon_log", null)
 			if wl is Dictionary:
 				_weapon_log[side] = (wl as Dictionary).duplicate()
+			var cl: Variant = fr.get("close_log", null)
+			if cl is Dictionary:
+				_close_log[side] = (cl as Dictionary).duplicate()
 			var dead: bool = state == "dead"
 			if float(fr.get("stamina", 1.0)) <= STAMINA_ZERO and not dead:
 				_stamina0_run[side] = float(_stamina0_run[side]) + dt
@@ -217,6 +221,14 @@ func _log_sum(key: String) -> int:
 	return n
 
 
+## Sum over both sides of a counter from the fighters' latest "close_log".
+func _close_sum(key: String) -> int:
+	var n: int = 0
+	for cl: Dictionary in _close_log:
+		n += int(cl.get(key, 0))
+	return n
+
+
 func mean_tip_speed() -> float:
 	return _swing_sum / float(_swing_ticks) if _swing_ticks > 0 else 0.0
 
@@ -229,6 +241,9 @@ func to_dict() -> Dictionary:
 		"disarms": disarms, "arm_drops": _log_sum("arm_drops"), "rearms": _log_sum("rearms"),
 		"rearms_after_disarm": _log_sum("rearms_after_disarm"),
 		"stamina0_max_s": stamina0_max_s, "getup_fails": getup_fails, "armor_dislodged": armor_dislodged, "self_hits": self_hits, "knockdowns": knockdowns, "rolls": rolls,
+		"shoves": _close_sum("shoves"), "shoves_landed": _close_sum("shoves_landed"), "kicks": _close_sum("kicks"),
+		"kicks_landed": _close_sum("kicks_landed"), "grabs": _close_sum("grabs"), "holds": _close_sum("holds"),
+		"hold_breaks": _close_sum("breaks"),
 		"time_down_s": time_down_s, "stuck_s": stuck_s, "explosions": explosions, "wall_time_s": wall_time_s,
 		"blood_left": blood_left.duplicate(),
 		"mean_dist": mean_dist(), "strike_share": strike_share(),
