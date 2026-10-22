@@ -313,3 +313,26 @@ func test_set_quality_swaps_droplet_shader() -> void:
 func test_splat_texel_budget_follows_quality() -> void:
 	assert_true(BloodMath.splat_texels(0) < BloodMath.splat_texels(1) and BloodMath.splat_texels(1) < BloodMath.splat_texels(2))
 	assert_true(BloodMath.splat_cost(0.3, 40.0) > 10.0 * BloodMath.splat_cost(0.02, 40.0), "a pool costs far more than a drop")
+
+
+
+func test_gore_bursts_spread_over_frames_with_the_same_total() -> void:
+	var fx: BloodFx = BloodFx.new()
+	fx.auto_step = false
+	fx._build()
+	fx.set_quality(1)
+	var frames: int = roundi(Tuning.shared().gore_spawn_frames)
+	assert_true(frames >= 2, "a gore moment is spread over more than one frame")
+	fx._burst(Vector3(0, 50, 0), Vector3.UP, 100, 0.0, 0.1, 0.5, 0.005)  # high up: no drop lands in these frames
+	fx._ground_splash(Vector3(0, 60, 0), 30)
+	assert_eq(fx.sim.count, 0, "nothing goes out before the next step")
+	var counts: Array[int] = []
+	for i: int in frames + 2:
+		fx.step(1.0 / 60.0)
+		counts.append(fx.sim.count)
+	assert_eq(counts[0], ceili(100.0 / frames) + ceili(30.0 / frames), "one share per frame")
+	assert_eq(counts[frames - 1], 130, "the whole burst and splash after %d frames" % frames)
+	assert_eq(counts[frames + 1], 130, "and nothing more")
+	assert_eq(fx.mist.count, 16, "mist total unchanged (n / 5, at most 16)")
+	assert_eq(fx._bursts.size(), 0)
+	fx.free()
