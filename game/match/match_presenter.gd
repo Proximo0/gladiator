@@ -386,3 +386,22 @@ func _process(_delta: float) -> void:
 	# The stands follow the crowd's noise level.
 	if arena != null and sfx != null:
 		arena.set_crowd_excitement(sfx.crowd_excitement())
+	_contact_shadows()
+
+
+## Dark blobs on the sand under each fighter's feet and pelvis (ContactShadow), once a frame.
+func _contact_shadows() -> void:
+	if sand == null or not sand.has_method("set_contacts"):
+		return
+	var t: Tuning = Tuning.shared()
+	var blobs: Array[Vector4] = []
+	for f: Variant in _fighters:
+		if not is_instance_valid(f) or (f as Fighter).parts.is_empty() or not (f as Fighter).visible:
+			continue
+		var ft: Fighter = f
+		var feet: Array[Vector3] = []
+		for n: String in ["shin_l", "shin_r"]:
+			if not ft.is_limb_cut(n):
+				feet.append((ft.parts[n] as RigidBody3D).global_transform * FighterRig.FOOT_OFFSET)
+		blobs.append_array(ContactShadow.fighter_blobs(feet, (ft.parts["pelvis"] as RigidBody3D).global_position, t))
+	sand.call("set_contacts", ContactShadow.pack(blobs))

@@ -41,6 +41,9 @@ uniform float lift = 0.03;
 uniform float vtx_cell = 0.1;  // mesh vertex spacing: the vertex height is box-filtered over it so hollows do not alias into saw teeth
 uniform float hollow_dark = 0.55;
 uniform float rim_light = 0.3;
+// Contact shadows: dark blobs under the fighters' feet and pelvis (x, z, radius, strength), packed by ContactShadow
+// once a frame; the live ones come first and the first zero strength ends the list.
+uniform vec4 contact[8];
 
 varying vec3 lpos;
 varying float v_sparkle;
@@ -211,6 +214,18 @@ void fragment() {
 	vec3 col = mix(sand, soaked, stain * (0.4 + 0.55 * smoothstep(0.05, 0.5, b)));
 	bcol *= 0.9 + 0.2 * n2.r;
 	col = mix(col, bcol, cov);
+	// Contact shadows: each blob multiplies by 1 - strength * (1 - d²/r²)² (ContactShadow.shade_at mirrors this).
+	float cshade = 1.0;
+	for (int i = 0; i < 8; i++) {
+		vec4 cb = contact[i];
+		if (cb.w <= 0.0) {
+			break;
+		}
+		vec2 cd = wp - cb.xy;
+		float cq = clamp(1.0 - dot(cd, cd) / (cb.z * cb.z), 0.0, 1.0);
+		cshade *= 1.0 - cb.w * cq * cq;
+	}
+	col *= cshade;
 	ALBEDO = col;
 	EMISSION = col * sand_ambient + bcol * bglow * cov;
 
