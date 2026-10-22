@@ -12,6 +12,9 @@ const BANNER_Y_FRAC: float = 0.24  ## Banner top, as a fraction of the design he
 const METER_WIDTH_FRAC: float = 0.14  ## Meter width as a share of the screen width, within the pixel limits below.
 const METER_MIN_PX: float = 170.0
 const METER_MAX_PX: float = 210.0
+const TOUCH_EDGE_PX: float = 8.0  ## Touch layout: gap from the screen edge to the meters, which then sit at the top.
+const TOUCH_METER_HEIGHT_FRAC: float = 0.42  ## Touch: a meter is at most this share of the screen height.
+const TOUCH_METER_MIN_PX: float = 140.0
 const METER_MIN_UNIT: float = 0.8
 const METER_MAX_UNIT: float = 4.0
 const BANNER_TARGET_PX: float = 360.0  ## On-screen width the banner aims for.
@@ -90,13 +93,35 @@ func _make_line(top: float, font_px: int, colour: Color) -> Label:
 
 ## Layout unit for the meters on a screen `screen_w` px wide: the meter is about 16% of the screen width, held between
 ## METER_MIN_PX and METER_MAX_PX on screen (so a phone gets a real, readable meter), as a multiple of the design size.
-static func meter_px(screen_w: float) -> float:
-	return clampf(screen_w * METER_WIDTH_FRAC, METER_MIN_PX, METER_MAX_PX)
+static func meter_px(screen_w: float, screen_h: float = 0.0, touch: bool = false) -> float:
+	var w: float = clampf(screen_w * METER_WIDTH_FRAC, METER_MIN_PX, METER_MAX_PX)
+	if touch and screen_h > 0.0:  # a short landscape phone: keep the meters clear of the thumb buttons below them
+		w = minf(w, maxf(screen_h * TOUCH_METER_HEIGHT_FRAC * BloodMeter.METER_SIZE.x / BloodMeter.METER_SIZE.y, TOUCH_METER_MIN_PX))
+	return w
 
 
-func meter_unit(screen_w: float) -> float:
+## Top-left corners (layout units) of the player's and the opponent's meters, as [Vector2, Vector2]. Mouse and
+## keyboard: bottom corners. Touch: top corners, because the thumb buttons own the lower right and the thumbs the
+## lower left; `insets` (left, top, right, bottom, screen px) keeps them off notches. `k` is px per layout unit.
+static func meter_positions(vp: Vector2, meter: Vector2, k: float, insets: Vector4, touch: bool) -> Array:
+	var kk: float = maxf(k, 0.0001)
+	if not touch:
+		var y: float = vp.y - MARGIN - meter.y
+		return [Vector2(MARGIN, y), Vector2(vp.x - MARGIN - meter.x, y)]
+	var edge: float = TOUCH_EDGE_PX / kk
+	var top: float = insets.y / kk + edge
+	return [Vector2(insets.x / kk + edge, top), Vector2(vp.x - insets.z / kk - edge - meter.x, top)]
+
+
+## On-screen px from the top of a `screen_w` px wide touch screen to the bottom of the meters (for the hint below).
+static func touch_block_px(screen_w: float, screen_h: float, inset_top_px: float) -> float:
+	var w: float = meter_px(screen_w, screen_h, true)
+	return inset_top_px + TOUCH_EDGE_PX + w * BloodMeter.METER_SIZE.y / BloodMeter.METER_SIZE.x
+
+
+func meter_unit(screen_w: float, screen_h: float = 0.0, touch: bool = false) -> float:
 	var k: float = get_viewport().get_final_transform().get_scale().x
-	return clampf(meter_px(screen_w) / (BloodMeter.METER_SIZE.x * k), METER_MIN_UNIT, METER_MAX_UNIT)
+	return clampf(meter_px(screen_w, screen_h, touch) / (BloodMeter.METER_SIZE.x * k), METER_MIN_UNIT, METER_MAX_UNIT)
 
 
 ## Scale at which a line `text_w` wide fits `frac` of `vp_w` (no limit for an empty line).
@@ -127,14 +152,14 @@ func _layout() -> void:
 	var k: float = get_viewport().get_final_transform().get_scale().x
 	if k <= 0.0:
 		return
-	var u: float = meter_unit(vp.x * k)
-	var w: float = BloodMeter.METER_SIZE.x * u
-	var meter_y: float = vp.y - MARGIN - BloodMeter.METER_SIZE.y * u
+	var touch: bool = TouchControls.active()
+	var u: float = meter_unit(vp.x * k, vp.y * k, touch)
+	var spots: Array = meter_positions(vp, BloodMeter.METER_SIZE * u, k, SafeArea.window_insets() if touch else Vector4.ZERO, touch)
 	for m: BloodMeter in [player_meter, opponent_meter]:
 		m.scale = Vector2.ONE
 		m.configure(u, k)
-	player_meter.position = Vector2(MARGIN, meter_y)
-	opponent_meter.position = Vector2(vp.x - MARGIN - w, meter_y)
+	player_meter.position = spots[0]
+	opponent_meter.position = spots[1]
 	var bs: float = clampf(BANNER_TARGET_PX / (BANNER_W * k), 1.0, BANNER_MAX_SCALE)
 	bs = minf(bs, fit_scale(_text_w, vp.x, BANNER_FIT_FRAC))
 	_banner.scale = Vector2(bs, bs)

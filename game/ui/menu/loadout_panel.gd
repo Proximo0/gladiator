@@ -10,6 +10,7 @@ signal loadout_changed(loadout: Dictionary)
 
 const ROW_H: float = 58.0
 const ROW_COMPACT_H: float = 48.0
+const ROW_TIGHT_H: float = 44.0  ## landscape screens too short for the full column (the opponent's has 9 rows and a card)
 
 var weapon_picker: MenuPicker
 var offhand_picker: MenuPicker
@@ -27,6 +28,7 @@ var _usable_weapon: String = ""  ## the weapon the loadout really carries (the b
 var _lock_note: Label
 var _card: Control
 var _compact: bool = false
+var _tight: bool = false
 
 
 func _init() -> void:
@@ -76,14 +78,20 @@ func _init() -> void:
 
 
 ## Portrait phones: shorter rows and a smaller header, and optionally no stat card, so both panels fit the screen.
-func set_compact(compact: bool, show_card: bool = true) -> void:
+func set_compact(compact: bool, show_card: bool = true, tight: bool = false) -> void:
 	_compact = compact
+	_tight = tight and not compact
 	_card.visible = show_card or not compact
-	_header.add_theme_font_size_override("font_size", 30 if compact else 38)
+	_header.add_theme_font_size_override("font_size", 30 if (compact or _tight) else 38)
+	var row_h: float = ROW_COMPACT_H if compact else (ROW_TIGHT_H if _tight else ROW_H)
 	for c: Node in _rows.get_children():
 		if c is MenuPicker:
-			(c as MenuPicker).custom_minimum_size.y = ROW_COMPACT_H if compact else ROW_H
-	_rows.add_theme_constant_override("separation", 5 if compact else 8)
+			(c as MenuPicker).custom_minimum_size.y = row_h
+	_rows.add_theme_constant_override("separation", 5 if (compact or _tight) else 8)
+	(_card as VBoxContainer).add_theme_constant_override("separation", 0 if _tight else 4)
+	_card_name.add_theme_font_size_override("font_size", 30 if _tight else 34)
+	for k: Variant in _bars:
+		(_bars[k] as Control).custom_minimum_size.y = 26.0 if _tight else 30.0
 
 
 func _add_picker(title: String, items: Array) -> MenuPicker:

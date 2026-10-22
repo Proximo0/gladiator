@@ -8,6 +8,9 @@ signal chosen(id: String)  ## "quick", "fight", "local_2p", "leaderboard", "onli
 const TITLE_MIN: float = 56.0
 const EDGE: float = 14.0  ## Clear space kept at the top and bottom.
 const RULE_MIN_PX: float = 12.0  ## Smallest meander cell on screen.
+const HINT_MIN_PX: float = 15.0  ## Smallest hint text on screen.
+const HINT_MIN_UNITS: float = 24.0
+const HINT_MAX_UNITS: float = 64.0
 
 var _title: Label
 var _sub: Label
@@ -17,6 +20,8 @@ var _first: Button
 var _buttons: Array[Button] = []
 var _gap: Control
 var _rule_cell: float = 14.0
+var _hint: Label
+var _hint_font: int = 0
 
 
 func _init() -> void:
@@ -59,12 +64,27 @@ func _init() -> void:
 		_buttons.append(b)
 		if _first == null:
 			_first = b
-	var hint := MenuTheme.label("Arrows / stick: move    Enter / A: select    Esc / B: back", 24, MenuTheme.DIM_TEXT)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.name = "Hint"
-	_col.add_child(hint)
+	_hint = MenuTheme.label("", int(HINT_MIN_UNITS), MenuTheme.PARCHMENT.darkened(0.15))
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint.name = "Hint"
+	_hint.text = "\n".join(hint_lines(not Input.get_connected_joypads().is_empty(), DisplayServer.is_touchscreen_available() or Flags.args.has("touch")))
+	_col.add_child(_hint)
 	resized.connect(_relayout)
 	_relayout()
+
+
+## The hint under the menu for the device in use: touch (reusing the fight hint), gamepad, or keyboard.
+static func hint_lines(has_pad: bool, has_touch: bool) -> Array:
+	if has_touch and not has_pad:
+		return ["Tap a button to choose"] + ControlsText.compact_lines("player_vs_cpu", false, true)
+	if has_pad:
+		return ["Stick / D-pad: move    A: select    B: back"]
+	return ["Arrows / stick: move    Enter / A: select    Esc / B: back"]
+
+
+## Hint font in layout units: about HINT_MIN_PX on screen, never below the desktop size.
+static func hint_font_units(px_per_unit: float) -> int:
+	return int(clampf(ceilf(HINT_MIN_PX / maxf(px_per_unit, 0.01)), HINT_MIN_UNITS, HINT_MAX_UNITS))
 
 
 func focus_first() -> void:
@@ -106,6 +126,11 @@ func _fit_rule() -> void:
 	if not is_inside_tree():
 		return
 	var px: float = maxf(get_global_transform_with_canvas().get_scale().x * get_viewport().get_final_transform().get_scale().x, 0.01)
+	var hint_font: int = hint_font_units(px)
+	if hint_font != _hint_font:
+		_hint_font = hint_font
+		_hint.add_theme_font_size_override("font_size", hint_font)
+		_relayout()
 	var cell: float = maxf(14.0, RULE_MIN_PX / px)
 	if not is_equal_approx(cell, _rule_cell):
 		_rule_cell = cell

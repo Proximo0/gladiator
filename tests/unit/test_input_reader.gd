@@ -158,3 +158,31 @@ func test_touch_button_hit_test() -> void:
 	for b: Dictionary in layout:
 		assert_eq(TouchControls.button_at(b["center"], layout), int(b["bit"]), str(b["label"]))
 	assert_eq(TouchControls.button_at(Vector2(10.0, 10.0), layout), 0, "top-left corner is no button")
+
+
+func test_touch_buttons_are_thumb_sized_and_apart_on_a_phone() -> void:
+	var area: Vector2 = Vector2(1920.0, 4160.0)  # a 540x1170 phone under the 1920-wide expand stretch
+	var k: float = 540.0 / 1920.0
+	var layout: Array = TouchControls.button_layout(area, k, Vector4(0.0, 0.0, 0.0, 40.0) / k)
+	for b: Dictionary in layout:
+		assert_true(float(b["radius"]) * k >= 28.0, "%s is at least 56 px across" % b["label"])
+		var c: Vector2 = b["center"]
+		assert_true(c.x * k > 540.0 * 0.5 and c.x * k + float(b["radius"]) * k <= 540.0, "%s on the right, on screen" % b["label"])
+		assert_true((c.y + float(b["radius"])) * k <= 1170.0 - 40.0, "%s clear of the bottom inset" % b["label"])
+	for i: int in layout.size():
+		for j: int in range(i + 1, layout.size()):
+			var d: float = (layout[i]["center"] as Vector2).distance_to(layout[j]["center"])
+			assert_true(d >= float(layout[i]["radius"]) + float(layout[j]["radius"]), "%s and %s do not overlap" % [layout[i]["label"], layout[j]["label"]])
+
+
+func test_touch_buttons_leave_the_aim_area_free() -> void:
+	for area: Vector2 in [Vector2(2340.0, 1080.0), Vector2(1920.0, 4160.0), Vector2(1280.0, 720.0)]:
+		var k: float = 540.0 / minf(area.x, area.y) if area.x != 1280.0 else 1.0
+		var width_px: float = 0.0
+		var height_px: float = 0.0
+		for b: Dictionary in TouchControls.button_layout(area, k):
+			var c: Vector2 = b["center"]
+			width_px = maxf(width_px, (area.x - c.x + float(b["radius"])) * k)
+			height_px = maxf(height_px, (area.y - c.y + float(b["radius"])) * k)
+		assert_true(width_px < area.x * k * 0.42, "buttons use under 42%% of the width at %s" % area)
+		assert_true(height_px < area.y * k * 0.55, "buttons use under 55%% of the height at %s" % area)

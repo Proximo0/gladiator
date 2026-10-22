@@ -7,6 +7,7 @@ const SWAY_ANGLE: float = 0.55  ## rad each side of the front view
 const CAM_DIST: float = 4.7
 const CAM_HEIGHT: float = 1.2
 const LOOK_Y: float = 0.9
+const PREVIEW_HFOV: float = 42.0  ## horizontal field of view, degrees
 const SPACING: float = 0.75
 const REBUILD_DELAY_S: float = 0.12
 
@@ -63,7 +64,8 @@ func _init() -> void:
 	_rig = Node3D.new()
 	_vp.add_child(_rig)
 	var cam := Camera3D.new()
-	cam.fov = 38.0
+	cam.keep_aspect = Camera3D.KEEP_WIDTH  # a narrow preview must still hold both fighters, shields and sway
+	cam.fov = PREVIEW_HFOV
 	cam.position = Vector3(0.0, CAM_HEIGHT, -CAM_DIST)
 	_rig.add_child(cam)
 	cam.look_at_from_position(cam.position, Vector3(0.0, LOOK_Y, 0.0))

@@ -25,6 +25,7 @@ var _cpu_diff: MenuPicker
 var _cpu_level: MenuPicker
 var _diff_note: Label
 var _start: Button
+var _tight: bool = false
 var _back: Button
 var _outfit_rows: Array[Control] = []  ## per side: the picker row (a VBox with picker, lock note, shop button)
 var _outfit_pickers: Array[MenuPicker] = []
@@ -146,7 +147,7 @@ func open(p_mode: String) -> void:
 	_cpu_mode.visible = not two
 	_cpu_diff.visible = not two
 	_cpu_level.visible = not two
-	_diff_note.visible = not two
+	_diff_note.visible = not two and not _tight
 	_reroll.visible = not two
 	_cpu_mode.select(state.cpu_loadout_mode, false)
 	_cpu_diff.select(state.cpu_personality, false)
@@ -348,10 +349,18 @@ func _relayout() -> void:
 	else:
 		_body.move_child(_mid, 1)
 		_preview.custom_minimum_size = Vector2(300.0, 420.0)
-	_panel_a.set_compact(portrait)
-	_panel_b.set_compact(portrait, false)  # the opponent's stat card is dropped on a phone
+	_set_density(portrait, false)
+	if not portrait and _body.get_combined_minimum_size().y > _scroll.size.y:
+		_set_density(false, true)  # not enough height for the full column: tighter rows, no flavour note
+
+
+func _set_density(portrait: bool, tight: bool) -> void:
+	_panel_a.set_compact(portrait, true, tight)
+	_panel_b.set_compact(portrait, false, tight)  # the opponent's stat card is dropped on a phone
 	for pk: MenuPicker in [_cpu_mode, _cpu_diff, _cpu_level]:
-		pk.custom_minimum_size.y = LoadoutPanel.ROW_COMPACT_H if portrait else LoadoutPanel.ROW_H
+		pk.custom_minimum_size.y = LoadoutPanel.ROW_COMPACT_H if portrait else (LoadoutPanel.ROW_TIGHT_H if tight else LoadoutPanel.ROW_H)
+	_tight = tight
+	_diff_note.visible = mode != "local_2p" and not tight
 	_diff_note.custom_minimum_size.y = 56.0 if portrait else 84.0
 
 

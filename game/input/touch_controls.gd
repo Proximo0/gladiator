@@ -9,6 +9,11 @@ extends Control
 const UNIT_FRACTION: float = 0.1  ## one layout unit u = min(width, height) * UNIT_FRACTION
 const STICK_RADIUS_U: float = 2.0
 const AIM_RADIUS_U: float = 2.5
+const BUTTON_RADIUS_FRAC: float = 0.068  ## of the screen's short side, in pixels
+const BUTTON_RADIUS_MIN_PX: float = 32.0  ## 64 px buttons at the least
+const BUTTON_RADIUS_MAX_PX: float = 46.0
+const EDGE_PX: float = 14.0  ## gap from the screen edge to the corner button
+const LABEL_PX: float = 15.0  ## button label size on screen
 const MOUSE_POINTER: int = -1  ## pointer id for the mouse fallback; touch indices are >= 0
 
 var move: Vector2i = Vector2i.ZERO  ## -1000..1000, y up (read by InputReader)
@@ -33,23 +38,38 @@ static func in_left_half(x: float, width: float) -> bool:
 	return x < width * 0.5
 
 
-## Button centres sit in the bottom-right corner; each entry is {bit, center, radius, label}.
-static func button_layout(area: Vector2) -> Array:
-	var u: float = minf(area.x, area.y) * UNIT_FRACTION
+## True when the touch overlay is drawn (a phone, or --touch). The HUD and menus lay themselves out around it.
+static func active() -> bool:
+	return should_show(OS.has_feature("mobile"), Flags.args)
+
+
+## Button radius in on-screen pixels for a screen whose short side is `short_px`: big enough for a thumb.
+static func button_radius_px(short_px: float) -> float:
+	return clampf(short_px * BUTTON_RADIUS_FRAC, BUTTON_RADIUS_MIN_PX, BUTTON_RADIUS_MAX_PX)
+
+
+## Button centres in a thumb arc in the bottom-right corner; each entry is {bit, center, radius, label}.
+## `area` is the layout size, `k` the on-screen pixels per layout unit (sizes are set in real pixels, so a phone that
+## squeezes a 1920-unit design still gets thumb-sized buttons), `insets` the safe-area insets in layout units
+## (left, top, right, bottom). Offsets are in button radii from the corner: x to the left, y up.
+static func button_layout(area: Vector2, k: float = 1.0, insets: Vector4 = Vector4.ZERO) -> Array:
+	var kk: float = maxf(k, 0.0001)
+	var r: float = button_radius_px(minf(area.x, area.y) * kk) / kk
+	var corner: Vector2 = Vector2(area.x - insets.z, area.y - insets.w) - Vector2.ONE * (EDGE_PX / kk)
 	var defs: Array = [
-		[FighterInput.OFFHAND, -1.3, -1.3, 0.9, "OFF"],
-		[FighterInput.THRUST, -3.0, -0.9, 0.8, "THRUST"],
-		[FighterInput.HALF_SWORD, -1.3, -3.0, 0.8, "HALF"],
-		[FighterInput.GRAB, -4.6, -2.2, 0.7, "GRAB"],
-		[FighterInput.SPRINT, -3.0, -3.4, 0.7, "SPRINT"],
-		[FighterInput.ROLL, -4.6, -0.7, 0.7, "ROLL"],
+		[FighterInput.THRUST, 1.3, 1.3, 1.2, "THRUST"],
+		[FighterInput.OFFHAND, 1.2, 3.9, 1.0, "OFF"],
+		[FighterInput.HALF_SWORD, 2.2, 6.4, 1.0, "HALF"],
+		[FighterInput.ROLL, 3.9, 1.2, 1.0, "ROLL"],
+		[FighterInput.GRAB, 4.1, 3.6, 1.0, "GRAB"],
+		[FighterInput.SPRINT, 4.5, 5.9, 1.0, "SPRINT"],
 	]
 	var out: Array = []
 	for d: Array in defs:
 		out.append({
 			"bit": d[0],
-			"center": area + Vector2(d[1], d[2]) * u,
-			"radius": float(d[3]) * u,
+			"center": corner - Vector2(d[1], d[2]) * r,
+			"radius": float(d[3]) * r,
 			"label": d[4],
 		})
 	return out
@@ -104,7 +124,7 @@ func _mouse_fallback(event: InputEvent) -> void:
 
 func _press(pointer: int, screen_pos: Vector2) -> void:
 	var local: Vector2 = _to_local_pos(screen_pos)
-	var bit: int = button_at(local, button_layout(size))
+	var bit: int = button_at(local, _layout())
 	if bit != 0:
 		_button_fingers[pointer] = bit
 	elif _stick_finger < 0 and in_left_half(local.x, size.x):
@@ -153,6 +173,18 @@ func _refresh() -> void:
 	queue_redraw()
 
 
+## Pixels per layout unit (the project stretches a 1920x1080 design, so a phone squeezes it).
+func _px_per_unit() -> float:
+	if not is_inside_tree():
+		return 1.0
+	return maxf(get_viewport().get_final_transform().get_scale().x, 0.01)
+
+
+func _layout() -> Array:
+	var k: float = _px_per_unit()
+	return button_layout(size, k, SafeArea.window_insets() / k)
+
+
 func _to_local_pos(screen_pos: Vector2) -> Vector2:
 	return get_global_transform_with_canvas().affine_inverse() * screen_pos
 
@@ -170,12 +202,17 @@ func _draw() -> void:
 		draw_arc(_aim_start, ra, 0.0, TAU, 48, Color(1.0, 0.85, 0.5, 0.5), 2.0)
 		draw_circle(_aim_start + clamp_offset(_aim_pos - _aim_start, ra), u * 0.5, Color(1.0, 0.85, 0.5, 0.6))
 	var font: Font = ThemeDB.fallback_font
-	var font_size: int = maxi(int(u * 0.22), 10)
-	for b: Dictionary in button_layout(size):
+	var k: float = _px_per_unit()
+	var font_size: int = ceili(LABEL_PX / k)
+	var line: float = 2.5 / k
+	for b: Dictionary in _layout():
 		var center: Vector2 = b["center"]
-		var radius: float = b["radius"]
 		var held: bool = (buttons & int(b["bit"])) != 0
-		draw_circle(center, radius, Color(1.0, 1.0, 1.0, 0.4 if held else 0.14))
-		draw_arc(center, radius, 0.0, TAU, 40, ink, 2.0)
-		draw_string(font, center + Vector2(-radius, font_size * 0.35), b["label"], HORIZONTAL_ALIGNMENT_CENTER,
-			radius * 2.0, font_size, Color(1.0, 1.0, 1.0, 0.85))
+		var radius: float = float(b["radius"]) * (1.08 if held else 1.0)
+		draw_circle(center, radius, Color(1.0, 0.82, 0.45, 0.62) if held else Color(0.06, 0.04, 0.03, 0.42))
+		draw_arc(center, radius, 0.0, TAU, 40, Color(1.0, 0.95, 0.8, 1.0) if held else Color(1.0, 1.0, 1.0, 0.7), line * (1.6 if held else 1.0), true)
+		var text: String = b["label"]
+		var text_w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+		var at: Vector2 = center + Vector2(-text_w * 0.5, font_size * 0.35)
+		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, maxi(int(3.0 / k), 3), Color(0.0, 0.0, 0.0, 0.85))
+		draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, Color(1.0, 1.0, 1.0, 1.0))

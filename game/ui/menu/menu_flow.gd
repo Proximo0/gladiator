@@ -23,6 +23,7 @@ const ORBIT_RADIUS: float = 9.0
 const ORBIT_HEIGHT: float = 3.4
 const ONLINE_MODE: String = "online"
 
+const PAUSE_MIN_PX: float = 56.0  ## Smallest touch pause button on screen.
 const HINT_PX: float = 15.0  ## On-screen text height of the controls hint.
 var state: MenuState = MenuState.new()
 var settings: MenuSettings = MenuSettings.new()
@@ -145,9 +146,25 @@ func _layout() -> void:
 	_layer.scale = Vector2(s, s)
 	_root.position = Vector2.ZERO
 	_root.size = vp / s
+	var k: float = maxf(get_viewport().get_final_transform().get_scale().x, 0.01)
+	var ppu: float = k * s  # on-screen px per layout unit
+	var pause_pos: Vector2 = Vector2(_root.size.x - 96.0 - 18.0, 18.0)
+	var hint_y: float = 8.0
+	if TouchControls.active():
+		# The meters take the top corners, so the pause button sits between them and the hint goes below it (or,
+		# on a narrow portrait screen, below the meters).
+		var ins: Vector4 = SafeArea.window_insets()
+		var side: float = maxf(96.0, PAUSE_MIN_PX / ppu)  # a square thumb target
+		_pause_btn.custom_minimum_size = Vector2(side, side)
+		_pause_btn.size = Vector2(side, side)
+		_pause_btn.add_theme_font_size_override("font_size", ceili(22.0 / ppu))
+		pause_pos = Vector2((_root.size.x - side) * 0.5, (ins.y + HUD.TOUCH_EDGE_PX) / ppu)
+		hint_y = pause_pos.y + side + 6.0
+		if vp.x < vp.y:
+			hint_y = HUD.touch_block_px(vp.x * k, vp.y * k, ins.y) / ppu + 8.0
 	if _hint.visible:
-		_hint.position = Vector2((_root.size.x - _hint.size.x) * 0.5, 8.0)
-	_pause_btn.position = Vector2(_root.size.x - 96.0 - 18.0, 18.0)
+		_hint.position = Vector2((_root.size.x - _hint.size.x) * 0.5, hint_y)
+	_pause_btn.position = pause_pos
 
 
 # --- screens -----------------------------------------------------------------------------------------------------

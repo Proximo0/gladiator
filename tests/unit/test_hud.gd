@@ -196,3 +196,25 @@ func test_meter_layout_keeps_text_readable() -> void:
 	m.free()
 	assert_near(HUD.meter_px(540.0), HUD.METER_MIN_PX)
 	assert_near(HUD.meter_px(5000.0), HUD.METER_MAX_PX)
+
+
+func test_meters_sit_at_the_bottom_for_mouse_and_at_the_top_for_touch() -> void:
+	var vp: Vector2 = Vector2(1920.0, 4160.0)
+	var meter: Vector2 = Vector2(600.0, 930.0)
+	var desk: Array = HUD.meter_positions(vp, meter, 0.28, Vector4.ZERO, false)
+	assert_true((desk[0] as Vector2).y > vp.y * 0.5, "bottom")
+	var touch: Array = HUD.meter_positions(vp, meter, 0.28, Vector4(0.0, 60.0, 0.0, 0.0), true)
+	assert_true((touch[0] as Vector2).y * 0.28 >= 60.0, "below the notch")
+	assert_near((touch[0] as Vector2).y, (touch[1] as Vector2).y)
+	assert_true((touch[1] as Vector2).x + meter.x <= vp.x, "opponent meter on screen")
+	assert_true((touch[0] as Vector2).x + meter.x < (touch[1] as Vector2).x, "the two meters do not touch")
+
+
+func test_touch_block_covers_the_meters() -> void:
+	assert_true(HUD.touch_block_px(540.0, 1170.0, 0.0) > BloodMeter.METER_SIZE.y * 0.5)
+
+
+func test_touch_meters_shrink_on_a_short_landscape_screen_only() -> void:
+	assert_true(HUD.meter_px(1170.0, 540.0, true) < HUD.meter_px(1170.0, 540.0, false))
+	assert_true(HUD.touch_block_px(1170.0, 540.0, 0.0) <= 540.0 * 0.5, "leaves the lower half to the thumbs")
+	assert_near(HUD.meter_px(540.0, 1170.0, true), HUD.meter_px(540.0, 1170.0, false))
