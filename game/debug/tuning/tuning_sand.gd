@@ -32,6 +32,7 @@ const ROWS_SAND: Array = [
 	["sand_contact_spread", 0.8, 0.0, 3.0, 0.05, "Sand", "Contact shadow: blob radius growth per metre its part is above the sand."],
 	["sand_contact_foot_aspect", 2.0, 1.0, 4.0, 0.1, "Sand", "Contact shadow: a foot blob's length over its width, laid along the foot (same area as the round blob of sand_contact_foot_r)."],
 	["sand_contact_sun_ambient", 0.35, 0.0, 1.0, 0.05, "Sand", "Contact shadow with sun fade (GfxQuality.CONTACT_SUN_FADE): share of a blob that still darkens the ambient light, so a foot in the sun shadow is grounded without a black stack."],
+	["sand_contact_sun_gain", 1.65, 1.0, 4.0, 0.05, "Sand", "Contact shadow with sun fade: how much harder the sun light is cut under a blob, so a blob in full sun reads about as dark as without the fade."],
 ]
 
 var sand_depth_scale: float
@@ -62,3 +63,4 @@ var sand_contact_body_h: float
 var sand_contact_spread: float
 var sand_contact_foot_aspect: float
 var sand_contact_sun_ambient: float
+var sand_contact_sun_gain: float

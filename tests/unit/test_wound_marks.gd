@@ -204,23 +204,24 @@ func test_a_ring_wraps_the_cut_end_and_outranks_every_mark() -> void:
 
 
 func test_smear_outline_is_a_soft_blot_not_a_star() -> void:
+	var amp: float = Tuning.new().wound_smear_lobe
 	for seed: float in [0.0, 0.13, 0.5, 0.77, 0.99]:
 		var lo: float = INF
 		var hi: float = 0.0
 		var peaks: int = 0
 		var steps: int = 360
-		var prev2: float = WoundMarks.smear_lobe(TAU * float(steps - 2) / float(steps) - PI, seed, 0.16)
-		var prev: float = WoundMarks.smear_lobe(TAU * float(steps - 1) / float(steps) - PI, seed, 0.16)
+		var prev2: float = WoundMarks.smear_lobe(TAU * float(steps - 2) / float(steps) - PI, seed, amp)
+		var prev: float = WoundMarks.smear_lobe(TAU * float(steps - 1) / float(steps) - PI, seed, amp)
 		for i: int in steps:
-			var r: float = WoundMarks.smear_lobe(TAU * float(i) / float(steps) - PI, seed, 0.16)
+			var r: float = WoundMarks.smear_lobe(TAU * float(i) / float(steps) - PI, seed, amp)
 			lo = minf(lo, r)
 			hi = maxf(hi, r)
 			if prev > prev2 and prev >= r:
 				peaks += 1
 			prev2 = prev
 			prev = r
-		assert_true(hi / lo < 1.45, "seed %.2f: outline radius varies %.2fx" % [seed, hi / lo])
+		assert_true(hi / lo < 1.75, "seed %.2f: outline radius varies %.2fx" % [seed, hi / lo])
 		assert_true(peaks <= 5, "seed %.2f: %d lobes" % [seed, peaks])
-		assert_near(WoundMarks.smear_lobe(-PI, seed, 0.16), WoundMarks.smear_lobe(PI, seed, 0.16), 0.0001,
+		assert_near(WoundMarks.smear_lobe(-PI, seed, amp), WoundMarks.smear_lobe(PI, seed, amp), 0.0001,
 				"no seam at the back")
 	assert_near(WoundMarks.smear_lobe(1.0, 0.3, 0.0), 1.0)

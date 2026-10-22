@@ -155,6 +155,7 @@ func setup(arena_radius: float = 11.0, tpm: float = -1.0, mesh_cell: float = -1.
 	_material.set_shader_parameter("rim_light", tun.sand_rim_light)
 	_material.set_shader_parameter("contact_sun_fade", GfxQuality.pick_f(GfxQuality.CONTACT_SUN_FADE))
 	_material.set_shader_parameter("contact_sun_ambient", tun.sand_contact_sun_ambient)
+	_material.set_shader_parameter("contact_sun_gain", tun.sand_contact_sun_gain)
 	_mesh_node = MeshInstance3D.new()
 	_mesh_node.name = "SandMesh"
 	_mesh_node.mesh = build_disc_mesh(radius + DISC_MARGIN, mesh_cell)

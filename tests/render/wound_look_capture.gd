@@ -1,15 +1,15 @@
 extends Node
 ## Wound and shadow readability renders: a seeded presented bot fight runs headless-fast (only saved frames are drawn)
 ## for --secs seconds (or until it is over), then both fighters are frozen and the shots are saved: the fight camera,
-## each fighter close up, the feet from a low camera, then the right forearm of side 1 is cut off and the stump is
-## shot from the fight camera and from 2.5 m. Prints the fight camera's draw calls and primitives and how many wound
+## each fighter close up, the feet from a low camera on the sun side and in their own shadow from the other side, then the right forearm of side 1 is cut off, side 0 is hidden
+## and the stump is shot from the fight camera and from 2.5 m. Prints the fight camera's draw calls and primitives and how many wound
 ## marks were dropped from a full part during the fight (churn). Run in a real (xvfb) window:
 ## godot --path . --rendering-driver opengl3 --fixed-fps 60 --resolution 1280x720 \
 ##     res://tests/render/wound_look_capture.tscn -- --out=DIR --name=fight [--quality=0|1|2] [--seed=N] [--secs=18]
 ## Writes DIR/<name>_<shot>.png and a small copy (640 px wide at most) DIR/small/<name>_<shot>.png. Never part of
 ## the check suite; writes only the PNGs it is told to.
 
-const SHOTS: Array = [["cam", 0], ["f0", 0], ["f1", 1], ["feet", 0]]
+const SHOTS: Array = [["cam", 0], ["f0", 0], ["f1", 1], ["feet", 0], ["shade", 0]]
 const SEVER_SHOTS: Array = [["sever_cam", 1], ["sever_mid", 1]]
 const SEVER_WAIT: int = 50  ## frames between the cut and its shots (the arm falls, the fountain starts)
 const SMALL_W: int = 640
@@ -163,6 +163,7 @@ func _sever(v: Fighter) -> void:
 	var up: Vector3 = (v.parts["upper_arm_r"] as Node3D).global_position
 	v.call("_sever", "forearm_r")
 	arm.freeze = false
+	(_match.fighters[1 - v.side] as Node3D).visible = false  # nothing in front of the stump
 	v.gore.emit({"kind": "sever", "part": "forearm_r", "point": elbow, "normal": (elbow - up).normalized(), "amount": 1.0})
 
 
@@ -185,11 +186,21 @@ func _aim(tag: String, side: int) -> void:
 	dir = (dir + sun * 0.9).normalized() if (dir + sun * 0.9).length() > 0.2 else dir.rotated(Vector3.UP, 0.35)
 	var vp: Vector2 = Vector2(get_viewport().get_visible_rect().size)
 	_cam.keep_aspect = Camera3D.KEEP_WIDTH if vp.y > vp.x else Camera3D.KEEP_HEIGHT
-	if tag == "feet":
-		# Low, from the sun side, between the two fighters' feet.
+	if tag == "sever_mid":
+		# From outside the stump (the side the arm was on), 2.5 m off, a little above: a fight-camera distance.
+		var stump: Vector3 = (f.parts["upper_arm_r"] as Node3D).global_position + Vector3(0, -0.15, 0)
+		var out: Vector3 = stump - (f.parts["torso"] as Node3D).global_position
+		out.y = 0.0
+		out = out.normalized() if out.length() > 0.01 else dir
+		_cam.global_position = stump + (out * 0.8 + dir * 0.6).normalized() * dist + Vector3(0, 0.6, 0)
+		_cam.look_at(stump, Vector3.UP)
+	elif tag == "feet" or tag == "shade":
+		# Low, between the two fighters' feet: from the sun side, or from the far side looking into their shadows.
 		var mid: Vector3 = ((f.parts["pelvis"] as Node3D).global_position + (o.parts["pelvis"] as Node3D).global_position) * 0.5
 		mid.y = 0.0
 		var side_dir: Vector3 = sun if sun.length() > 0.1 else Vector3.BACK
+		if tag == "shade":
+			side_dir = -side_dir
 		_cam.global_position = mid + side_dir * 2.4 + Vector3(0, 1.1, 0)
 		_cam.look_at(mid, Vector3.UP)
 	else:

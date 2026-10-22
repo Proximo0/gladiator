@@ -19,7 +19,7 @@ uniform float swell = 0.016;  // bruise swelling at full severity (m)
 uniform float core_scale = 1.0;  // open slit / hole width multiplier (Tuning wound_core_scale)
 uniform float rim_glow = 0.0;  // emission of a fresh wound's wet rim (Tuning wound_rim_glow)
 uniform float rim_glow_dry = 0.05;  // dryness at which that glow is gone (WoundMarks.dryness of wound_rim_glow_s)
-uniform float smear_lobe = 0.16;  // how far a smear's outline bulges (Tuning wound_smear_lobe; WoundMarks.smear_lobe)
+uniform float smear_lobe = 0.26;  // how far a smear's outline bulges (Tuning wound_smear_lobe; WoundMarks.smear_lobe)
 uniform float smear_drops = 0.35;  // share of edge cells round a smear that hold a satellite drop
 uniform float ring_glow = 0.0;  // emission of a sever ring's fresh blood (Tuning wound_ring_glow)
 uniform float ring_glow_dry = 0.2;  // dryness at which that glow is gone (wound_ring_glow_s)
@@ -167,8 +167,15 @@ void fragment() {
 			float ang = atan(e.y, e.x);
 			float p = seed * 6.2831853;
 			float lobe = 1.0 + smear_lobe * (0.55 * sin(2.0 * ang + p) + 0.3 * sin(3.0 * ang + 2.3 * p) + 0.15 * sin(5.0 * ang + 4.1 * p));
-			float rl = r / lobe;
-			a = (1.0 - smoothstep(0.8, 1.0, rl)) * (0.82 + 0.1 * (1.0 - rl));
+			// A ragged edge on top: 2D value noise over the blot (no angle seam), a few percent of its radius.
+			vec2 g = e * 4.0 + vec2(seed * 13.0, seed * 7.0);
+			vec2 gi = floor(g);
+			vec2 gf = fract(g);
+			gf = gf * gf * (3.0 - 2.0 * gf);
+			float gn = mix(mix(h11(dot(gi, vec2(1.0, 57.0))), h11(dot(gi + vec2(1.0, 0.0), vec2(1.0, 57.0))), gf.x),
+					mix(h11(dot(gi + vec2(0.0, 1.0), vec2(1.0, 57.0))), h11(dot(gi + vec2(1.0, 1.0), vec2(1.0, 57.0))), gf.x), gf.y);
+			float rl = r / lobe + (gn - 0.5) * 0.14;
+			a = (1.0 - smoothstep(0.82, 1.0, rl)) * (0.8 + 0.12 * (1.0 - rl));
 			vec2 q = e * 2.6 + vec2(seed * 9.0, seed * 4.0);
 			vec2 cell = floor(q);
 			vec2 f = fract(q) - 0.5;

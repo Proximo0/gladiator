@@ -5,7 +5,7 @@ extends "res://game/debug/tuning/tuning_sand.gd"
 ## (The older wound rows, wound_core_scale .. wound_stump_sev, live in the Blood group.)
 
 const ROWS_WOUNDS: Array = [
-	["wound_smear_lobe", 0.16, 0.0, 0.5, 0.01, "Wounds", "Wound marks: how far a blood smear's outline bulges in and out (a few soft lobes; high values read as a star)."],
+	["wound_smear_lobe", 0.26, 0.0, 0.5, 0.01, "Wounds", "Wound marks: how far a blood smear's outline bulges in and out (a few soft lobes; high values read as a star)."],
 	["wound_smear_drops", 0.35, 0.0, 1.0, 0.05, "Wounds", "Wound marks: share of a smear's edge cells that hold a satellite drop (0 = a clean blot)."],
 	["wound_ring_band", 0.06, 0.01, 0.2, 0.005, "Wounds", "Sever ring: height of the wet blood band round a stump and the cut end of a severed part, m."],
 	["wound_ring_glow", 1.4, 0.0, 4.0, 0.05, "Wounds", "Sever ring: emission of the band's fresh wet blood, so a stump reads at fight-camera distance."],

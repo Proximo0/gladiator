@@ -46,10 +46,13 @@ uniform float rim_light = 0.3;
 uniform vec4 contact[8];
 uniform vec4 contact_bound = vec4(0.0);  // x, z, radius holding every live blob (ContactShadow.bound); radius 0 = none
 uniform vec4 contact_axis[8];  // per blob: flat direction x, z and aspect (length over width; 0 = round)
-// Sun fade (GfxQuality.CONTACT_SUN_FADE): 1 takes the blobs off the sun light only (none in the sun's shadow, which
-// already darkens the sand there) and `contact_sun_ambient` of them off the ambient; 0 darkens the albedo as before.
+// Sun fade (GfxQuality.CONTACT_SUN_FADE): 1 fades the blobs by the sun's shadow: in the sun's shadow (which already
+// darkens the sand there) only `contact_sun_ambient` of a blob is left, on the ambient; in full sun the sun light
+// takes the rest, `contact_sun_gain` times over so the blob reads about as dark as with 0. Compatibility draws the
+// shadowed sun in a pass of its own, so the blob can only scale the sun's light there, never take ambient away.
 uniform float contact_sun_fade = 0.0;
 uniform float contact_sun_ambient = 0.35;
+uniform float contact_sun_gain = 1.65;
 
 varying vec3 lpos;
 varying float v_sparkle;
@@ -240,7 +243,9 @@ void fragment() {
 		float cq = clamp(1.0 - (along * along / casp + across * across * casp) / (cb.z * cb.z), 0.0, 1.0);
 		cshade *= 1.0 - cb.w * cq * cq;
 	}
-	v_cshade = mix(1.0, cshade, contact_sun_fade);
+	// With sun fade the albedo is left alone: the ambient takes contact_sun_ambient of the blob here, the sun light
+	// the rest (light(), so none of it where the sun is shadowed).
+	v_cshade = mix(1.0, clamp(1.0 - (1.0 - cshade) * contact_sun_gain, 0.0, 1.0), contact_sun_fade);
 	col *= mix(cshade, 1.0, contact_sun_fade);
 	ALBEDO = col;
 	EMISSION = col * sand_ambient * mix(1.0, cshade, contact_sun_fade * contact_sun_ambient) + bcol * bglow * cov;
