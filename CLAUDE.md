@@ -9,7 +9,7 @@ The current step's contract is in `docs/core_brief.md`; read it before coding.
 ## Commands
 - `tools/run_tests.sh [test_name]`: headless unit tests (`tests/unit/test_*.gd`). Prints failures only.
 - `tools/lint.sh`: parse and static checks for every script. Ends with `LINT problems=<n>`.
-- `tools/run_sims.sh`: regression sims (`tests/sim/sim_*.gd`, listed in `tests/sim/sim_suite.gd`).
+- `tools/run_sims.sh`: regression sims (every `tests/sim/sim_*.gd` with a `run()`, found by `tests/sim/sim_suite.gd`).
 - `tools/sim_isolation.sh [sim ...]`: each sim file alone vs the whole suite in one process; prints rows that differ.
 - `tools/check_all.sh`: everything at once (unit, sims, lint, plus the bot and lab if their scenes exist).
 - `tools/export_windows.sh`: Windows build zip in `build/`.

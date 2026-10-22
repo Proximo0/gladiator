@@ -2,6 +2,7 @@ extends "res://tests/sim/sim_base.gd"
 ## The match wrapper through a real MenuFlow: the pre-fight intro holds both fighters (the player's reader reads no
 ## device, the CPU's brain is set aside) and lets them go on FIGHT!, a key press skips it, the fighters barely move
 ## while held, practice gets no intro, and a finished fight opens the results screen with its buttons and numbers.
+## suite: last
 
 const HOLD_CAP: int = 400
 ## Ticks from the bleed-out to the results: MenuFlow.RESULT_DELAY_S, then the instant replay (KillCam) when it plays.

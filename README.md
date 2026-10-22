@@ -23,8 +23,8 @@ minute one.
     godot --path . -- --stamp   # run with the frame stamp visible
 
 Tuning pattern: add a row to `Tuning.FIELDS` plus a `var`, read `Tuning.shared().<field>` in game code.
-Add a sim: write `tests/sim/sim_<name>.gd` (extends `sim_base.gd`, `run()` returns `[[name, ok, detail]]`) and list it
-in `SIM_FILES` in `sim_suite.gd`. Add a unit test: `tests/unit/test_<module>.gd`, methods named `test_*`.
+Add a sim: write `tests/sim/sim_<name>.gd` (extends `sim_base.gd`, `run()` returns `[[name, ok, detail]]`); the suite
+finds it by folder scan (`## suite: skip` / `## suite: last` markers in `sim_suite.gd`). Add a unit test: `tests/unit/test_<module>.gd`, methods named `test_*`.
 
 Note: the first run of any tool imports the project (class cache); a raw `godot` render before that needs `godot --headless --path . --import` once.
 
