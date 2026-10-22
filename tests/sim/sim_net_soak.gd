@@ -4,6 +4,7 @@ extends "res://tests/sim/sim_base.gd"
 ## so it sees the world as late as a human would), a fake link on both directions, several full matches in a row.
 ## Not in the suite (long). Run with tools/net_soak.sh; each match prints `SOAK key=value ...` lines that the tool
 ## turns into a table. Arguments (after the sim name): rtt_ms loss matches time_limit_s.
+## suite: skip
 
 const BASE_SEED: int = 9100
 const WEAPONS: Array = [["gladius", "spear"], ["dai_katana", "mace"], ["halberd", "longsword"], ["warhammer", "machete"],
