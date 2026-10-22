@@ -403,6 +403,14 @@ const FIELDS: Array = [
 	["sand_dust_life", 3.5, 0.5, 10.0, 0.1, "Sand", "Seconds fine dust lingers."],
 	["sand_dust_alpha", 0.28, 0.02, 0.6, 0.01, "Sand", "Peak opacity of one dust sprite."],
 	["sand_dust_size", 0.4, 0.1, 1.5, 0.05, "Sand", "Final width (m) of a footstep dust sprite; bigger events scale up."],
+	["sand_contact_dark", 0.6, 0.0, 0.9, 0.05, "Sand", "Contact shadow: peak darkening of the sand under a planted foot (0 turns the foot blobs off)."],
+	["sand_contact_foot_r", 0.2, 0.05, 0.4, 0.01, "Sand", "Contact shadow: radius of a planted foot's dark blob, m."],
+	["sand_contact_foot_h", 0.3, 0.05, 1.0, 0.01, "Sand", "Contact shadow: height above its rest at which a lifted foot's blob has faded out, m."],
+	["sand_contact_foot_rest", 0.05, 0.0, 0.15, 0.005, "Sand", "Contact shadow: foot-box centre height of a planted foot (blob at full strength), m."],
+	["sand_contact_body_dark", 0.5, 0.0, 0.9, 0.05, "Sand", "Contact shadow: peak darkening under the pelvis at the sand (standing fighters get a faint wide pool)."],
+	["sand_contact_body_r", 0.5, 0.1, 1.0, 0.01, "Sand", "Contact shadow: radius of the blob under the pelvis at the sand, m."],
+	["sand_contact_body_h", 1.6, 0.3, 3.0, 0.05, "Sand", "Contact shadow: pelvis height at which its blob has faded out, m."],
+	["sand_contact_spread", 0.8, 0.0, 3.0, 0.05, "Sand", "Contact shadow: blob radius growth per metre its part is above the sand."],
 ]
 
 static var _shared: Tuning = null
@@ -656,6 +664,14 @@ var sand_strike_grains: float
 var sand_dust_life: float
 var sand_dust_alpha: float
 var sand_dust_size: float
+var sand_contact_dark: float
+var sand_contact_foot_r: float
+var sand_contact_foot_h: float
+var sand_contact_foot_rest: float
+var sand_contact_body_dark: float
+var sand_contact_body_r: float
+var sand_contact_body_h: float
+var sand_contact_spread: float
 var feel_flash_min: float
 var feel_spark_max: float
 var feel_spark_min: float

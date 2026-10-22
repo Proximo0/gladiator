@@ -253,6 +253,18 @@ func set_blood_palette(slot: int, fresh: Color, dried: Color, glow: float) -> vo
 	_material.set_shader_parameter("blood_glow" + sfx, glow)
 
 
+## Contact-shadow blobs under the fighters (ContactShadow.pack: MAX_BLOBS long, live ones first). An empty array
+## clears them.
+func set_contacts(blobs: PackedVector4Array) -> void:
+	if _material == null:
+		return
+	if blobs.size() != ContactShadow.MAX_BLOBS:
+		blobs.resize(ContactShadow.MAX_BLOBS)
+		blobs.fill(Vector4.ZERO)
+	_material.set_shader_parameter("contact", blobs)
+	_material.set_shader_parameter("contact_bound", ContactShadow.bound(blobs))
+
+
 ## Soaks blood in: pools spread a little, small amounts leave dark clumps. `slot` is the bleeding fighter's blood
 ## palette slot (0 or 1), so red and ichor can lie on the same sand.
 func add_blood(pos: Vector3, radius_m: float, litres: float, slot: int = 0) -> void:
@@ -412,6 +424,7 @@ func blood_at(pos: Vector3) -> float:
 func clear() -> void:
 	if n == 0:
 		return
+	set_contacts(PackedVector4Array())
 	_h.fill(0.0)
 	_blood.fill(0.0)
 	_wet.fill(0.0)
