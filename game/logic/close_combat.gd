@@ -260,6 +260,12 @@ func add_struggle(rate: float, delta: float) -> bool:
 	return struggle >= 1.0
 
 
+## A staggering blow on the holding arm breaks the hold only when the striking body itself moved at `striker_speed`
+## of at least `min_speed` (m/s): the holding arm running into a still fist or blade is not a blow.
+static func blow_breaks_hold(striker_speed: float, min_speed: float) -> bool:
+	return striker_speed >= min_speed
+
+
 ## The hold is lost when the held point has been pulled `dist` away from the hand, past `max_dist`.
 static func hold_slips(dist: float, max_dist: float) -> bool:
 	return dist > max_dist

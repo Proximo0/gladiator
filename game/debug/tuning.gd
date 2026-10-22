@@ -182,6 +182,7 @@ const FIELDS: Array = [
 	["clinch_head_down", 0.3, 0.0, 0.6, 0.01, "Close", "How far below the chest a held head is pulled, m."],
 	["clinch_pull_step", 0.22, 0.02, 0.4, 0.01, "Close", "How far ahead of the held point the holding hand leads it each tick, m."],
 	["clinch_pull_force_frac", 0.9, 0.2, 2.0, 0.05, "Close", "Holding hand force cap as a share of arm_force (the pull)."],
+	["clinch_break_min_speed", 3.0, 0.0, 10.0, 0.1, "Close", "Speed the striking body itself needs for a staggering blow on the holding arm to break the hold, m/s."],
 	["clinch_twist", 0.35, 0.0, 0.8, 0.01, "Close", "Torso turn toward the free side while holding, putting the body into the pull, rad."],
 	["pelvis_inertia", 2.0, 1.0, 5.0, 0.1, "Stability", "Pelvis inertia boost for stable PD."],
 	["torso_inertia", 2.5, 1.0, 5.0, 0.1, "Stability", "Torso inertia boost for stable PD."],
@@ -560,6 +561,7 @@ var clinch_head_down: float
 var clinch_pull_step: float
 var clinch_pull_force_frac: float
 var clinch_twist: float
+var clinch_break_min_speed: float
 var pelvis_inertia: float
 var torso_inertia: float
 var balance_inertia: float

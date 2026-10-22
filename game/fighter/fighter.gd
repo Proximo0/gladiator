@@ -2039,7 +2039,11 @@ func _take_hit(ev: Dictionary, body: RigidBody3D, w: Weapon, attacker: Fighter) 
 		return
 	_stagger = minf(_stagger + float(ev.get("stagger", 0.0)) * (_t("kick_stagger_take") if _close.kicking() else 1.0), 1.5)
 	if _close.holding() and (part == "forearm_l" or part == "upper_arm_l") and float(ev.get("stagger", 0.0)) > 0.2:
-		_close_release(true)
+		# Only a real blow breaks the grip: the striker's own speed, not the holding arm running into a still fist.
+		var own: Vector3 = pre_step_velocity(body.name, body, p)
+		var striker: Vector3 = (ev.get("rel_vel", Vector3.ZERO) as Vector3) + own
+		if CloseCombat.blow_breaks_hold(striker.length(), _t("clinch_break_min_speed")):
+			_close_release(true)
 	if bool(ev.get("dislodge", false)):
 		_dislodge(str(ev.get("dislodged_id", "")), part, kb)
 	var gore_events: Array = health.apply(ev, part) if health != null else []

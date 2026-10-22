@@ -6,6 +6,10 @@ extends "res://tests/sim/sim_base.gd"
 
 const STEP_CAP_S: float = 40.0
 const RESET_SEED: int = 11
+## A player who cannot get back to a lost weapon (it lies under the dummy) presses R: the bout resets, weapon in hand.
+const FETCH_GIVE_UP_TICKS: int = 360
+
+var _fetch_from: int = -1
 
 
 ## A reader whose output the sim sets each tick.
@@ -27,7 +31,14 @@ func _input_for(sess: PracticeSession, m: Match, t: int) -> FighterInput:
 	var id: String = sess.logic.step_id()
 	var near: bool = _dist(m) < 1.4
 	if id != "grab" and id != "move" and id != "aim" and (m.fighters[0] as Fighter).weapon == null:
-		return _fetch(m, t)  # lost it in a fall: walk to it and pick it up
+		if _fetch_from < 0:
+			_fetch_from = t
+		elif t - _fetch_from > FETCH_GIVE_UP_TICKS:
+			_fetch_from = -1
+			sess.reset_bout.call_deferred()  # the R key
+			return i
+		return _fetch(m, t)  # lost it (a fall, a disarm): walk to it and pick it up
+	_fetch_from = -1
 	match id:
 		"move":
 			i.move_y = 1000

@@ -218,3 +218,8 @@ func test_round_trip() -> void:
 	d.from_array([])
 	assert_false(d.kicking())
 	assert_false(d.holding())
+
+
+func test_only_a_moving_striker_breaks_a_hold() -> void:
+	assert_false(CloseCombat.blow_breaks_hold(0.4, 3.0), "the holder ran into a still fist")
+	assert_true(CloseCombat.blow_breaks_hold(5.0, 3.0))
