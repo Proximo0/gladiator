@@ -395,16 +395,21 @@ func has_open_match() -> bool:
 
 ## The fight ended: `winner_side` 0 = host, 1 = client, -1 = draw.
 func report_finished(winner_side: int, ticks: int, reason: String) -> void:
+	_report(Rating.KIND_RESULT, _side_id(winner_side), reason, ticks)
+
+
+## The player id of match side `side` (0 = host, 1 = client), "" for -1.
+func _side_id(side: int) -> String:
+	if side < 0:
+		return ""
 	var me_side: int = 0 if str(_info.get("role", "")) == OnlineService.ROLE_HOST else 1
-	var winner: String = ""
-	if winner_side >= 0:
-		winner = str(service.profile.get("id", "")) if winner_side == me_side else str((_info["opponent"] as Dictionary).get("id", ""))
-	_report(Rating.KIND_RESULT, winner, reason, ticks)
+	return str(service.profile.get("id", "")) if side == me_side else str((_info["opponent"] as Dictionary).get("id", ""))
 
 
 ## The match ended without a result: Rating.KIND_LEFT (this player left) or KIND_DROPPED (the connection died).
-func report_abandoned(kind: String, ticks: int = 0) -> void:
-	_report(kind, "", kind, ticks)
+## A dropped report names who was ahead on points when it died (`leader_side`, MatchJudge.leader) as its winner.
+func report_abandoned(kind: String, ticks: int = 0, leader_side: int = -1) -> void:
+	_report(kind, _side_id(leader_side) if kind == Rating.KIND_DROPPED else "", kind, ticks)
 
 
 func _report(kind: String, winner_id: String, reason: String, ticks: int) -> void:

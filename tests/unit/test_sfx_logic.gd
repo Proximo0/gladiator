@@ -108,6 +108,8 @@ func test_bone_crack_and_finisher_and_helm() -> void:
 	assert_false(torso_small.has("impact/bone_crack"))
 	var crush: Array = _keys(SfxLogic.impact_plan(_ev({"finisher": "skull_crush", "contact": "blunt"}), "wood", "", ""))
 	assert_true(crush.has("impact/bone_crack"))
+	var pum: Array = _keys(SfxLogic.impact_plan(_ev({"finisher": "pummel", "contact": "blunt"}), "wood", "", ""))
+	assert_true(pum.has("impact/bone_crack"))
 	var helm: Array = _keys(SfxLogic.impact_plan(_ev({"dislodge": true, "dislodged_id": "helm_iron"}), "wood", "", "plate"))
 	assert_true(helm.has("impact/helm_knock"))
 

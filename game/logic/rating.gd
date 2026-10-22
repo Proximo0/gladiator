@@ -129,15 +129,23 @@ static func reconcile(a_id: String, a_rep: Dictionary, b_id: String, b_rep: Dict
 		return _verdict("agree", wa, a_id, true, "both agree")
 	if ak == KIND_DROPPED and bk == KIND_DROPPED:
 		return _verdict("voided", "", a_id, false, "both dropped")
-	# One side is missing or only says "dropped".
-	var lone: Dictionary = a_rep if ak != "" else b_rep
-	var lone_id: String = a_id if ak != "" else b_id
-	var other_id: String = b_id if ak != "" else a_id
+	# One side is missing or only says "dropped". A real result beats a "dropped" (the side that saw the end decides).
+	var take_a: bool = ak != "" and (ak == KIND_RESULT or bk != KIND_RESULT)
+	var lone: Dictionary = a_rep if take_a else b_rep
+	var lone_id: String = a_id if take_a else b_id
+	var other_id: String = b_id if take_a else a_id
 	var lone_kind: String = str(lone.get("kind", ""))
-	var other_kind: String = bk if ak != "" else ak
+	var other_kind: String = bk if take_a else ak
 	if lone_kind == KIND_DROPPED:
-		# Only "the connection died" and nothing from the other side: no rating without a second voice.
-		return _verdict("pending" if not final else "forfeit", lone_id, a_id, final, "%s silent" % other_id)
+		# Only "the connection died" and nothing from the other side. Without a server this runs on the reporter's own
+		# device, which cannot tell a silent opponent from one it cut off itself (block the game's traffic when losing,
+		# leave the lobby). So the silent side forfeits only to a reporter that was ahead when the link died (its
+		# report's winner is itself, MatchJudge.leader) and the fight had run MIN_RATED_TICKS; anything else is void.
+		if not final:
+			return _verdict("pending", "", a_id, false, "waiting for %s" % other_id)
+		if str(lone.get("winner", "")) == lone_id and int(lone.get("ticks", 0)) >= MIN_RATED_TICKS:
+			return _verdict("forfeit", lone_id, a_id, true, "%s silent" % other_id)
+		return _verdict("voided", "", a_id, false, "connection lost")
 	if not final and other_kind == "":
 		return _verdict("pending", "", a_id, false, "waiting for %s" % other_id)
 	var w: String = str(lone.get("winner", ""))

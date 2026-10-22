@@ -334,7 +334,7 @@ static func impact_plan(ev: Dictionary, atk_mat: String, other_mat: String, armo
 		var bone_min: float = BONE_BLUNT_CORE if _is_core(part) else BONE_BLUNT_LIMB
 		if not glanced and blunt >= bone_min and not bool(ev.get("sever", false)):
 			layers.append(_layer("impact/bone_crack", clampf((blunt - bone_min) * 0.15, 0.0, 3.0) - 2.0, impact_pitch(inten)))
-		if str(ev.get("finisher", "")) == "skull_crush":
+		if str(ev.get("finisher", "")) in ["skull_crush", "pummel"]:
 			layers.append(_layer("impact/bone_crack", 3.0, 0.9))
 		if bool(ev.get("dislodge", false)):
 			var id: String = str(ev.get("dislodged_id", ""))

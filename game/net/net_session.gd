@@ -23,6 +23,10 @@ const HOST_PEER: int = 1
 const DATA_DIR: String = "res://data/"
 const RELAY_MAX_PACKET: int = 1164  ## EOS P2P: 1170 bytes per packet minus EOSG's 6-byte header
 const RELAY_CLOSE_DELAY_S: float = 0.3  ## a relay peer sends on the SDK tick: give a LEAVE time to go out before closing
+## Flood guard (docs/net_security.md): per physics tick at most this many packets from the other side are handled
+## (legit traffic is 1-3; a 1 s hitch delivers about 30-60), the rest are drained and dropped.
+const MAX_PACKETS_PER_TICK: int = 64
+const MAX_PACKET_BYTES: int = 4096  ## nothing legit is larger (a worst-case snapshot is ~1.1 KB, lobby messages cap at 4 KB)
 
 var role: String = ""
 var local_name: String = "Gladiator"
@@ -44,6 +48,7 @@ var input_blocked: bool = false:  ## the Esc menu is open over the match: this s
 			host_driver.gate_own_reader()
 var last_start: Dictionary = {}
 var close_reason: String = ""
+var dropped_packets: int = 0  ## from the other side, refused by the flood guard (too many in one tick, or oversized)
 
 var _peer: MultiplayerPeer = null
 var _relay_oversize_warned: bool = false
@@ -274,6 +279,7 @@ func _physics_process(_delta: float) -> void:
 	_peer.poll()
 	if _peer == null:
 		return  # a handler closed us during the poll
+	var handled: int = 0
 	while _peer != null and _peer.get_available_packet_count() > 0:
 		var from: int = _peer.get_packet_peer()
 		var bytes: PackedByteArray = _peer.get_packet()
@@ -281,6 +287,10 @@ func _physics_process(_delta: float) -> void:
 			continue
 		_last_heard = local_tick
 		bw_in.add(local_tick, bytes.size())
+		if handled >= MAX_PACKETS_PER_TICK or bytes.size() > MAX_PACKET_BYTES:
+			dropped_packets += 1
+			continue
+		handled += 1
 		_route(bytes)
 	if _peer == null or _closed:
 		return
@@ -312,27 +322,27 @@ func _on_control(d: Dictionary) -> void:
 		return
 	match int(d["_type"]):
 		NetConfig.MSG_HELLO:
-			if role != ROLE_HOST:
-				return
+			if role != ROLE_HOST or remote_joined:
+				return  # one hello per connection: a repeat cannot rename the player or swap its loadout mid-match
 			var why: String = NetLobby.check_hello(d, content_hash())
 			if why != "":
 				send(NetLobby.lobby(local_name, local_loadout, false, why, content_hash()), true)
 				status_changed.emit("Refused a player (%s)" % why)
 				return
 			remote_name = NetLobby.clean_name(str(d.get("name", "")))
-			remote_loadout = LoadoutRules.sanitize(d.get("loadout", {}))
+			remote_loadout = LoadoutRules.sanitize(NetLobby.dict_of(d.get("loadout")))
 			remote_joined = true
 			send(NetLobby.lobby(local_name, local_loadout, true, "", content_hash()), true)
 			status_changed.emit("%s joined" % remote_name)
 			lobby_changed.emit()
 		NetConfig.MSG_LOADOUT:
 			if role == ROLE_HOST and remote_joined:
-				remote_loadout = LoadoutRules.sanitize(d.get("loadout", {}))
+				remote_loadout = LoadoutRules.sanitize(NetLobby.dict_of(d.get("loadout")))
 				lobby_changed.emit()
 		NetConfig.MSG_LOBBY:
 			if role != ROLE_CLIENT:
 				return
-			if not bool(d.get("accepted", false)):
+			if not (d.get("accepted") is bool and bool(d["accepted"])):
 				var why_not: String = str(d.get("reason", ""))
 				if why_not.begins_with("version mismatch"):
 					_fail(why_not)  # host and client both say it the same way
@@ -344,7 +354,7 @@ func _on_control(d: Dictionary) -> void:
 				leave(mismatch)
 				return
 			remote_name = NetLobby.clean_name(str(d.get("name", "")))
-			remote_loadout = LoadoutRules.sanitize(d.get("loadout", {}))
+			remote_loadout = LoadoutRules.sanitize(NetLobby.dict_of(d.get("loadout")))
 			if not remote_joined:
 				status_changed.emit("In %s's lobby" % remote_name)
 			remote_joined = true

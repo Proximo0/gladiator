@@ -19,6 +19,9 @@ func test_death_gives_winner_and_cause() -> void:
 	assert_eq(k.update([_fr("dead"), _fr("standing")], 5, 0.1), {"winner": 1, "reason": "behead"})
 	var m := MatchJudge.new(10.0)
 	assert_eq(m.update([_fr("dead"), _fr("dead")], 5, 0.1)["winner"], -1)
+	var pm := MatchJudge.new(10.0)
+	pm.note_cause(1, "pummel")
+	assert_eq(pm.update([_fr("standing"), _fr("dead")], 5, 0.1), {"winner": 0, "reason": "pummel"})
 
 
 func test_ko_needs_hold_time() -> void:
@@ -48,9 +51,12 @@ func test_time_limit() -> void:
 
 
 func test_banners() -> void:
-	for k: String in ["run_through", "gut", "behead", "skull_crush"]:
+	for k: String in ["run_through", "gut", "behead", "skull_crush", "pummel"]:
 		assert_true(MatchJudge.finisher_banner(k).contains(" / "), k)
 	assert_eq(MatchJudge.finisher_banner("sever"), "")
+	assert_true(MatchJudge.finisher_banner("pummel").contains("Pummelled"))
+	assert_false(MatchJudge.finisher_banner("pummel") == MatchJudge.finisher_banner("skull_crush"))
+	assert_true(MatchJudge.CAUSES.has("pummel"))
 	assert_eq(MatchJudge.result_banner({"winner": 1}, ["A", "B"]), "VICTOR / B")
 	assert_true(MatchJudge.result_banner({"winner": -1}, ["A", "B"]).contains("/"))
 
@@ -81,3 +87,10 @@ func test_same_tick_double_death_is_mutual_draw() -> void:
 	var j := MatchJudge.new(60.0)
 	j.note_cause(0, "behead")
 	assert_eq(j.update([_fr("dead"), _fr("dead")], 5, 0.1), {"winner": -1, "reason": "mutual"})
+
+
+func test_leader_is_the_time_limit_rule() -> void:
+	assert_eq(MatchJudge.leader([{"blood": 4.0}, {"blood": 3.0}]), 0)
+	assert_eq(MatchJudge.leader([{"blood": 3.0}, {"blood": 4.0}]), 1)
+	assert_eq(MatchJudge.leader([{"blood": 4.0, "hp": 0.9}, {"blood": 4.1, "hp": 0.5}]), 0, "level blood: hp decides")
+	assert_eq(MatchJudge.leader([{"blood": 4.0, "hp": 0.7}, {"blood": 4.0, "hp": 0.7}]), -1)

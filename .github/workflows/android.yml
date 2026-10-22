@@ -1,0 +1,92 @@
+# Android emulator smoke test (docs/android.md): export a debug x86_64 APK with the `android_ci` feature (one
+# presented bot fight, then quit; online stays on the LAN stub because no EOS credentials exist here), boot an
+# x86_64 emulator, install, launch, wait for the ANDROID_CI PASS line and upload logcat + screenshots.
+# GitHub-hosted runners only (KVM); never the self-hosted gpu runner. Emulator frame times are not phone numbers.
+name: android
+
+on:
+  push:
+    branches: [main, ramp/android-ci]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+  BUILD_TOOLS: 35.0.1
+  API_LEVEL: 30
+
+jobs:
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+      - name: Cache export templates
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/godot-templates
+            ~/.local/share/godot/export_templates
+          key: godot-android-templates-${{ env.GODOT_VERSION }}
+      - name: Android SDK pieces and JDK 17
+        shell: bash
+        run: |
+          echo "JAVA_HOME_17=${JAVA_HOME_17_X64}" >> "$GITHUB_ENV"
+          set +o pipefail  # yes dies of SIGPIPE when sdkmanager exits
+          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;${BUILD_TOOLS}" "platform-tools" > /tmp/sdk.log 2>&1
+          [[ -x "${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS}/apksigner" ]] || { tail -n 30 /tmp/sdk.log; exit 1; }
+      - name: CI export preset (x86_64 + android_ci feature; not committed)
+        shell: bash
+        run: |
+          python3 -I - export_presets.cfg <<'PY'
+          import re, sys
+          p = sys.argv[1]
+          text = open(p).read()
+          head, sep, rest = text.partition('name="Android"')
+          assert sep, "Android preset missing"
+          nxt = re.search(r"^\[preset\.\d+\]\s*$", rest, re.M)
+          i = nxt.start() if nxt else len(rest)
+          # the Android preset and its .options section come before the next [preset.N] header
+          block, tail = rest[:i], rest[i:]
+          for k, v in {"architectures/x86_64": "true", "architectures/arm64-v8a": "false",
+                       "architectures/armeabi-v7a": "false", "custom_features": '"android_ci"'}.items():
+              block, n = re.subn(r"^%s=.*$" % re.escape(k), "%s=%s" % (k, v), block, flags=re.M)
+              assert n == 1, k
+          open(p, "w").write(head + sep + block + tail)
+          PY
+          git diff --stat export_presets.cfg
+      - name: Import and export APK
+        shell: bash
+        run: |
+          godot --headless --path . --import > /tmp/import.log 2>&1 || { tail -n 30 /tmp/import.log; exit 1; }
+          tools/export_android.sh
+          mkdir -p out/android && cp build/Sandblood-android.apk out/android/
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot emulator, install, play one bot fight
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.API_LEVEL }}
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          cores: 4
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: tools/android_ci_run.sh build/Sandblood-android.apk out/android 1500
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator
+          path: |
+            out/android/*.txt
+            out/android/*.png
+          if-no-files-found: ignore

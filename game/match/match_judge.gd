@@ -1,7 +1,7 @@
 class_name MatchJudge
 extends RefCounted
 ## Pure end-of-match rules. `update(frames, tick, delta)` returns {} while the fight goes on, else
-## {winner, reason}. Reasons: "blood_loss", "behead", "gut", "run_through", "skull_crush", "ko", "time", "mutual" (both dead on the same tick, a draw). A knock-out while the loser is
+## {winner, reason}. Reasons: "blood_loss", "behead", "gut", "run_through", "skull_crush", "pummel", "ko", "time", "mutual" (both dead on the same tick, a draw). A knock-out while the loser is
 ## under FAINT_BLOOD_L is the blood cap on consciousness, so it counts as "blood_loss".
 ## The Match tells it how each fighter died with `note_cause`; a death with no note is "blood_loss".
 
@@ -9,7 +9,7 @@ const DEFAULT_KO_HOLD_S: float = 2.5
 const DRAW_BLOOD_L: float = 0.25  ## at the time limit, the blood lead needed to win on points
 const DRAW_HP_FRAC: float = 0.005  ## at the time limit, with blood level, the whole-body hp lead needed to win (fists never bleed)
 const FAINT_BLOOD_L: float = 2.75  ## a knocked-out fighter below this much blood fainted from blood loss (cap 0.2 at 2.7 L)
-const CAUSES: PackedStringArray = ["behead", "gut", "run_through", "skull_crush"]
+const CAUSES: PackedStringArray = ["behead", "gut", "run_through", "skull_crush", "pummel"]
 
 var time_limit_s: float = 180.0
 var ko_hold_s: float = DEFAULT_KO_HOLD_S
@@ -50,22 +50,26 @@ func update(frames: Array, tick: int, delta: float) -> Dictionary:
 		var faint: bool = float(frames[out].get("blood", 5.0)) < FAINT_BLOOD_L
 		return {"winner": 1 - out, "reason": "blood_loss" if faint else "ko"}
 	if float(tick) * delta >= time_limit_s:
-		var b0: float = float(frames[0].get("blood", 5.0))
-		var b1: float = float(frames[1].get("blood", 5.0))
-		var winner: int = -1
-		if b0 - b1 > DRAW_BLOOD_L:
-			winner = 0
-		elif b1 - b0 > DRAW_BLOOD_L:
-			winner = 1
-		else:
-			var h0: float = float(frames[0].get("hp", 1.0))
-			var h1: float = float(frames[1].get("hp", 1.0))
-			if h0 - h1 > DRAW_HP_FRAC:
-				winner = 0
-			elif h1 - h0 > DRAW_HP_FRAC:
-				winner = 1
-		return {"winner": winner, "reason": "time"}
+		return {"winner": leader(frames), "reason": "time"}
 	return {}
+
+
+## Who is ahead on points (the time-limit rule): the side with DRAW_BLOOD_L more blood, else DRAW_HP_FRAC more
+## whole-body hp, else -1. Also what a "dropped" result report names as its winner (Rating.reconcile).
+static func leader(frames: Array) -> int:
+	var b0: float = float(frames[0].get("blood", 5.0))
+	var b1: float = float(frames[1].get("blood", 5.0))
+	if b0 - b1 > DRAW_BLOOD_L:
+		return 0
+	if b1 - b0 > DRAW_BLOOD_L:
+		return 1
+	var h0: float = float(frames[0].get("hp", 1.0))
+	var h1: float = float(frames[1].get("hp", 1.0))
+	if h0 - h1 > DRAW_HP_FRAC:
+		return 0
+	if h1 - h0 > DRAW_HP_FRAC:
+		return 1
+	return -1
 
 
 func _reason(loser: int) -> String:
@@ -84,6 +88,8 @@ static func finisher_banner(kind: String) -> String:
 			return "CAPVT ABSCISSVM / Beheaded"
 		"skull_crush":
 			return "CALVARIA FRACTA / Skull crushed"
+		"pummel":
+			return "PVGNIS VICTVS / Pummelled"
 	return ""
 
 

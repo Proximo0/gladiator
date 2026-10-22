@@ -124,9 +124,35 @@ func test_lone_report_waits_then_counts() -> void:
 
 
 func test_dropped_alone_is_never_rated_before_the_grace_period() -> void:
-	var d: Dictionary = Rating.make_report("m", "A", Rating.KIND_DROPPED, "", "lost", 900)
+	var d: Dictionary = Rating.make_report("m", "A", Rating.KIND_DROPPED, "A", "lost", 900)
 	assert_false(Rating.reconcile("A", d, "B", {}, false)["rated"])
-	assert_eq(Rating.reconcile("A", d, "B", {}, true)["winner"], "A")
+	var v: Dictionary = Rating.reconcile("A", d, "B", {}, true)
+	assert_eq(v["status"], "forfeit")
+	assert_eq(v["winner"], "A", "the silent side forfeits to a reporter that was ahead")
+
+
+## The drop-to-win exploit (docs/net_security.md): a losing player blocks the game's traffic and leaves the lobby, so
+## on its own device only its "dropped" report exists. It must not turn into a forfeit win for the one who was behind.
+func test_lone_drop_by_the_side_behind_is_void() -> void:
+	var behind: Dictionary = Rating.make_report("m", "A", Rating.KIND_DROPPED, "B", "dropped", 3000)
+	var level: Dictionary = Rating.make_report("m", "A", Rating.KIND_DROPPED, "", "dropped", 3000)
+	var early: Dictionary = Rating.make_report("m", "A", Rating.KIND_DROPPED, "A", "dropped", 100)
+	for d: Dictionary in [behind, level, early]:
+		var v: Dictionary = Rating.reconcile("A", d, "B", {}, true)
+		assert_false(v["rated"], str(d))
+		assert_eq(v["status"], "voided")
+
+
+## One side saw the result, the other only a dropped link: the result decides, whichever side runs the verdict.
+func test_result_beats_a_dropped_report() -> void:
+	var res: Dictionary = _res("B", "B")
+	var drop: Dictionary = Rating.make_report("m", "A", Rating.KIND_DROPPED, "A", "dropped", 3000)
+	var on_a: Dictionary = Rating.reconcile("A", drop, "B", res, true)
+	var on_b: Dictionary = Rating.reconcile("B", res, "A", drop, true)
+	assert_eq(on_a["winner"], "B")
+	assert_eq(on_b["winner"], "B")
+	assert_eq(on_a["status"], "single")
+	assert_near(float(on_a["score_a"]), 0.0)
 
 
 func test_no_reports_at_all() -> void:

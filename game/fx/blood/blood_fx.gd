@@ -566,6 +566,14 @@ func on_gore(event: Dictionary, f: Object = null) -> void:
 			if anchor != null:
 				add_wound(anchor, anchor.to_local(point), 26.0, cb, 1.4, gslot)
 				_wound_owner_tag(f)
+		"pummel":
+			var pup: Vector3 = (nrm + Vector3.UP * 0.6).normalized()
+			_burst(point, pup, 70, 1.2, 5.0, 0.9, 0.007, gslot)
+			_ground_splash(point, 16, gslot)
+			if anchor != null:
+				add_wound(anchor, anchor.to_local(point), 20.0, cb, 1.3, gslot)
+				_wound_owner_tag(f)
+				_hit_stains(anchor, point, 30.0, Vector3.DOWN, gslot)
 		"skull_crush":
 			var up: Vector3 = (nrm + Vector3.UP * 0.8).normalized()
 			_burst(point, up, 120, 1.5, 7.0, 1.0, 0.0075, gslot)
