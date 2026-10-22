@@ -14,6 +14,7 @@ varying flat vec3 v_cloth;
 varying flat vec3 v_skin;
 varying flat vec3 v_hair;
 varying float v_y;
+varying flat float v_shade;
 
 const vec3 SKINS[4] = vec3[4](vec3(0.8, 0.6, 0.45), vec3(0.66, 0.46, 0.33), vec3(0.52, 0.36, 0.26), vec3(0.86, 0.68, 0.54));
 const vec3 HAIRS[6] = vec3[6](vec3(0.04, 0.03, 0.03), vec3(0.1, 0.06, 0.04), vec3(0.17, 0.1, 0.06), vec3(0.26, 0.17, 0.09), vec3(0.4, 0.38, 0.36), vec3(0.5, 0.36, 0.18));
@@ -23,7 +24,10 @@ void vertex() {
 	float phase = fract(seed * 0.61803399);
 	float skin_u = fract(seed * 0.75487767);
 	float hair_u = fract(seed * 0.56984029);
-	v_cloth = INSTANCE_CUSTOM.xyz;
+	// Worn, sun-bleached wool: each spectator's cloth a little duller or darker (the palette alone read as confetti).
+	float wear = fract(seed * 0.4142136);
+	v_cloth = mix(INSTANCE_CUSTOM.xyz, vec3(dot(INSTANCE_CUSTOM.xyz, vec3(0.3, 0.55, 0.15))), 0.12 + 0.3 * wear) * mix(0.78, 1.0, fract(seed * 0.2360680));
+	v_shade = mix(0.86, 1.0, fract(seed * 0.1180340));
 	v_skin = SKINS[int(skin_u * 4.0) % 4] * mix(0.9, 1.05, fract(seed * 0.3247179));
 	v_hair = HAIRS[int(hair_u * 6.0) % 6];
 	if (mode == 3) {
@@ -57,7 +61,9 @@ void fragment() {
 	vec3 m = COLOR.rgb;
 	float rest = max(0.0, 1.0 - m.r - m.g - m.b);
 	vec3 c = m.r * v_cloth + m.g * v_skin + m.b * v_hair + rest * rest_tint;
-	c *= mix(0.72, 1.0, smoothstep(0.0, 0.7, v_y));
+	// Packed stands: legs and laps sit in the shade of the row in front, heads catch the light.
+	c *= mix(0.5, 1.0, smoothstep(0.0, 1.1, v_y));
+	c *= v_shade;
 	ALBEDO = (dbg == 1) ? m : (dbg == 2) ? v_cloth : c;
 	ROUGHNESS = 0.95;
 	SPECULAR = 0.0;

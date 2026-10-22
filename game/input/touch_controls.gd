@@ -3,11 +3,12 @@ extends Control
 ## On-screen controls for touch, drawn over the game. A floating thumbstick anywhere on the left half moves. A drag
 ## on the right half aims: the offset from where the drag started, springing back to centre on release, and SWING is
 ## held while that finger is down. Both rings float: a finger that runs past the ring drags it along. Buttons:
-## THRUST, SPRINT and ROLL hold; GRAB held bends down and picks up (CROUCH plus a repeating GRAB); OFF, HALF and
-## CROUCH are toggles (tap on, tap off) so both thumbs stay free to move and swing. Every finger is dropped when the
-## app loses focus or is paused, and releases are tracked while the tree is paused, so nothing stays held. The mouse
-## stands in for a finger on a machine without a touchscreen (for --touch testing). Pure mapping is in TouchFeel and
-## the static functions here; sims drive it with synthetic touch events (tests/sim/sim_touch.gd).
+## THRUST, SPRINT, ROLL and the close-range KICK, SHOVE and CLINCH (HOLD) hold; GRAB held bends down and picks up
+## (CROUCH plus a repeating GRAB); OFF, HALF and CROUCH are toggles (tap on, tap off) so both thumbs stay free to move
+## and swing. Every finger is dropped when the app loses focus or is paused, and releases are tracked while the tree is
+## paused, so nothing stays held. The mouse stands in for a finger on a machine without a touchscreen (for --touch
+## testing). Pure mapping is in TouchFeel and the static functions here; sims drive it with synthetic touch events
+## (tests/sim/sim_touch.gd).
 
 const UNIT_FRACTION: float = 0.1  ## one layout unit u = min(width, height) * UNIT_FRACTION
 const STICK_RADIUS_U: float = 2.0
@@ -77,6 +78,13 @@ static func button_layout(area: Vector2, k: float = 1.0, insets: Vector4 = Vecto
 		[FighterInput.HALF_SWORD, 1.6, 5.9, 1.0, "HALF"],
 		[FighterInput.SPRINT, 3.65, 5.35, 1.0, "SPRINT"],
 	]
+	# The close-range buttons: a fourth column in landscape, stacked above the arc on a tall (portrait) screen.
+	if area.y > area.x:
+		defs.append_array([[FighterInput.KICK, 1.3, 8.6, 1.0, "KICK"], [FighterInput.SHOVE, 3.6, 8.2, 1.0, "SHOVE"],
+			[FighterInput.CLINCH, 2.4, 10.5, 1.0, "HOLD"]])
+	else:
+		defs.append_array([[FighterInput.KICK, 7.0, 1.1, 1.0, "KICK"], [FighterInput.SHOVE, 7.2, 3.6, 1.0, "SHOVE"],
+			[FighterInput.CLINCH, 6.3, 6.0, 1.0, "HOLD"]])
 	var out: Array = []
 	for d: Array in defs:
 		out.append({

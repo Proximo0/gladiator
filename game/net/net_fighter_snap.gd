@@ -12,10 +12,12 @@ const BLOOD_SCALE: float = 10000.0  ## litres to uint16 (0.1 ml, up to 6.5 l)
 const MAX_BODIES: int = 32
 const MAX_PROPS: int = 8  ## knocked-off armor pieces per fighter that travel (the last bodies of the list)
 const PROP_SHIFT: int = 2  ## prop count rides in bits 2-5 of the flags byte
+const ROLLING_BIT: int = 64  ## flags bit 6: a dodge roll is under way (older builds ignore it: same size, protocol 2)
 
 var state: int = 0  ## index into NetConfig.STATES
 var dead: bool = false
 var gutted: bool = false
+var rolling: bool = false
 var blood: float = 5.0
 var bleed_rate: float = 0.0
 var stamina: float = 1.0
@@ -47,7 +49,7 @@ func base_body_count() -> int:
 func write(buf: StreamPeerBuffer) -> void:
 	buf.put_u8(clampi(state, 0, 255))
 	var np: int = mini(prop_ids.size(), MAX_PROPS)
-	buf.put_u8((1 if dead else 0) | (2 if gutted else 0) | (np << PROP_SHIFT))
+	buf.put_u8((1 if dead else 0) | (2 if gutted else 0) | (np << PROP_SHIFT) | (ROLLING_BIT if rolling else 0))
 	buf.put_u16(NetQuant.to_u16(blood, BLOOD_SCALE))
 	buf.put_u16(NetQuant.to_u16(bleed_rate, BLOOD_SCALE))
 	buf.put_u8(NetQuant.frac_u8(stamina))
@@ -77,6 +79,7 @@ static func read(buf: StreamPeerBuffer) -> NetFighterSnap:
 	var flags: int = buf.get_u8()
 	f.dead = (flags & 1) != 0
 	f.gutted = (flags & 2) != 0
+	f.rolling = (flags & ROLLING_BIT) != 0
 	var np: int = (flags >> PROP_SHIFT) & 15
 	f.blood = float(buf.get_u16()) / BLOOD_SCALE
 	f.bleed_rate = float(buf.get_u16()) / BLOOD_SCALE
@@ -115,6 +118,7 @@ static func blend(a: NetFighterSnap, b: NetFighterSnap, t: float, span_s: float 
 	o.state = src.state
 	o.dead = src.dead
 	o.gutted = src.gutted
+	o.rolling = src.rolling
 	o.severed_mask = src.severed_mask
 	o.armor_mask = src.armor_mask
 	o.blood = lerpf(a.blood, b.blood, t)

@@ -29,6 +29,11 @@ var _roll_edges: Array = [0, 0]
 var _client_roll_presses: int = 0
 var _prev_input_roll: bool = false
 var _roll_prev: Array = [false, false]
+var _frame_n: int = 0  ## physics frames into the match (host and client share them: one process)
+var _lead_cm_sum: float = 0.0
+var _lead_cm_n: int = 0
+var _lead_cm_mean: float = 0.0
+var _hit_frames: Dictionary = {"h": [], "c": [], "confirm": []}  ## frame of each hit: host emits, client plays, client confirms on arrival
 
 
 func _on_args() -> void:
@@ -67,6 +72,7 @@ func _watch(prefix: String, m: Match) -> void:
 			if m.over:
 				return
 			_count(prefix + "_hit")
+			(_hit_frames[prefix] as Array).append(_frame_n)
 			if str(ev.get("finisher", "")) != "" and not bool(ev.get("hit_on_weapon", false)):
 				_count(prefix + "_finisher"))
 		f.gore.connect(func(ev: Dictionary) -> void:
@@ -99,6 +105,10 @@ func _on_client_start(start: Dictionary) -> void:
 	m.setup(NetLobby.match_config(start, drill))
 	_client.attach_match(m)
 	_client.client_driver.input_source = _client_input
+	if _client.client_driver.has_signal("hit_confirmed"):
+		_client.client_driver.connect("hit_confirmed", func(_ev: Dictionary, _tick: int) -> void:
+			if not m.over:
+				(_hit_frames["confirm"] as Array).append(_frame_n))
 	_cm = m
 	_watch("c", m)
 
@@ -166,6 +176,11 @@ func _setup(mi: int, lag: int, jit: int, seed_value: int) -> bool:
 	_client_roll_presses = 0
 	_prev_input_roll = false
 	_roll_prev = [false, false]
+	_frame_n = 0
+	_hit_frames = {"h": [], "c": [], "confirm": []}
+	_lead_cm_sum = 0.0
+	_lead_cm_n = 0
+	_lead_cm_mean = 0.0
 	_hm = null
 	_cm = null
 	_host = NetSession.new()
@@ -226,9 +241,12 @@ func _one_match(mi: int, lag: int, jit: int) -> void:
 	var host_roll_min_up: Array = [1.0, 1.0]
 	var tick_n: int = 0
 	var tip_dbg: int = 0
+	var lead_n: int = 0
+	var sample_n: int = 0
 	while tick_n < cap:
 		await host.get_tree().physics_frame
 		tick_n += 1
+		_frame_n = tick_n
 		if _hm == null or _cm == null:
 			continue
 		var ht: int = _hm.tick
@@ -258,8 +276,16 @@ func _one_match(mi: int, lag: int, jit: int) -> void:
 				extrap_run = 0
 			var ref: PackedVector3Array = _host_at(rt)
 			if not ref.is_empty():
+				sample_n += 1
 				var cur: PackedVector3Array = _poses(_cm)
+				var led: bool = cd.lead_active()
+				lead_n += 1 if led else 0
+				_lead_cm_sum += cd.hand_lead.offset.length() * 100.0
+				_lead_cm_n += 1
+				_lead_cm_mean = _lead_cm_sum / float(_lead_cm_n)
 				for side: int in 2:
+					if side == 1 and led:
+						continue  ## the own fighter is drawn ahead of the snapshot on purpose (hand / roll lead)
 					var ep: float = cur[side * 3].distance_to(ref[side * 3])
 					err_pelvis.append(ep)
 					err_hand.append(cur[side * 3 + 1].distance_to(ref[side * 3 + 1]))
@@ -307,6 +333,11 @@ func _one_match(mi: int, lag: int, jit: int) -> void:
 		mi, _mean(err_pelvis), _pct(err_pelvis, 0.95), _pct(err_pelvis, 1.0), _mean(err_hand), _pct(err_hand, 0.95), _pct(err_hand, 1.0),
 		_mean(err_tip), _pct(err_tip, 0.95), _pct(err_tip, 1.0), _mean(lag_pelvis), _pct(lag_pelvis, 0.95)])
 	var ib: NetInputBuffer = hd.inputs
+	var fb: Array = [_pair_lag(_hit_frames["h"], _hit_frames["c"]), _pair_lag(_hit_frames["h"], _hit_frames["confirm"])]
+	_say("match=%d own_lead share=%.2f hand_lead_mean_cm=%.1f roll_leads=%d roll_lead_cancels=%d hit_confirms=%d" % [mi,
+		float(lead_n) / float(maxi(sample_n, 1)), 0.0 if cd2 == null else _lead_cm_mean, cd2.roll_lead.presses, cd2.roll_lead.cancels, cd2.hit_confirms])
+	_say("match=%d hit_feedback host_to_play_ticks mean=%.1f max=%.0f n=%d host_to_confirm_ticks mean=%.1f max=%.0f n=%d" % [mi,
+		_mean(fb[0]), _pct(fb[0], 1.0), fb[0].size(), _mean(fb[1]), _pct(fb[1], 1.0), fb[1].size()])
 	_say("match=%d input_to_screen_ticks=%.1f (%.0f ms) host_inputs got=%d dup=%d late=%d underruns=%d skipped=%d carried_presses=%d stale_pops=%d" % [
 		mi, cd2.input_to_screen_ticks(), cd2.input_to_screen_ticks() * 1000.0 / 60.0, ib.received, ib.duplicates, ib.late, ib.underruns, ib.skipped, ib.carried, ib.stale_pops])
 	_say("match=%d rolls host_side0=%d host_side1=%d client_presses=%d roll_pelvis_err_mean=%.3f max=%.3f min_up host=%.2f/%.2f client=%.2f/%.2f" % [
@@ -328,6 +359,14 @@ func _one_match(mi: int, lag: int, jit: int) -> void:
 		int(_client.max_sent.get(NetConfig.MSG_INPUT, 0)), _host.bw_out.average(_host.local_tick) / 1000.0, _host.bw_out.peak_per_s / 1000.0,
 		_client.bw_out.average(_client.local_tick) / 1000.0, _client.bw_out.peak_per_s / 1000.0])
 	await _teardown()
+
+
+## Frames from each host hit to the client's matching one (same order on both ends: reliable, in order).
+static func _pair_lag(hf: Array, cf: Array) -> Array:
+	var o: Array = []
+	for i: int in range(mini(hf.size(), cf.size())):
+		o.append(float(int(cf[i]) - int(hf[i])))
+	return o
 
 
 func _drill(t: int) -> void:

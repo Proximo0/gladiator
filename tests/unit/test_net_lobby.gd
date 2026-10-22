@@ -22,6 +22,16 @@ func test_start_to_match_config() -> void:
 	assert_eq(str((cfg["loadouts"][1] as Dictionary)["weapon"]), "spear")
 	assert_near(float(cfg["time_limit_s"]), 90.0)
 	assert_false(bool(cfg["presentation"]))
+	assert_eq(int(cfg["fight_start_tick"]), 0, "no intro: the fight clock starts at tick 0")
+
+
+func test_start_carries_the_fight_tick() -> void:
+	var d: Dictionary = NetLobby.decode(NetLobby.start(7, [{}, {}], 180.0, ["A", "B"], 138))
+	assert_eq(int(NetLobby.match_config(d, false)["fight_start_tick"]), 138)
+	var huge: Dictionary = NetLobby.decode(NetLobby.start(7, [{}, {}], 180.0, ["A", "B"], 1 << 30))
+	assert_eq(int(NetLobby.match_config(huge, false)["fight_start_tick"]), NetLobby.MAX_FIGHT_TICK, "capped")
+	var neg: Dictionary = NetLobby.decode(NetLobby.encode(NetConfig.MSG_START, {"seed": 1, "fight_tick": -50}))
+	assert_eq(int(NetLobby.match_config(neg, false)["fight_start_tick"]), 0, "never negative")
 
 
 func test_decode_rejects_unknown_and_objects() -> void:

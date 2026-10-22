@@ -83,7 +83,7 @@ func run() -> Array:
 	loss = 0.0
 	time_limit_s = 120.0
 	port = net_port(61)  # per-process block (sim_base.net_port); slot 61 is the cheating-client sim
-	await sandbox()
+	await sandbox(true)  # own physics space: the host path must not depend on the sims that ran before (see sim_practice)
 	if not await _setup(0, 0, 0, 9400):
 		await _teardown()
 		return [row("net_cheat_lobby", false, "no lobby")]

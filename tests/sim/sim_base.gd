@@ -15,20 +15,33 @@ var host: Node
 static func net_port(slot: int) -> int:
 	return 20000 + (OS.get_process_id() % 400) * 64 + slot
 var world: Node3D
+var _space_vp: SubViewport = null
 
 
-## An empty Node3D under the host to build the scenario in.
-func sandbox() -> void:
+## An empty Node3D under the host to build the scenario in. With `own_space` it lives in its own World3D (a
+## SubViewport), so its physics run in a fresh space: a Jolt space's results depend on every body it created and
+## freed before, so a long, chaotic scenario in the shared space plays out differently after other sims.
+func sandbox(own_space: bool = false) -> void:
 	world = Node3D.new()
-	host.add_child(world)
+	if own_space:
+		_space_vp = SubViewport.new()
+		_space_vp.own_world_3d = true
+		host.add_child(_space_vp)
+		_space_vp.add_child(world)
+	else:
+		host.add_child(world)
 	await host.get_tree().physics_frame
 
 
 func clear() -> void:
 	if world != null:
-		host.remove_child(world)
+		world.get_parent().remove_child(world)
 		world.free()
 		world = null
+	if _space_vp != null:
+		host.remove_child(_space_vp)
+		_space_vp.free()
+		_space_vp = null
 	await host.get_tree().physics_frame
 
 

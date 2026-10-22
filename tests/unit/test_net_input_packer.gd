@@ -50,3 +50,16 @@ func test_roll_bit_survives_the_wire() -> void:
 	p.record(5, inp)
 	var rows: Array = NetInputPacker.unpack(p.pack())
 	assert_eq((rows[0][1] as FighterInput).buttons, FighterInput.ROLL | FighterInput.SWING)
+
+
+func test_close_combat_bits_survive_the_wire() -> void:
+	var p := NetInputPacker.new(1)
+	var inp := FighterInput.new()
+	inp.buttons = FighterInput.SHOVE | FighterInput.KICK | FighterInput.CLINCH | FighterInput.ROLL
+	p.record(9, inp)
+	var rows: Array = NetInputPacker.unpack(p.pack())
+	assert_eq((rows[0][1] as FighterInput).buttons, inp.buttons)
+
+
+func test_protocol_bumped_for_close_combat_buttons() -> void:
+	assert_true(NetConfig.PROTOCOL_VERSION >= 3, "SHOVE/KICK/CLINCH need protocol 3: an older host would drop them")

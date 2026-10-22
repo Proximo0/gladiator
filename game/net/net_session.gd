@@ -187,11 +187,13 @@ func set_local(player_name: String, loadout: Dictionary) -> void:
 		send(NetLobby.lobby(local_name, local_loadout, true, "", content_hash()), true)
 
 
-## Host: send START and build the match here too. `time_limit_s` <= 0 keeps the default.
-func start_match(seed_value: int, time_limit_s: float = 0.0) -> bool:
+## Host: send START and build the match here too. `time_limit_s` <= 0 keeps the default. `fight_tick`: the tick the
+## intro releases the fighters on, where both peers start the fight clock (0 = no intro).
+func start_match(seed_value: int, time_limit_s: float = 0.0, fight_tick: int = 0) -> bool:
 	if role != ROLE_HOST or not remote_joined:
 		return false
-	var bytes: PackedByteArray = NetLobby.start(seed_value, [local_loadout, remote_loadout], time_limit_s, [local_name, remote_name])
+	var bytes: PackedByteArray = NetLobby.start(seed_value, [local_loadout, remote_loadout], time_limit_s, [local_name, remote_name],
+			fight_tick)
 	send(bytes, true)
 	last_start = NetLobby.decode(bytes)
 	match_requested.emit(last_start)

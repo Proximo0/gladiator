@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 # Online soak: host and client (bot on both ends) over real ENet on 127.0.0.1 in one headless Godot process, with a fake
 # link (latency, jitter, loss) both ways. One process per profile, run one after the other.
-# Usage: tools/net_soak.sh [--matches=N] [--time_limit=S] [--profiles="60:0.02 150:0.03 250:0.05"] [--no-drill]
+# Usage: tools/net_soak.sh [--matches=N] [--time_limit=S] [--profiles="60:0.02 150:0.03 250:0.05"] [--no-drill] [--feel] [--feel-only]
+#   --feel also runs sim_net_feel (scripted aim steps and rolls: press-to-visible ticks on the client); --feel-only runs just that.
 #   a profile is rtt_ms:loss. Prints the per-match SOAK lines to out/net_soak/<rtt>.log and a table per profile.
 # Quiet: errors, then the table and one "NET_SOAK profiles=<n> problems=<n>" line. See docs/net_soak.md.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-godot}"
-matches=4; limit=40; profiles="60:0.02 150:0.03 250:0.05"; drill=1
+matches=4; limit=40; profiles="60:0.02 150:0.03 250:0.05"; drill=1; feel=0; soak=1
 for a in "$@"; do
   case "$a" in
     --matches=*) matches="${a#*=}" ;;
     --time_limit=*) limit="${a#*=}" ;;
     --profiles=*) profiles="${a#*=}" ;;
     --no-drill) drill=0 ;;
+    --feel) feel=1 ;;
+    --feel-only) feel=1; soak=0; drill=0 ;;
     *) echo "unknown argument $a"; exit 2 ;;
   esac
 done
@@ -23,9 +26,13 @@ n=0; problems=0
 for p in $profiles; do
   rtt=${p%%:*}; loss=${p##*:}; n=$((n + 1))
   log="out/net_soak/${rtt}ms.log"
-  timeout 1500 "$GODOT" --headless --fixed-fps 60 --path . -s res://tests/sim/sim_net_solo.gd -- sim_net_soak "$rtt" "$loss" "$matches" "$limit" 2>&1 | grep -E '^(SOAK|SCRIPT ERROR|ERROR: [^C])' | grep -v 'GDExtension\|Error loading' >"$log"
+  : >"$log"
+  (( soak )) && timeout 1500 "$GODOT" --headless --fixed-fps 60 --path . -s res://tests/sim/sim_net_solo.gd -- sim_net_soak "$rtt" "$loss" "$matches" "$limit" 2>&1 | grep -E '^(SOAK|SCRIPT ERROR|ERROR: [^C])' | grep -v 'GDExtension\|Error loading' >"$log"
   if (( drill )); then
     timeout 600 "$GODOT" --headless --fixed-fps 60 --path . -s res://tests/sim/sim_net_solo.gd -- sim_net_soak "$rtt" "$loss" 1 14 drill 2>&1 | grep -E '^(SOAK|SCRIPT ERROR|ERROR: [^C])' | grep -v 'GDExtension\|Error loading' | sed 's/^SOAK match=0/SOAK drill/' >>"$log"
+  fi
+  if (( feel )); then
+    timeout 900 "$GODOT" --headless --fixed-fps 60 --path . -s res://tests/sim/sim_net_solo.gd -- sim_net_feel "$rtt" "$loss" 60 2>&1 | grep -E '^(FEEL|SCRIPT ERROR|ERROR: [^C])' | grep -v 'GDExtension\|Error loading' >>"$log"
   fi
   python3 - "$log" "$rtt" "$loss" <<'PY' || problems=$((problems + 1))
 import re, sys
@@ -36,6 +43,11 @@ def vals(pat, cast=float, lines=None):
     return [cast(m.group(1)) for r in (lines or rows) if r.startswith("SOAK match=") and (m := re.search(pat, r))]
 def mean(v): return sum(v) / len(v) if v else 0.0
 def mx(v): return max(v) if v else 0.0
+for r in rows:
+    if r.startswith("FEEL "):
+        print("  feel " + r[5:])
+if not any(r.startswith("SOAK match=") for r in rows):
+    sys.exit(1 if bad else 0)
 print(f"== {rtt} ms RTT, {float(loss)*100:.0f}% loss each way ({len(vals(r'secs=([\d.]+)'))} matches, {sum(vals(r'secs=([\d.]+)')):.0f} s) ==")
 print(f"  snapshot rate received  mean {mean(vals(r'rate_hz=([\d.]+)')):.1f} Hz, worst 1-s window {min(vals(r'min_window=(\d+)', int) or [0])} of 30")
 print(f"  interp delay            mean {mean(vals(r'interp_delay_ms=([\d.]+)')):.0f} ms; extrapolated ticks/match mean {mean(vals(r'extrap_ticks=(\d+)')):.0f}, longest run {mx(vals(r'extrap_max_run=(\d+)')):.0f} ticks; resyncs {sum(vals(r'resyncs=(\d+)', int))}")
@@ -46,6 +58,8 @@ print(f"  apparent lag (pelvis, client now vs host now) mean {mean(vals(r'pelvis
 it = vals(r"input_to_screen_ticks=([\d.]+)")
 print(f"  input to screen         mean {mean(it)*1000/60:.0f} ms ({mean(it):.1f} ticks)")
 print(f"  rolls host side0/side1 {sum(vals(r'host_side0=(\d+)', int))}/{sum(vals(r'host_side1=(\d+)', int))}, client presses {sum(vals(r'client_presses=(\d+)', int))}, carried presses {sum(vals(r'carried_presses=(\d+)', int))}, roll pelvis err max {mx(vals(r'roll_pelvis_err_mean=[\d.]+ max=([\d.]+)'))*100:.0f} cm")
+print(f"  hit feedback (host hit to client, ticks) played {mean(vals(r'host_to_play_ticks mean=([\d.]+)')):.1f} (max {mx(vals(r'host_to_play_ticks mean=[\d.]+ max=(\d+)')):.0f}), confirmed {mean(vals(r'host_to_confirm_ticks mean=([\d.]+)')):.1f} (max {mx(vals(r'host_to_confirm_ticks mean=[\d.]+ max=(\d+)')):.0f})")
+print(f"  own lead (client)       share of ticks {mean(vals(r'own_lead share=([\d.]+)')):.2f}, hand lead mean {mean(vals(r'hand_lead_mean_cm=([\d.]+)')):.1f} cm, roll leads {sum(vals(r'roll_leads=(\d+)', int))} (called off {sum(vals(r'roll_lead_cancels=(\d+)', int))}), hit confirms {sum(vals(r'hit_confirms=(\d+)', int))}")
 ev = [r for r in rows if " events (host" in r]
 tot = {}
 for r in ev:

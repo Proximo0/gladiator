@@ -172,3 +172,8 @@ func test_silent_stream_goes_neutral_but_keeps_aim() -> void:
 	assert_eq(b.stale_pops, 1)
 	b.push(1, FighterInput.from_array([0, 500, 0, 0, 0]))
 	assert_eq(b.pop().move_y, 500, "input resumes at once when the stream does")
+
+
+func test_close_range_presses_are_edge_buttons() -> void:
+	for b: int in [FighterInput.SHOVE, FighterInput.KICK, FighterInput.CLINCH]:
+		assert_true((NetInputBuffer.EDGE_BUTTONS & b) != 0, "a skipped tick must not swallow bit %d" % b)

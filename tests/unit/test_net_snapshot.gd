@@ -163,3 +163,33 @@ func test_blend_keeps_a_prop_that_only_the_later_snapshot_has() -> void:
 	assert_eq(mid.body_count(), 14, "the body list does not shrink to a's: no freeze of the others")
 	assert_eq(mid.prop_ids.size(), 1)
 	assert_true(mid.pos[3].distance_to(a.pos[3].lerp(b.pos[3], 0.5)) < 0.0001)
+
+
+func test_rolling_bit_round_trips_with_props_and_costs_nothing() -> void:
+	var f: NetFighterSnap = make_fighter(13, 1.0)
+	var plain: int = f.byte_size()
+	f.rolling = true
+	f.pos.append(Vector3(0.1, 0.2, 0.3))
+	f.rot.append(Quaternion.IDENTITY)
+	f.vel.append(Vector3.ZERO)
+	f.prop_ids.append(33)
+	var buf := StreamPeerBuffer.new()
+	f.write(buf)
+	assert_eq(buf.data_array.size(), plain + NetFighterSnap.BODY_BYTES + 1)
+	buf.seek(0)
+	var back: NetFighterSnap = NetFighterSnap.read(buf)
+	assert_true(back.rolling and back.gutted and not back.dead)
+	assert_eq(back.prop_ids.size(), 1, "the roll bit stays clear of the prop count")
+	f.rolling = false
+	var buf2 := StreamPeerBuffer.new()
+	f.write(buf2)
+	buf2.seek(0)
+	assert_false(NetFighterSnap.read(buf2).rolling)
+
+
+func test_blend_takes_rolling_from_the_earlier_snapshot_until_the_end() -> void:
+	var a: NetFighterSnap = make_fighter(13, 1.0)
+	var b: NetFighterSnap = make_fighter(13, 1.0)
+	b.rolling = true
+	assert_false(NetFighterSnap.blend(a, b, 0.5).rolling)
+	assert_true(NetFighterSnap.blend(a, b, 1.0).rolling)

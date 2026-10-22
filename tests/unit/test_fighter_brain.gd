@@ -553,3 +553,65 @@ func test_rolls_now_and_then_to_escape_a_fast_blow() -> void:
 
 func test_does_not_roll_when_tired() -> void:
 	assert_eq(_threat_rolls(0.3).size(), 0)
+
+
+## Close-range moves over 60 s at `dist` m: ticks of each press (the brain presses a move for one tick).
+func _close_presses(dist: float, foe_state: String = "standing", stamina: float = 1.0) -> Dictionary:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(dist)
+	f[0]["stamina"] = stamina
+	f[1]["state"] = foe_state
+	var out: Dictionary = {"shove": [], "kick": [], "clinch": []}
+	for i in 3600:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		for k: String in out:
+			var bit: int = {"shove": FighterInput.SHOVE, "kick": FighterInput.KICK, "clinch": FighterInput.CLINCH}[k]
+			if inp.has(bit):
+				(out[k] as Array).append(i)
+	return out
+
+
+func test_shoves_and_grabs_sparingly_at_close_range() -> void:
+	var p: Dictionary = _close_presses(0.9)
+	var n: int = (p["shove"] as Array).size()
+	# 0.9 m is inside the shove and grab ranges, closer than a kick needs.
+	assert_true(n >= 1 and n <= 12, "a few shoves a minute, got %d" % n)
+	assert_eq((p["kick"] as Array).size(), 0, "too close to kick")
+	assert_true((p["clinch"] as Array).size() >= 1, "grabs now and then (held for a while)")
+	var all: Array = (p["shove"] as Array).duplicate()
+	all.sort()
+	for j: int in range(1, all.size()):
+		assert_true(int(all[j]) - int(all[j - 1]) >= 300, "cooldown between close moves")
+
+
+func test_kicks_at_kick_range() -> void:
+	var p: Dictionary = _close_presses(1.28)
+	assert_true((p["kick"] as Array).size() >= 1, "kicks now and then")
+	assert_eq((p["shove"] as Array).size(), 0, "out of shove range")
+
+
+func test_shoves_a_stumbling_foe_more() -> void:
+	var calm: int = (_close_presses(0.9)["shove"] as Array).size()
+	var off: int = (_close_presses(0.9, "stumbling")["shove"] as Array).size()
+	assert_true(off > calm, "stumbling %d vs standing %d" % [off, calm])
+
+
+func test_no_close_moves_when_tired_or_far() -> void:
+	var tired: Dictionary = _close_presses(0.9, "standing", 0.2)
+	var far: Dictionary = _close_presses(3.0)
+	for d: Dictionary in [tired, far]:
+		for k: String in d:
+			assert_eq((d[k] as Array).size(), 0, k)
+
+
+func test_held_fighter_pulls_back_and_shoves() -> void:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(0.9)
+	f[0]["close"] = {"held": "forearm_r"}
+	var shoves: int = 0
+	for i in 120:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		assert_true(inp.move_y < 0, "pulls away")
+		if inp.has(FighterInput.SHOVE):
+			shoves += 1
+	assert_true(shoves >= 1)

@@ -11,6 +11,7 @@ extends Node
 const SIM_FILES: Array = [
 	"sim_example",
 	"sim_fighter_core",
+	"sim_close_combat",
 	"sim_fighter_replay",
 	"sim_match_smoke",
 	"sim_practice",
@@ -25,10 +26,13 @@ const SIM_FILES: Array = [
 	"sim_net_menu",
 	"sim_net_drop",
 	"sim_net_quick",
+	"sim_net_feel",
 	"sim_net_cheat",
 	"sim_killcam_net",
 	"sim_net_quick_flow",
 	"sim_touch",
+	"sim_sandbox_isolation",
+	"sim_match_show",  # last: the audio bot sim before it is sensitive to what ran earlier in the process
 ]
 
 

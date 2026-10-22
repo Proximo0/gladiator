@@ -22,6 +22,20 @@ const ATTIC_HEIGHT: float = 2.0
 const BOX_ANGLE: float = 4.71238898
 const TRAVERTINE: Color = Color(0.84, 0.74, 0.56)
 const PLAQUES: PackedStringArray = ["SPQR", "MVNVS", "ROMA", "LEGIO"]
+## Light and grade (art direction: warm low afternoon sun, deep shade). Presentation only.
+const SUN_COLOR: Color = Color(1.0, 0.9, 0.78)
+const SUN_ENERGY: float = 1.3
+const AMBIENT_ENERGY: float = 0.4
+const EXPOSURE: float = 1.05
+## Houdini dressing placement (metres, radians). Portcullis 3.6 x 3.9 m as exported, scaled to the 3 m podium wall.
+const PORTCULLIS_SCALE: float = 0.8
+const GATE_COLUMN_SCALE: float = 0.75
+const GATE_COLUMN_OFFSET: float = 1.95
+const BRAZIER_FLAME_Y: float = 1.12
+const RACK_ANGLE_OFFSET: float = 0.36
+const STATUE_ANGLE_OFFSET: float = 0.3
+const STATUE_SCALE: float = 0.7
+const LOW_CODE_PROPS: PackedStringArray = ["banner", "brazier"]
 
 var radius: float = 11.0
 var sand: Node3D
@@ -30,6 +44,9 @@ var crowd: Crowd
 var _flames: Array[MeshInstance3D] = []
 var _flame_time: float = 0.0
 var _torch_positions: PackedVector3Array = PackedVector3Array()
+var _dressing: ArenaDressing = ArenaDressing.new()
+## Flame height above the wall cap: a Houdini brazier's bowl, or the code torch's bowl.
+var _flame_y: float = 1.8
 
 
 ## Spawn transform for a side: 0 at +Z, 1 at -Z, both facing the centre (fighter forward is -Z).
@@ -55,10 +72,13 @@ func _ready() -> void:
 	radius = Tuning.shared().arena_radius
 	if get_viewport() != null:
 		get_viewport().msaa_3d = GfxQuality.pick_i(GfxQuality.MSAA) as Viewport.MSAA
+	_dressing.stone_tint = TRAVERTINE
+	if _art("brazier") != null:
+		_flame_y = BRAZIER_FLAME_Y
 	_torch_positions = PackedVector3Array()
 	for k: int in 6:
 		var ta: float = deg_to_rad(30.0 + float(k) * 60.0)
-		_torch_positions.append(ring_point(radius + 0.3, ta, WALL_HEIGHT, WALL_SIDES) + Vector3(0, 1.6, 0))
+		_torch_positions.append(ring_point(radius + 0.3, ta, WALL_HEIGHT, WALL_SIDES) + Vector3(0, _flame_y - 0.2, 0))
 	_build_floor()
 	_build_wall_colliders()
 	_build_wall_visual()
@@ -66,6 +86,7 @@ func _ready() -> void:
 	_build_crowd()
 	_build_props()
 	_build_velarium()
+	_build_dressing()
 	_build_environment()
 
 
@@ -220,6 +241,7 @@ func _build_wall_visual() -> void:
 			for sx: float in [-1.0, 1.0]:
 				RomanDecor.box(bronze, Transform3D(bm, centre + Vector3(0, 1.45, 0) + fb.x * (sx * (pw * 0.5)) - fb.z * 0.01), Vector3(0.07, 1.06, 0.07), Color(0.55, 0.38, 0.16))
 			continue
+		_panel_frame(st, (in0 + in1) * 0.5, bm, fb, pw, 1.75, c)
 		var field: Color = RomanDecor.PALETTE_RED if i % 2 == 0 else RomanDecor.PALETTE_OCHRE
 		RomanDecor.rect(paint, centre + Vector3(0, 1.45, 0), fb, pw, 1.75, RomanDecor.PALETTE_BLACK)
 		RomanDecor.rect(paint, centre + Vector3(0, 1.45, 0) + fb.z * 0.01, fb, pw - 0.22, 1.53, field)
@@ -231,10 +253,15 @@ func _build_wall_visual() -> void:
 		else:
 			RomanDecor.rect(paint, centre + Vector3(0, 1.4, 0) + fb.z * 0.02, fb, 0.5, 0.5, RomanDecor.PALETTE_BLACK)
 			RomanDecor.rect(paint, centre + Vector3(0, 1.4, 0) + fb.z * 0.03, fb, 0.4, 0.4, key_bg)
-	# Gates (carceres): dark arches in stone frames with bronze studs, on the x axis.
+	# Gates (carceres): dark arches in stone frames with bronze studs, on the x axis. With the Houdini portcullis
+	# (placed in _build_dressing) only the dark opening behind its bars stays.
+	var portcullis: bool = _art("portcullis") != null
 	for ga: float in [0.0, PI]:
 		var fb: Basis = RomanDecor.face_basis(ga)
 		var base: Vector3 = ring_point(radius, ga, 0.0, n) + Vector3(-cos(ga), 0.0, -sin(ga)) * 0.05
+		if portcullis:
+			RomanDecor.arch(paint, base + fb.z * 0.01, fb, 2.5, 2.35, Color(0.04, 0.035, 0.03))
+			continue
 		RomanDecor.arch(paint, base, fb, 2.9, 2.6, Color(0.35, 0.3, 0.24))
 		RomanDecor.arch(paint, base + fb.z * 0.01, fb, 2.5, 2.35, Color(0.04, 0.035, 0.03))
 		for k: int in 5:
@@ -246,7 +273,7 @@ func _build_wall_visual() -> void:
 	mi.mesh = st.commit()
 	mi.material_override = _stone_material(Vector2(0.9, 0.5), 1.6)
 	add_child(mi)
-	_add_mesh("Panels", paint, _vertex_material(false, 0.9, true), false)
+	_add_mesh("Panels", paint, _fresco_material(), false)
 	_add_mesh("Bronze", bronze, _bronze_material(), false)
 
 	# Wooden rail along the cap, with posts and a brace, in the arena side of the wall.
@@ -263,6 +290,19 @@ func _build_wall_visual() -> void:
 			var post_pos: Vector3 = ring_point(radius - 0.2, mid, WALL_HEIGHT - 0.4, n)
 			RomanDecor.box(wood, Transform3D(ring_basis(mid), post_pos), Vector3(0.14, 0.8, 0.14), Color(0.3, 0.2, 0.12))
 	_add_mesh("Rail", wood, _vertex_material(false, 0.85, true), false)
+
+
+## A carved stone frame proud of the wall around a painted panel (w x h, centred 1.45 m up on the wall face at
+## `face`): a lintel, a deeper sill and two jambs, so the sun draws a shadow line under the lintel and the panels
+## stop reading as flat cards.
+func _panel_frame(st: SurfaceTool, face: Vector3, bm: Basis, fb: Basis, w: float, h: float, c: Color) -> void:
+	var y: float = 1.45
+	var t: float = 0.07
+	var p: Vector3 = face + fb.z * 0.045
+	RomanDecor.box(st, Transform3D(bm, p + Vector3(0, y + h * 0.5 + t * 0.5, 0)), Vector3(w + t * 2.6, t * 1.2, 0.09), c * 1.06)
+	RomanDecor.box(st, Transform3D(bm, p + fb.z * 0.015 + Vector3(0, y - h * 0.5 - t * 0.6, 0)), Vector3(w + t * 3.2, t * 1.3, 0.12), c * 1.02)
+	for sx: float in [-1.0, 1.0]:
+		RomanDecor.box(st, Transform3D(bm, p + fb.x * (sx * (w * 0.5 + t * 0.5)) + Vector3(0, y, 0)), Vector3(t, h + t * 0.4, 0.07), c * 0.97)
 
 
 func _near_gate(a: float, tol: float = 0.2) -> bool:
@@ -435,14 +475,16 @@ func _build_props() -> void:
 			continue
 		var base := Vector3(rim * cos(a), _attic_top(), rim * sin(a))
 		RomanDecor.box(wood, Transform3D(ring_basis(a), base + Vector3(0, 2.0, 0)), Vector3(0.12, 4.0, 0.12), Color(0.3, 0.2, 0.12))
-		_banner(cloth, bronze, base + Vector3(0, 3.9, 0), a, 1.0, 2.0, k % 2 == 0, false)
+		if _art("banner") == null:
+			_banner(cloth, bronze, base + Vector3(0, 3.9, 0), a, 1.0, 2.0, k % 2 == 0, false)
 	# Torches on the wall cap, bronze bowls.
 	for k: int in 6:
 		var a: float = deg_to_rad(30.0 + float(k) * 60.0)
 		var p: Vector3 = ring_point(radius + 0.3, a, WALL_HEIGHT, WALL_SIDES)
-		RomanDecor.box(wood, Transform3D(ring_basis(a), p + Vector3(0, 0.7, 0)), Vector3(0.12, 1.4, 0.12), Color(0.25, 0.17, 0.1))
-		RomanDecor.box(bronze, Transform3D(ring_basis(a), p + Vector3(0, 1.45, 0)), Vector3(0.3, 0.16, 0.3), Color(0.55, 0.38, 0.16))
-		RomanDecor.box(bronze, Transform3D(ring_basis(a), p + Vector3(0, 1.2, 0)), Vector3(0.16, 0.06, 0.16), Color(0.5, 0.35, 0.15))
+		if _art("brazier") == null:
+			RomanDecor.box(wood, Transform3D(ring_basis(a), p + Vector3(0, 0.7, 0)), Vector3(0.12, 1.4, 0.12), Color(0.25, 0.17, 0.1))
+			RomanDecor.box(bronze, Transform3D(ring_basis(a), p + Vector3(0, 1.45, 0)), Vector3(0.3, 0.16, 0.3), Color(0.55, 0.38, 0.16))
+			RomanDecor.box(bronze, Transform3D(ring_basis(a), p + Vector3(0, 1.2, 0)), Vector3(0.16, 0.06, 0.16), Color(0.5, 0.35, 0.15))
 		var flame := MeshInstance3D.new()
 		var cone := CylinderMesh.new()
 		cone.top_radius = 0.0
@@ -458,7 +500,7 @@ func _build_props() -> void:
 		fm.emission = Color(1.0, 0.5, 0.1)
 		fm.emission_energy_multiplier = 2.0
 		flame.material_override = fm
-		flame.position = p + Vector3(0, 1.8, 0)
+		flame.position = p + Vector3(0, _flame_y, 0)
 		flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(flame)
 		_flames.append(flame)
@@ -598,6 +640,63 @@ func _build_velarium() -> void:
 	_add_mesh("Masts", wood, _vertex_material(false, 0.9, true), false)
 
 
+# ---------------------------------------------------------------- Houdini dressing
+
+## The Houdini mesh `id`, or null when it is missing or skipped at this quality (the code stand-in is built instead).
+## On low the cloth standards and braziers (876 and 1116 triangles each) fall back to the merged code meshes, which
+## cost no extra draw call and keep the low MultiMesh triangle budget.
+func _art(id: String) -> Mesh:
+	if GfxQuality.level <= GfxQuality.LOW and id in LOW_CODE_PROPS:
+		return null
+	return _dressing.mesh(id)
+
+
+## Portcullis gates with flanking columns, braziers on the torch posts, cloth standards on the attic masts, a weapon
+## rack against the wall behind each spawn, statues beside the gates and the laurel trophy under the imperial box.
+## One MultiMesh per asset; only the big stone pieces cast shadows. Missing assets keep the code stand-ins.
+func _build_dressing() -> void:
+	var low: bool = GfxQuality.level <= GfxQuality.LOW
+	var gates: Array[Transform3D] = []
+	var columns: Array[Transform3D] = []
+	var statues: Array[Transform3D] = []
+	for ga: float in [0.0, PI]:
+		var fb: Basis = RomanDecor.face_basis(ga)
+		var wall_face: Vector3 = ring_point(radius, ga, 0.0, WALL_SIDES)
+		gates.append(Transform3D(fb.scaled(Vector3.ONE * PORTCULLIS_SCALE), wall_face + fb.z * 0.08))
+		for sx: float in [-1.0, 1.0]:
+			columns.append(Transform3D(fb.scaled(Vector3.ONE * GATE_COLUMN_SCALE), wall_face + fb.z * 0.3 + fb.x * (sx * GATE_COLUMN_OFFSET)))
+			var sa: float = ga + sx * STATUE_ANGLE_OFFSET
+			statues.append(Transform3D(RomanDecor.face_basis(sa).scaled(Vector3.ONE * STATUE_SCALE), ring_point(radius + 0.3, sa, WALL_HEIGHT, WALL_SIDES)))
+	ArenaDressing.add_instances(self, "Portcullis", _art("portcullis"), gates, true)
+	ArenaDressing.add_instances(self, "GateColumns", _art("column"), columns, not low)
+	var braziers: Array[Transform3D] = []
+	for k: int in 6:
+		var a: float = deg_to_rad(30.0 + float(k) * 60.0)
+		braziers.append(Transform3D(RomanDecor.face_basis(a), ring_point(radius + 0.3, a, WALL_HEIGHT, WALL_SIDES)))
+	ArenaDressing.add_instances(self, "Braziers", _art("brazier"), braziers, false)
+	var standards: Array[Transform3D] = []
+	var rim: float = _stand_rim() - 0.5
+	for k: int in 12:
+		var a: float = TAU * (float(k) + 0.5) / 12.0
+		if absf(wrapf(a - BOX_ANGLE, -PI, PI)) < 0.3:
+			continue
+		var fb: Basis = RomanDecor.face_basis(a)
+		standards.append(Transform3D(fb, Vector3(rim * cos(a), _attic_top() + 1.0, rim * sin(a)) + fb.z * 0.1))
+	ArenaDressing.add_instances(self, "Standards", _art("banner"), standards, false)
+	var racks: Array[Transform3D] = []
+	for side_a: float in [PI * 0.5, PI * 1.5]:
+		var a: float = side_a + RACK_ANGLE_OFFSET
+		var fb: Basis = RomanDecor.face_basis(a)
+		racks.append(Transform3D(fb, ring_point(radius, a, 0.0, WALL_SIDES) + fb.z * 0.32))
+	ArenaDressing.add_instances(self, "WeaponRacks", _art("weapon_rack"), racks, false)
+	if low:
+		return  # phones: the statues and the trophy are a few pixels up on the wall cap; save their draw calls
+	ArenaDressing.add_instances(self, "Statues", _art("statue_plinth"), statues, false)
+	var tb: Basis = RomanDecor.face_basis(BOX_ANGLE)
+	var trophy: Array[Transform3D] = [Transform3D(tb, ring_point(radius + 0.3, BOX_ANGLE, WALL_HEIGHT, WALL_SIDES))]
+	ArenaDressing.add_instances(self, "LaurelTrophy", _art("laurel_trophy"), trophy, false)
+
+
 # ---------------------------------------------------------------- light, sky, haze
 
 func _build_environment() -> void:
@@ -605,8 +704,9 @@ func _build_environment() -> void:
 	sun.name = "Sun"
 	var dir_to_sun := Vector3(cos(SUN_ELEVATION) * cos(SUN_AZIMUTH), sin(SUN_ELEVATION), cos(SUN_ELEVATION) * sin(SUN_AZIMUTH))
 	sun.transform = Transform3D(Basis.looking_at(-dir_to_sun, Vector3.UP), Vector3.ZERO)
-	sun.light_color = Color(1.0, 0.8, 0.55)
-	sun.light_energy = 0.95
+	# Warm but not orange: an orange sun times orange sand clipped the lit sand to (254, 192, 115) under Filmic.
+	sun.light_color = SUN_COLOR
+	sun.light_energy = SUN_ENERGY
 	sun.shadow_enabled = true
 	sun.shadow_blur = GfxQuality.pick_f(GfxQuality.SHADOW_BLUR)
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if GfxQuality.pick_i(GfxQuality.SHADOW_SPLITS) >= 2 \
@@ -617,8 +717,8 @@ func _build_environment() -> void:
 	add_child(sun)
 
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.32, 0.5, 0.78)
-	sky_mat.sky_horizon_color = Color(0.92, 0.78, 0.58)
+	sky_mat.sky_top_color = Color(0.16, 0.33, 0.64)
+	sky_mat.sky_horizon_color = Color(0.8, 0.72, 0.6)
 	sky_mat.ground_horizon_color = Color(0.8, 0.68, 0.52)
 	sky_mat.ground_bottom_color = Color(0.45, 0.36, 0.26)
 	sky_mat.sun_angle_max = 25.0
@@ -627,15 +727,21 @@ func _build_environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
-	# Warm bounce light from the sand: a blue sky ambient turned every shadow olive-green.
+	# Warm bounce light from the sand: a blue sky ambient turned every shadow olive-green. Kept low so the shade under
+	# the wall reads deep (lit sand / shaded sand about 2:1 instead of 1.3:1).
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.82, 0.70, 0.58)
-	env.ambient_light_energy = 0.5
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.0
+	env.ambient_light_color = Color(0.8, 0.72, 0.64)
+	env.ambient_light_energy = AMBIENT_ENERGY
+	# ACES with a high white point: contrast and a soft shoulder, so sunlit sand, linen and marble roll off instead of
+	# clipping. Tonemapping runs in the scene shader on Compatibility: no extra pass (no glow or adjustments, which
+	# add a full-screen copy on phones).
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_white = 6.0
+	env.tonemap_exposure = EXPOSURE
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.85, 0.72, 0.54)
-	env.fog_density = 0.008
+	env.fog_light_color = Color(0.8, 0.72, 0.6)
+	env.fog_density = 0.005
+	env.fog_sun_scatter = 0.2
 	env.fog_sky_affect = 0.15
 	var we := WorldEnvironment.new()
 	we.name = "WorldEnvironment"
@@ -656,6 +762,21 @@ func _stone_material(block: Vector2, grime_height: float) -> ShaderMaterial:
 	for i: int in 6:
 		torches.append(_torch_positions[i] if i < _torch_positions.size() else Vector3(0, -100, 0))
 	m.set_shader_parameter("torches", torches)
+	return m
+
+
+## Painted plaster on the podium wall: the vertex colours weathered in world space (art slot: swap for a fresco
+## texture set). Same torch soot as the stone.
+func _fresco_material() -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = FRESCO_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	var torches := PackedVector3Array()
+	for i: int in 6:
+		torches.append(_torch_positions[i] if i < _torch_positions.size() else Vector3(0, -100, 0))
+	m.set_shader_parameter("torches", torches)
+	m.set_shader_parameter("plaster", Vector3(TRAVERTINE.r, TRAVERTINE.g, TRAVERTINE.b) * 0.92)
 	return m
 
 
@@ -729,5 +850,66 @@ void fragment() {
 	col *= 1.0 - 0.55 * soot;
 	ALBEDO = col;
 	ROUGHNESS = 0.95;
+}
+"""
+
+
+## Fresco weathering: sun-faded pigment (lighter and chalkier in blotches), flaked paint showing the plaster below
+## (more toward the bottom, where feet and sand hit), hairline cracks, a grime band at the foot, torch soot. Every
+## term is a multiplier or a mix toward plaster or soot, never a hue shift. Vertex-colour input, no textures.
+const FRESCO_SHADER: String = """
+shader_type spatial;
+render_mode cull_back;
+uniform vec3 torches[6];
+uniform vec3 plaster : source_color = vec3(0.77, 0.68, 0.52);
+varying vec3 wpos;
+
+float fhash(vec2 p) {
+	p = fract(p * vec2(123.34, 456.21));
+	p += dot(p, p + 45.32);
+	return fract(p.x * p.y);
+}
+
+float fnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(fhash(i), fhash(i + vec2(1.0, 0.0)), f.x), mix(fhash(i + vec2(0.0, 1.0)), fhash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+
+void fragment() {
+	vec3 col = COLOR.rgb;
+	vec2 p = vec2(atan(wpos.z, wpos.x) * length(wpos.xz), wpos.y);
+	float big = fnoise(p * vec2(1.3, 1.8));
+	float mid = fnoise(p * 5.0 + 17.0);
+	float fine = fnoise(p * 23.0 + 3.0);
+	// Faded pigment: blotches drift toward a chalky, lighter version of the same colour.
+	float lum = dot(col, vec3(0.3, 0.55, 0.15));
+	vec3 chalk = mix(vec3(lum), col, 0.55) * 1.18 + vec3(0.05, 0.045, 0.035);
+	col = mix(col, chalk, smoothstep(0.45, 0.9, big * 0.7 + mid * 0.3) * 0.55);
+	col *= 0.9 + 0.16 * mid + 0.08 * fine;
+	// Flaking: paint gone where the noise crosses a threshold that rises toward the foot of the wall.
+	float flake_n = mid * 0.6 + fine * 0.4;
+	float flake_t = 0.8 - 0.1 * (1.0 - smoothstep(0.3, 1.6, wpos.y));
+	float flake = smoothstep(flake_t, flake_t + 0.04, flake_n) * smoothstep(0.06, 0.14, lum);
+	col = mix(col, plaster * (0.85 + 0.2 * fine), flake);
+	// Hairline cracks.
+	float crack = 1.0 - smoothstep(0.0, 0.035, abs(fnoise(p * vec2(3.0, 2.2) + 41.0) - 0.5));
+	col *= 1.0 - 0.3 * crack * smoothstep(0.4, 0.7, big);
+	// Grime at the foot, soot above torches.
+	col *= mix(0.62, 1.0, smoothstep(0.2, 1.5, wpos.y));
+	float soot = 0.0;
+	for (int i = 0; i < 6; i++) {
+		vec3 d = wpos - torches[i];
+		soot = max(soot, (1.0 - smoothstep(0.2, 1.3, length(d.xz))) * smoothstep(-0.3, 0.6, d.y) * (1.0 - smoothstep(0.8, 2.8, d.y)));
+	}
+	col *= 1.0 - 0.55 * soot;
+	ALBEDO = col;
+	ROUGHNESS = 0.92;
+	SPECULAR = 0.2;
 }
 """

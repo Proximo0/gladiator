@@ -57,6 +57,9 @@ var _next_seed: int = 0
 var _fight_token: int = 0
 var _recorded_token: int = -1  ## the fight whose result already went into PlayerProgress
 var _unlocked_line: String = ""  ## "Unlocked: ..." after a fight that earned a weapon
+var _show: MatchShow = null  ## the current match's intro and fight tally (game/ui/match/)
+var _results: MatchResults = null
+var _match_info: Dictionary = {}  ## the Quick Match the service found (opponent name and rating)
 
 
 func _init() -> void:
@@ -85,6 +88,7 @@ func adopt(m: Match, mode: String) -> void:
 	state.last_mode = mode
 	current_match = m
 	_hook_match(m)
+	_attach_show(m, mode, false)
 	_enter_fight()
 
 
@@ -196,6 +200,9 @@ func _hide_screens() -> void:
 	if _pause != null:
 		_pause.queue_free()
 		_pause = null
+	if _results != null:
+		_results.queue_free()
+		_results = null
 
 
 func _show_title() -> void:
@@ -278,6 +285,7 @@ func _begin_practice() -> void:
 	current_match = m
 	state.last_mode = "practice"
 	_hook_match(m)
+	_attach_show(m, "practice", false)  # the tally only: practice gets no intro
 	match_started.emit(m)
 	_practice = PracticeSession.new()
 	_practice.name = "PracticeSession"
@@ -345,6 +353,7 @@ func _begin_fight(mode: String) -> void:
 		m.presenter.blood.set_quality(GfxQuality.blood_level())
 	current_match = m
 	_hook_match(m)
+	_attach_show(m, mode, true)
 	match_started.emit(m)
 	_enter_fight()
 
@@ -400,6 +409,8 @@ func _hook_match(m: Match) -> void:
 func _enter_fight() -> void:
 	screen = Screen.FIGHT
 	_hide_screens()
+	if _show != null and is_instance_valid(_show) and _show.intro_running():
+		return  # the controls hint and the pause button come with FIGHT! (_after_intro)
 	var mode: String = str(current_match.config.get("mode", "bot_vs_bot")) if current_match != null else "bot_vs_bot"
 	if mode == "practice":
 		_pause_btn.visible = DisplayServer.is_touchscreen_available() or Flags.args.has("touch")
@@ -482,6 +493,7 @@ func _ensure_service() -> void:
 		_service = loc
 	_service.name = "OnlineService"
 	_service.result_recorded.connect(_on_recorded)
+	_service.matched.connect(func(info: Dictionary) -> void: _match_info = info)
 	add_child(_service)
 
 
@@ -518,7 +530,7 @@ func _on_shop_back() -> void:
 
 func _on_recorded(summary: Dictionary) -> void:
 	_rating_line = OnlineScreen.summary_text(summary)
-	_online.on_summary(summary)  # emits result_changed: a verdict that came after the panel redraws it
+	_online.on_summary(summary)  # emits result_changed: a verdict that came after the results screen redraws it
 
 
 func _end_session() -> void:
@@ -536,7 +548,7 @@ func _end_session() -> void:
 
 func _on_online_start() -> void:
 	if _net != null:
-		_net.start_match(_new_seed())
+		_net.start_match(_new_seed(), 0.0, roundi(Tuning.shared().intro_s * float(NetConfig.TICK_HZ)))
 
 
 ## Both sides: the host pressed FIGHT (or Rematch). Build the match from the START message.
@@ -555,9 +567,11 @@ func _begin_online(start: Dictionary) -> void:
 	m.setup(NetLobby.match_config(start, true))
 	if m.presenter != null and m.presenter.blood != null:
 		m.presenter.blood.set_quality(GfxQuality.blood_level())
+	_use_player_names(m, start)
 	_net.attach_match(m)
 	current_match = m
 	_hook_match(m)
+	_attach_show(m, ONLINE_MODE, true)
 	match_started.emit(m)
 	_enter_fight()
 
@@ -567,7 +581,7 @@ func _on_net_closed(reason: String) -> void:
 		_net.queue_free()
 		_net = null
 	if _quick and _online.has_open_match():
-		_online.report_abandoned(Rating.KIND_DROPPED, current_match.tick if current_match != null else 0, _leader_side())
+		_online.report_abandoned(Rating.KIND_DROPPED, current_match.fight_ticks() if current_match != null else 0, _leader_side())
 	if screen == Screen.ONLINE:
 		_open_online(_quick)
 		if _quick:
@@ -605,7 +619,8 @@ func _on_match_over(result: Dictionary, token: int) -> void:
 	_record_progress(result, token)
 	if _quick and _is_online() and _online.has_open_match():
 		var suspect: bool = result.has("suspect")  # NetResultCheck: a draw claim makes the reports disagree (disputed)
-		_online.report_finished(-1 if suspect else int(result.get("winner", -1)), int(result.get("ticks", 0)), "suspect" if suspect else str(result.get("reason", "")))
+		_online.report_finished(-1 if suspect else int(result.get("winner", -1)),
+				int(result.get("fight_ticks", result.get("ticks", 0))), "suspect" if suspect else str(result.get("reason", "")))
 	if current_match == null or bool(current_match.config.get("loop", false)):
 		return
 	var t: SceneTreeTimer = get_tree().create_timer(RESULT_DELAY_S, true, false, true)
@@ -632,51 +647,107 @@ func _show_result(result: Dictionary, token: int) -> void:
 	_hint.hide_now()
 	_pause_btn.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	var names: Array = current_match.names
-	var w: int = int(result.get("winner", -1))
-	var mode: String = str(current_match.config.get("mode", ""))
 	if _is_online():
-		_show_online_result(w, names)
+		_show_online_result()
 		return
-	var latin: String = "AEQVO MARTE"
-	var english: String = "Evenly matched"
-	if w >= 0:
-		latin = "VICTORIA" if (mode != "player_vs_cpu" or w == 0) else "MORS"
-		english = ("%s wins" % str(names[w])) if mode != "player_vs_cpu" else ("You won" if w == 0 else "%s wins" % str(names[w]))
 	_pause_dim.visible = true
-	_show_panel(latin, english, _unlocked_line, [["rematch", "Rematch"], ["loadout", "Change loadout"], ["title", "Title"]])
+	_show_results(result, [["rematch", "Rematch"], ["loadout", "Loadout"], ["title", "Menu"]], "", true)
 
 
-func _show_online_result(w: int, names: Array) -> void:
-	var me: int = _online.my_side() if _quick else (0 if _net.role == NetSession.ROLE_HOST else 1)
-	var latin: String = "AEQVO MARTE"
-	var english: String = "Evenly matched"
-	if w >= 0:
-		latin = "VICTORIA" if w == me else "MORS"
-		var opp: String = _online.opponent_name() if _quick else (_net.remote_name if _net != null else "")
-		english = "You won" if w == me else "%s wins" % (opp if opp != "" else str(names[w]))  # the match names come from the seed
+## The online results: the same MatchResults screen as offline, seen from this side. A Quick Match adds the rating
+## change (OnlineScreen's RatingChangeView, under the heading), its friendly or waiting line and the rematch question
+## (`result_body`), and its buttons come from `result_entries` (Rematch / Accept rematch while the opponent is there:
+## a handshake, see `_on_panel`). A direct-IP host gets Rematch; its client waits for the host.
+func _show_online_result(animate: bool = true) -> void:
 	_pause_dim.visible = true
-	var entries: Array = [["online", "Find another opponent" if _quick else "Back to lobby"], ["title", "Leave"]]
-	var body: String = "" if _quick or _net.role == NetSession.ROLE_HOST else "The host picks a rematch"
+	var entries: Array = [["online", "Back to lobby"], ["title", "Leave"]]
+	var note: String = ""
 	if _quick:
-		body = _online.result_body()  # the rating change is a RatingChangeView below the heading
 		entries = _online.result_entries()
-	elif _net.role == NetSession.ROLE_HOST:
+		note = _online.result_body()
+	elif _net != null and _net.role == NetSession.ROLE_HOST:
 		entries.push_front(["net_rematch", "Rematch"])
-	if _unlocked_line != "":
-		body = _unlocked_line if body == "" else "%s\n%s" % [body, _unlocked_line]
-	_show_panel(latin, english, body, entries)
+	else:
+		note = "The host picks a rematch"
+	_show_results(current_match.result, entries, note, animate, true)
 	var view: RatingChangeView = _online.make_result_view() if _quick else null
 	if view != null:
-		var col: Node = _pause.get_child(0)
-		col.add_child(view)
-		col.move_child(view, mini(2, col.get_child_count() - 1))  # under the English line
+		_results.add_view(view)
 
 
-## The rematch answer or the rating verdict changed while the online result panel is up.
+## The rematch answer, the rating verdict or the session changed while the Quick Match results are up: redraw them
+## (no row reveal; the rating view counts up only the first time it is shown for a match).
 func _on_online_result_changed() -> void:
 	if screen == Screen.RESULT and _quick and current_match != null and current_match.over:
-		_show_online_result(int(current_match.result.get("winner", -1)), current_match.names)
+		_show_online_result(false)
+
+
+## The results screen (game/ui/match/MatchResults) for the current match's `result`. An online match is seen from
+## this side (`_online_side`); a Quick Match's rating is the RatingChangeView `_show_online_result` adds, so the
+## report carries none.
+func _show_results(result: Dictionary, entries: Array, note: String, animate: bool, online: bool = false) -> void:
+	var me: int = _online_side() if online else 0
+	var notes: Array = [note, _unlocked_line].filter(func(x: String) -> bool: return x != "")
+	if _show == null or not is_instance_valid(_show) or _show.match_node != current_match:
+		_attach_show(current_match, ONLINE_MODE if online else str(current_match.config.get("mode", "")), false)
+	var data: Dictionary = _show.report(result, me, online, {}, "\n".join(PackedStringArray(notes)))
+	if _pause != null:
+		_pause.queue_free()
+		_pause = null
+	if _results != null:
+		_results.queue_free()
+	_results = MatchResults.open(_root, data, entries, animate)
+	_results.chosen.connect(_on_panel)
+	_show.hide_touch()
+
+
+## This screen's side in the online match: 0 for the host, 1 for the client (a Quick Match asks the service's role).
+func _online_side() -> int:
+	if _quick:
+		return _online.my_side()
+	return 0 if _net == null or _net.role == NetSession.ROLE_HOST else 1
+
+
+## The match wrapper (game/ui/match/): the fight tally for the results screen, and for a fresh vs CPU, local 2P or
+## online fight the pre-fight intro. Practice and bot loops get no intro.
+func _attach_show(m: Match, mode: String, intro: bool) -> void:
+	_show = MatchShow.attach(m, mode == ONLINE_MODE)
+	_show.hold_changed.connect(func(on: bool) -> void:
+		if _net != null:
+			_net.input_blocked = on)
+	_show.intro_finished.connect(_after_intro)
+	if not intro or mode == "bot_vs_bot" or mode == "practice" or bool(m.config.get("loop", false)):
+		return
+	var me: int = _online_side() if mode == ONLINE_MODE else 0
+	var ratings: Array = [{}, {}]
+	if mode == ONLINE_MODE and _quick and _service != null:
+		ratings[me] = _service.my_rating()
+		ratings[1 - me] = _match_info.get("opponent", {})
+	_show.local_side = me
+	var intro_s: float = Tuning.shared().intro_s
+	if mode == ONLINE_MODE:  # the host's START fixed the release tick: both peers' plates end on it
+		intro_s = float(m.fight_start_tick) / float(NetConfig.TICK_HZ)
+	_show.play_intro(_show.plates(mode, me, ratings), intro_s, Tuning.shared().intro_fight_s)
+
+
+func _after_intro() -> void:
+	if screen == Screen.FIGHT and current_match != null:
+		_enter_fight()
+
+
+## The current intro's phase ("plates", "fight", "" when none): for captures and sims.
+func intro_phase() -> String:
+	return _show.intro_phase() if _show != null and is_instance_valid(_show) else ""
+
+
+## Online: the players' own names (from START) on the HUD, intro and results instead of the seed's gladiator names.
+func _use_player_names(m: Match, start: Dictionary) -> void:
+	var n: Array = start.get("names", [])
+	if n.size() < 2 or str(n[0]) == "" or str(n[1]) == "":
+		return
+	m.names = [str(n[0]), str(n[1])]
+	if m.presenter != null and m.fighters.size() == 2:
+		m.presenter.hud.track((m.fighters[0] as Fighter).health, (m.fighters[1] as Fighter).health, str(n[0]), str(n[1]))
 
 
 func _pause_game() -> void:
@@ -728,6 +799,9 @@ func _resume() -> void:
 func _show_panel(latin: String, english: String, body: String, entries: Array) -> void:
 	if _pause != null:
 		_pause.queue_free()
+	if _results != null:  # a panel over the results (the session closed) replaces them
+		_results.queue_free()
+		_results = null
 	_pause = MenuPanel.new()
 	_pause.build(latin, english, body, entries)
 	_pause.chosen.connect(_on_panel)
