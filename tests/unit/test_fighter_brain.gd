@@ -80,7 +80,7 @@ func test_guards_against_fast_incoming_tip() -> void:
 
 func test_thrusts_with_a_spear() -> void:
 	var b := _brain({"preset": "berserker"})
-	var f: Array = _pair(2.2, "spear")
+	var f: Array = _pair(3.0, "spear")
 	var thrust_seen: bool = false
 	for i in 300:
 		var inp: FighterInput = b.think(f[0], f[1], DT)
@@ -89,6 +89,57 @@ func test_thrusts_with_a_spear() -> void:
 			break
 	assert_true(thrust_seen, "spear strikes use THRUST")
 	assert_eq(str(b.plan()["kind"]), "thrust")
+
+
+func test_pole_miss_is_the_offset_from_the_blade_line() -> void:
+	var hand := Vector3(0.0, 1.2, -0.5)
+	var tip := Vector3(0.0, 1.2, -2.4)
+	assert_true(FighterBrain.pole_miss(hand, tip, Vector3(0.0, 1.2, -3.0), Vector3.RIGHT).length() < 0.0001, "on the line")
+	var m: Vector2 = FighterBrain.pole_miss(hand, tip, Vector3(0.3, 1.1, -3.0), Vector3.RIGHT)
+	assert_true(absf(m.x - 0.3) < 0.0001 and absf(m.y + 0.1) < 0.0001, "right and below: %s" % m)
+
+
+func test_spear_servo_steers_the_blade_line_toward_the_target() -> void:
+	var b := _brain({"preset": "duelist"})
+	var f: Array = _pair(3.0, "spear")
+	# Blade levelled straight ahead but 0.3 m left of and 0.2 m below the foe's chest.
+	(f[0] as Dictionary)["hand_pos"] = Vector3(-0.3, 1.1, -0.5)
+	(f[0] as Dictionary)["tip_pos"] = Vector3(-0.3, 1.1, -2.4)
+	var inp: FighterInput = null
+	for i in 40:
+		inp = b.think(f[0], f[1], DT)
+	assert_true(inp.has(FighterInput.SWING), "pole stance keeps the blade level")
+	assert_true(inp.aim_x > 0, "aim moves right toward the line: %d" % inp.aim_x)
+	assert_true(inp.aim_y > 150, "aim moves up toward the line: %d" % inp.aim_y)
+
+
+func test_spear_gives_ground_when_the_foe_is_inside_the_point() -> void:
+	var b := _brain({"preset": "berserker"})
+	var f: Array = _pair(1.6, "spear")
+	var back: int = 0
+	var thrusts: int = 0
+	for i in 120:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		if inp.move_y < 0:
+			back += 1
+		if inp.has(FighterInput.THRUST):
+			thrusts += 1
+	assert_true(back > 60, "backs off to make room for the point (%d ticks)" % back)
+	assert_eq(thrusts, 0, "never thrusts with the point already past the foe")
+
+
+func test_foe_of_a_spear_closes_in_while_guarding_out_of_reach() -> void:
+	var b := _brain({"preset": "duelist", "risk": 0.0})
+	var f: Array = _pair(3.0, "longsword")
+	(f[1] as Dictionary)["weapon_id"] = "spear"
+	(f[1] as Dictionary)["tip_speed"] = 8.0
+	(f[1] as Dictionary)["tip_pos"] = Vector3(0.0, 1.3, -0.9)
+	var fwd: int = 0
+	for i in 30:
+		var inp: FighterInput = b.think(f[0], f[1], DT)
+		if b.state_name() == "guard" and inp.move_y > 0:
+			fwd += 1
+	assert_true(fwd > 0, "steps in past the point instead of standing in guard")
 
 
 func test_goes_for_the_neck_when_foe_blood_is_low() -> void:
@@ -245,7 +296,7 @@ func test_cowardly_pair_still_closes_and_swings() -> void:
 
 func _finish_plan(weapon: String, armor: Dictionary, seed_value: int) -> Dictionary:
 	var b := FighterBrain.new(seed_value, {"preset": "duelist", "reaction_ms": 0.0, "aim_noise": 0.0, "spawn_hold": 0})
-	var f: Array = _pair(1.0, weapon)
+	var f: Array = _pair(3.0 if weapon == "spear" else 1.0, weapon)  # a spear thrusts from its own range only
 	(f[1] as Dictionary)["blood_frac"] = 0.1
 	(f[1] as Dictionary)["armor"] = armor
 	for i in 400:

@@ -40,6 +40,22 @@ const PIN_RADIUS: float = 7.0  ## a foe farther out than this can be pinned agai
 const BURST_TICKS: int = 150  ## committed attacking after a footwork phase (a re-engagement, not a slow drift in)
 const LONG_REACH: float = 2.5  ## weapons reaching farther than this (spear, rake) sidestep little while guarding
 const LONG_GUARD_SCALE: float = 0.5
+const TIP_GAIN_X: float = 3.0  ## metres the blade line moves at the foe per metre of hand travel sideways (pole)
+const TIP_GAIN_Y: float = 2.0  ## the same, vertically (the blade pitches up as the hand rises, less than it yaws)
+const SPEAR_SERVO_GAIN: float = 0.12  # TUNING: share of the blade line's miss closed per tick by the pole servo
+const SPEAR_AIM_SLEW: float = 0.2  ## max aim travel per tick while a spear tracks its target
+const SPEAR_ALIGN_TOL: float = 0.18  # TUNING: blade line miss (m) under which a spear thrust is let go
+const SPEAR_WINDUP: int = 10  ## ticks a spear waits for its point to line up before it thrusts anyway
+const SPEAR_READY_DIST: float = 4.5  ## inside this distance a spear holds its pole stance (blade level, point on the foe)
+const SPEAR_STRIKE_MAX: float = 3.4  # TUNING: a spear thrust is started only inside this distance (pelvis to pelvis, m)
+const SPEAR_THRUST_MIN: float = 2.75  # TUNING: closer than this the levelled point is already past the foe's front
+const SPEAR_HOLD_MIN: float = 2.9  # TUNING: the spear's standing distance band (pelvis to pelvis, m)
+const SPEAR_HOLD_MAX: float = 3.3  # TUNING
+const SPEAR_MIN_RANGE: float = 2.3  # TUNING: inside this a spear gives ground until there is room for the point
+const SPEAR_BACKSTEP: int = 800  ## backward move input while a spear gives ground
+const SPEAR_LUNGE_MIN: float = 2.2  # TUNING: a thrust steps in only while farther than this (m, pelvis to pelvis)
+const SPEAR_STRIKE_TICKS: int = 28  # TUNING: a spear thrust's length (the step in that carries the point)
+const SPEAR_NOISE_M: float = 1.2  ## metres of point offset per unit of plan aim noise (the noise is in hand-aim units)
 const REPOS_ORBIT: int = 0
 const REPOS_BACK: int = 1
 const REPOS_GOAL: int = 2
@@ -142,6 +158,7 @@ var _dir: Vector3 = Vector3(0.0, 0.0, -1.0)
 var _dist: float = 5.0
 var _origin: Vector3 = Vector3.ZERO
 var _reach: float = 1.5
+var _spear: bool = false  ## the held weapon is a spear (thrusts with the whole body)
 
 
 static func preset(preset_name: String) -> Dictionary:
@@ -476,7 +493,10 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	if finishing:
 		hold = _reach * 0.85
 	var stamina: float = float(me.get("stamina", 1.0))
-	_neutral_aim(out)
+	if _spear and _dist < SPEAR_READY_DIST:
+		_spear_ready(me, _spear_target(obs), out)
+	else:
+		_neutral_aim(out)
 	_shield_up(me, out)
 	if not finishing:
 		if _phase == 0 and _phase_t <= 0 and _desperation() < REPOS_DESPERATE:
@@ -498,6 +518,8 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		_range_off = _rng.randf_range(-0.1, 1.0) * _reach * (1.0 - _pf("aggression") * 0.5)
 	if not finishing:
 		hold += _range_off
+	if _spear:
+		hold = clampf(hold, SPEAR_HOLD_MIN, SPEAR_HOLD_MAX)
 	if _dist > hold + 0.25:
 		if not _pin_target(hold, out):
 			out.move_y = 1000 if _dist > hold + 1.0 else 600
@@ -517,6 +539,9 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		_wait = 0
 	if _wait > 0:
 		return
+	if _spear and _dist < SPEAR_MIN_RANGE and not finishing:
+		out.move_y = -SPEAR_BACKSTEP  # inside the point: give ground until there is room to thrust
+		return
 	var opp: bool = _opportunity(obs)
 	var p: float = lerpf(0.3, 1.0, _pf("aggression")) + (float(_d["punish"]) if opp else 0.0)
 	if not opp and not finishing:
@@ -526,9 +551,12 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	p *= float(_d["p_scale"])
 	var in_reach: bool = _dist <= _reach * 1.05
 	var lunge: bool = _dist <= _reach * (1.3 if finishing else 1.9) and (_pf("aggression") > 0.5 or opp or finishing or committed)
+	if _spear:  # the point lands only from a run-up: start a thrust from the stance band, never from close in
+		in_reach = _dist <= SPEAR_STRIKE_MAX and _dist >= SPEAR_THRUST_MIN
+		lunge = false
 	if _rng.randf() <= p and (in_reach or lunge):
 		_plan = _make_plan(me, obs, finishing)
-		if not finishing and _rng.randf() < _pf("feint"):
+		if not finishing and _rng.randf() < _pf("feint") and not _spear:  # a pole feint only drags the point off line
 			_enter(ST_FEINT, 12 + _rng.randi_range(0, 6))
 		else:
 			_enter(ST_WINDUP, _windup_len(me))
@@ -684,8 +712,19 @@ func _do_feint(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 
 
 func _do_windup(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
-	if _dist > _reach * 2.2:
+	if _dist > (SPEAR_STRIKE_MAX + 1.0 if _spear else _reach * 2.2):
 		_enter(ST_APPROACH, 0)
+		return
+	if _spear and _plan.get("kind", "") == "thrust":
+		# Pole stance: no wind-up swing at all. Keep the point on the chest and let the thrust go the moment the
+		# blade's line runs through it (or after SPEAR_WINDUP ticks, before the foe walks past the point).
+		var tgt: Vector3 = _spear_target(obs)
+		_spear_ready(me, tgt, out)
+		_spear_footwork(out)
+		if _dist < SPEAR_MIN_RANGE:
+			_enter(ST_APPROACH, 0)  # the foe walked inside the point: make room first
+		elif (_st_ticks >= 1 and _spear_aligned(me, tgt)) or _st_ticks + 1 >= _st_len:
+			_enter(ST_STRIKE, _strike_len(me))
 		return
 	var t: Vector2 = _plan_target(me, obs)
 	var wind: Vector2 = _windup_aim(t)
@@ -701,18 +740,27 @@ func _do_windup(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 
 
 func _do_strike(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
-	var t: Vector2 = _plan_target(me, obs)
-	var wind: Vector2 = _windup_aim(t)
-	var u: float = clampf(float(_st_ticks + 1) / maxf(float(_st_len), 1.0), 0.0, 1.0)
-	var e: float = u * u
-	var end: Vector2 = t if _plan["kind"] == "thrust" else _clamp_aim(t + (_plan["dir"] as Vector2) * WINDUP_AMP)
-	_set_aim(out, wind.lerp(end, e))
+	var pole: bool = _spear and _plan["kind"] == "thrust"
+	if pole:
+		_spear_ready(me, _spear_target(obs), out)  # keep steering the point onto the target while it drives in
+		if _dist > SPEAR_LUNGE_MIN:
+			# The arms are at full reach in the pole stance (THRUST adds next to nothing), and a contact under
+			# damage_min_speed does nothing: the run-up carries the point, sprinting while there is breath.
+			out.move_y = 1000
+			if float(me.get("stamina", 1.0)) > 0.2:
+				out.buttons |= FighterInput.SPRINT
+	else:
+		var t: Vector2 = _plan_target(me, obs)
+		var wind: Vector2 = _windup_aim(t)
+		var u: float = clampf(float(_st_ticks + 1) / maxf(float(_st_len), 1.0), 0.0, 1.0)
+		var end: Vector2 = t if _plan["kind"] == "thrust" else _clamp_aim(t + (_plan["dir"] as Vector2) * WINDUP_AMP)
+		_set_aim(out, wind.lerp(end, u * u))
+		_advance(out)
 	out.buttons |= FighterInput.SWING
 	if _plan["kind"] == "thrust":
 		out.buttons |= FighterInput.THRUST
-	if bool(_plan.get("half", false)):
+	if bool(_plan.get("half", false)) and not pole:
 		out.buttons |= FighterInput.HALF_SWORD
-	_advance(out)
 	if _st_ticks + 1 >= _st_len:
 		var def: Dictionary = CombatData.weapon(str(me.get("weapon_id", "fists")))
 		var rec: float = (14.0 + float(def.get("mass", 1.0)) * 8.0) * (1.3 - _pf("aggression") * 0.6)
@@ -720,16 +768,22 @@ func _do_strike(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 
 
 func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
-	_neutral_aim(out, SLEW_RECOVER)
+	if _spear and _dist < SPEAR_READY_DIST:
+		_spear_ready(me, _spear_target(obs), out)  # draw back (THRUST released) with the point kept in line
+	else:
+		_neutral_aim(out, SLEW_RECOVER)
 	_shield_up(me, out)
-	if _want_finish(obs):
+	if _spear and not _want_finish(obs):
+		_spear_footwork(out)
+	elif _want_finish(obs):
 		out.move_y = roundi(-300.0 * (1.0 - _pf("aggression")))
 	else:
 		_steer(-_dir * (1.0 - _pf("aggression")) + _tangent() * 0.5 + _venue_lean() * 0.6, 0.35 + 0.35 * (1.0 - _pf("aggression")), out)
 	if _st_ticks + 1 >= _st_len:
 		var finishing: bool = _want_finish(obs)
 		var stamina: float = float(me.get("stamina", 1.0))
-		if not _tired and _dist <= _reach * 1.1 and _rng.randf() <= maxf(_pf("aggression") * 0.6 * minf(stamina * 1.5, 1.0), 0.8 if finishing else 0.0):
+		var room: bool = not _spear or (_dist >= SPEAR_THRUST_MIN and _dist <= SPEAR_STRIKE_MAX)
+		if not _tired and room and _dist <= _reach * 1.1 and _rng.randf() <= maxf(_pf("aggression") * 0.6 * minf(stamina * 1.5, 1.0), 0.8 if finishing else 0.0):
 			_plan = _make_plan(me, obs, finishing)
 			_enter(ST_WINDUP, roundi(float(_windup_len(me)) * 0.7))
 		else:
@@ -750,9 +804,13 @@ func _do_guard(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	# by footwork hits the own body (spear self hits), so it only gives ground.
 	if _dist < _reach * 1.4:
 		if _reach > LONG_REACH:
-			out.move_y = -250
+			out.move_y = -SPEAR_BACKSTEP if _spear and _dist < SPEAR_MIN_RANGE else -250
 		else:
 			_steer(-_dir * (0.2 + 0.3 * (1.0 - _pf("risk"))) + _tangent() * 0.7 + _venue_lean() * 0.4, 0.55, out)
+	elif not _spear and str(CombatData.weapon(str(obs.get("weapon_id", "fists"))).get("shape", "")) == "spear":
+		# Out of my own reach behind a levelled spear point: standing in guard only waits for the next thrust.
+		# Close in on a slant, past the point, as a spearman's foe must.
+		_steer(_dir * 0.6 + _tangent() * 0.8, 0.8, out)
 
 
 func _do_retreat(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
@@ -911,6 +969,8 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 			dir = Vector2(0.0, -1.0)
 		_:
 			dir = Vector2(mirror * 0.45, -0.25)  # thrust: wind up off line, then drive onto the target
+			if shape == "spear":
+				dir = Vector2.ZERO  # a pole thrust is drawn back along its own line, never swept across the foe
 	return {"kind": kind, "part": part, "dir": dir, "noise": noise, "half": half, "neck": neck, "finishing": finishing}
 
 
@@ -918,7 +978,7 @@ func _kind_weights(def: Dictionary) -> Dictionary:
 	var w: Dictionary = {}
 	match str(def.get("shape", "fist")):
 		"spear":
-			w = {"thrust": 5.0, "horizontal": 0.6, "overhead": 0.6}
+			w = {"thrust": 1.0}  # a sweep of the shaft only touches (blunt 0.1); the point is the weapon
 		"rake":
 			w = {"thrust": 2.0, "overhead": 2.0, "horizontal": 1.0}
 		"sword":
@@ -964,7 +1024,7 @@ func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool) -
 			"diag":
 				wt *= 0.4 if leg else 1.2
 			"thrust":
-				wt *= 1.6 if n == "torso" else (0.3 if leg else (0.4 if arm else 1.0))
+				wt *= 1.6 if n == "torso" else ((0.0 if _spear else 0.3) if leg else (0.4 if arm else 1.0))
 		if n == "head" or n == "torso" or n == "pelvis":
 			wt *= float(_d["core_bias"])
 		if leg:
@@ -1043,6 +1103,7 @@ func _geometry(me: Dictionary, obs: Dictionary) -> void:
 	_origin = _part_pos(me, "torso", mp + Vector3(0.0, 0.5, 0.0)) + Vector3(0.0, 0.05, 0.0)
 	var def: Dictionary = CombatData.weapon(str(me.get("weapon_id", "fists")))
 	_reach = 0.9 + float(def.get("length", 0.3)) * 0.9
+	_spear = str(def.get("shape", "")) == "spear"
 	if str(me.get("grip", "normal")) == "half":
 		_reach -= 0.25
 
@@ -1066,6 +1127,50 @@ func _plan_target(me: Dictionary, obs: Dictionary) -> Vector2:
 		p.y += NECK_LIFT
 	var wob: float = sin(float(_tick) * 0.07) * 0.05 * _pf("aim_noise")
 	return _clamp_aim(_aim_for(p) + (_plan.get("noise", Vector2.ZERO) as Vector2) + Vector2(wob, 0.0))
+
+
+## The point a spear aims at: always the chest (the servo needs a good third of a second to move the point, too slow
+## to switch targets within a thrust), offset by the plan's aim noise while a thrust is under way.
+func _spear_target(obs: Dictionary) -> Vector3:
+	var fallback: Vector3 = (obs.get("pelvis_pos", Vector3.ZERO) as Vector3) + Vector3(0.0, 0.35, 0.0)
+	var p: Vector3 = _part_pos(obs, "torso", fallback)
+	if _state == ST_WINDUP or _state == ST_STRIKE:
+		var n: Vector2 = _plan.get("noise", Vector2.ZERO)
+		p += (_right * n.x + Vector3.UP * n.y) * SPEAR_NOISE_M
+	return p
+
+
+## Perpendicular miss (right, up) of `target` from the blade line running from `hand` through `tip`.
+static func pole_miss(hand: Vector3, tip: Vector3, target: Vector3, right: Vector3) -> Vector2:
+	var axis: Vector3 = tip - hand
+	if axis.length() < 0.05:
+		return Vector2.ZERO
+	axis = axis.normalized()
+	var rel: Vector3 = target - hand
+	var off: Vector3 = rel - axis * rel.dot(axis)
+	return Vector2(off.dot(right), off.y)
+
+
+## Pole servo: a long blade turns a small hand offset into a large one at the foe and its rest angle depends on the
+## hand height, so no open-loop aim map lands the point. Close the loop on the real blade instead: nudge the aim
+## each tick by a share of the blade line's miss at the target.
+func _pole_servo(me: Dictionary, target: Vector3) -> Vector2:
+	if not me.has("tip_pos") or not me.has("hand_pos"):
+		return _clamp_aim(_aim_for(target))
+	var miss: Vector2 = pole_miss(me["hand_pos"], me["tip_pos"], target, _right)
+	var step := Vector2(miss.x / (GUARD_W * TIP_GAIN_X), miss.y / (GUARD_H * TIP_GAIN_Y)) * SPEAR_SERVO_GAIN
+	return _clamp_aim(_last_aim + step.limit_length(SPEAR_AIM_SLEW))
+
+
+## True when the spear points ahead and its blade line passes within SPEAR_ALIGN_TOL of `target`.
+func _spear_aligned(me: Dictionary, target: Vector3) -> bool:
+	if not me.has("tip_pos") or not me.has("hand_pos"):
+		return true
+	var hand: Vector3 = me["hand_pos"]
+	var tip: Vector3 = me["tip_pos"]
+	if (tip - hand).normalized().dot(_dir) < 0.85:
+		return false
+	return pole_miss(hand, tip, target, _right).length() <= SPEAR_ALIGN_TOL
 
 
 func _windup_aim(t: Vector2) -> Vector2:
@@ -1113,6 +1218,21 @@ func _shield_up(me: Dictionary, out: FighterInput) -> void:
 		out.buttons |= FighterInput.OFFHAND
 
 
+## Pole stance: blade levelled (SWING; the wrist needs a good half second to bring it down from the guard's upward
+## slant, far longer than a thrust takes) and its point kept on `target`, so a thrust only has to drive in.
+func _spear_ready(me: Dictionary, target: Vector3, out: FighterInput) -> void:
+	_set_aim(out, _pole_servo(me, target))
+	out.buttons |= FighterInput.SWING
+
+
+## Range work while the point is up: give ground when the foe is inside the point, otherwise stand.
+func _spear_footwork(out: FighterInput) -> void:
+	if _dist < SPEAR_MIN_RANGE:
+		out.move_y = -SPEAR_BACKSTEP
+	elif _dist < SPEAR_HOLD_MIN:
+		out.move_y = -SPEAR_BACKSTEP / 2
+
+
 ## Lunge toward the foe while winding up or striking when out of comfortable reach.
 func _advance(out: FighterInput) -> void:
 	if _dist > _reach * 0.85:
@@ -1143,6 +1263,8 @@ func _wall_adjust(me: Dictionary, out: FighterInput) -> void:
 func _windup_len(me: Dictionary) -> int:
 	var def: Dictionary = CombatData.weapon(str(me.get("weapon_id", "fists")))
 	var m: float = float(def.get("mass", 1.0))
+	if _spear:
+		return SPEAR_WINDUP
 	return clampi(roundi((8.0 + m * 7.0) * (1.15 - _pf("aggression") * 0.5)), 8, 36)
 
 
@@ -1150,6 +1272,8 @@ func _strike_len(me: Dictionary) -> int:
 	var def: Dictionary = CombatData.weapon(str(me.get("weapon_id", "fists")))
 	var m: float = float(def.get("mass", 1.0))
 	var fast: float = FINISH_STRIKE_SCALE if bool(_plan.get("finishing", false)) else 1.0  # a killing blow wants speed
+	if _spear and _plan.get("kind", "") == "thrust":
+		return SPEAR_STRIKE_TICKS
 	if _plan.get("kind", "") == "thrust":
 		return clampi(roundi((8.0 + m * 2.0) * fast * float(_d["swing_scale"])), 6, 26)
 	return clampi(roundi((12.0 + m * 5.0) * fast * float(_d["swing_scale"])), 9, 48)
