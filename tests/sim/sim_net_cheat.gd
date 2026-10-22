@@ -157,6 +157,9 @@ func _forged_over_row() -> Array:
 	await step(90)  # only real snapshots in the client's buffer again
 	if _host == null or not _host.is_open() or _cm == null:
 		return row("net_cheat_forged_over_flagged", false, "session gone before the forged result")
+	if _hm.over or _cm.over:
+		return row("net_cheat_forged_over_flagged", null, "the fight ended honestly first (%s/%s): nothing to forge" % [
+			str(_cm.result.get("winner", "?")), str(_cm.result.get("reason", "?"))])
 	var alive: Array = [not (_hm.fighters[0] as Fighter).health.dead, not (_hm.fighters[1] as Fighter).health.dead]
 	if not alive[0] and not alive[1]:
 		return row("net_cheat_forged_over_flagged", null, "both fighters dead: nothing to forge")
