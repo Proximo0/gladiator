@@ -3,7 +3,7 @@ extends Node3D
 ## godot --path . --resolution 1280x720 res://game/ui/menu/menu_capture.tscn -- --capture --out=/tmp/menu --tag=landscape
 ## --shots=title,loadout,loadout_locked,loadout2p,options,controls,fight,pause,result (default: all)
 
-const SHOT_LIST: PackedStringArray = ["title", "loadout", "loadout_locked", "loadout2p", "options", "controls", "fight", "pause", "result", "offer", "practice", "practice_swing", "practice_grab", "practice_free"]
+const SHOT_LIST: PackedStringArray = ["title", "title_nav", "quick", "leaderboard", "shop", "loadout", "loadout_locked", "loadout2p", "options", "controls", "fight", "pause", "result", "offer", "practice", "practice_swing", "practice_grab", "practice_free"]
 
 var _flow: MenuFlow
 
@@ -18,6 +18,18 @@ func _ready() -> void:
 func _frames(n: int) -> void:
 	for i: int in n:
 		await get_tree().process_frame
+
+
+## A pad/keyboard action press and release, through the real input path.
+func _press(action: String) -> void:
+	var ev := InputEventAction.new()
+	ev.action = action
+	ev.pressed = true
+	Input.parse_input_event(ev)
+	var up := InputEventAction.new()
+	up.action = action
+	up.pressed = false
+	Input.parse_input_event(up)
 
 
 func _snap(shot_name: String, wait: int = 40) -> void:
@@ -37,6 +49,18 @@ func _run() -> void:
 		match s:
 			"title":
 				_flow._show_title()
+			"title_nav":
+				_flow._show_title()
+				await _frames(4)
+				for i: int in 3:
+					_press("ui_down")
+					await _frames(2)
+			"quick":
+				_flow._open_online(true)
+			"leaderboard":
+				_flow._open_leaderboard()
+			"shop":
+				_flow._open_shop(false)
 			"loadout":
 				_flow._open_loadout("player_vs_cpu")
 				_flow._loadout._panel_a.weapon_picker.select("longsword")
@@ -85,6 +109,6 @@ func _run() -> void:
 				await _frames(20)
 				_flow._practice.skip_all()
 				await _frames(120)
-		await _snap(s, 4 if s == "fight" else 40)
+		await _snap(s, 4 if s == "fight" else 16)
 	get_tree().paused = false
 	get_tree().quit()

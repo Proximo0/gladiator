@@ -33,6 +33,7 @@ const SIM_FILES: Array = [
 	"sim_touch",
 	"sim_sandbox_isolation",
 	"sim_decor_clip",
+	"sim_menu_nav",
 	"sim_match_show",  # last: the audio bot sim before it is sensitive to what ran earlier in the process
 ]
 
