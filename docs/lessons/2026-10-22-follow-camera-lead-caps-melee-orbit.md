@@ -1,0 +1,2 @@
+What happened: the follow camera fell 0.84 m behind on a dodge roll 1.5 m from the foe (camera_fight_port_lag). The fighter moved at 5 m/s but the wanted pose orbits the foe at 13 to 16 m/s at melee range, and the motion lead ramped at 8/s and capped at 9 m/s, so it could not catch up; raising follow_rate did nothing
+Rule: at melee range the wanted pose moves about 3x the fighter speed; the lead must ramp in a few frames (feel_cam_lead_rate 24/s) and cap above the orbit speed (feel_cam_lead_max 18 m/s). Measure lag against dbg_want_pos per frame before touching follow_rate

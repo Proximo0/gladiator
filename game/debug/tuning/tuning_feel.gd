@@ -53,6 +53,9 @@ const ROWS_FEEL: Array = [
 	["feel_close_shoulder", 1.1, 0.0, 2.5, 0.05, "Feel", "Extra sideways shift of the follow camera at melee range, so the opponent is not hidden behind your back, m."],
 	["feel_close_height", 0.7, 0.0, 2.0, 0.05, "Feel", "Extra height of the follow camera at melee range, m."],
 	["feel_close_near", 1.7, 0.5, 4.0, 0.1, "Feel", "Fighter separation at or under which the full close-range camera shift applies, m."],
+	["feel_cam_lead_rate", 24.0, 2.0, 30.0, 1.0, "Feel", "How fast the follow camera's motion lead picks up the wanted pose's velocity, per s. Low and a dodge roll near the foe leaves the camera 0.8 m behind."],
+	["feel_cam_lead_max", 18.0, 3.0, 30.0, 1.0, "Feel", "Cap on the follow camera's motion lead, m/s. The wanted pose moves faster than the fighter at melee range (shoulder and close-range swing)."],
+	["feel_cam_cut_m", 0.3, 0.1, 1.0, 0.05, "Feel", "A wanted-pose jump over this in one frame is a cut (framing change), not motion to lead, m."],
 	["feel_finale_hold_s", 3.0, 0.5, 8.0, 0.1, "Feel", "How long the finisher / death camera holds its framing, s."],
 	["feel_finale_ease_s", 0.6, 0.1, 2.0, 0.05, "Feel", "Ease-in of the finisher camera, s."],
 	["feel_finale_release_s", 1.5, 0.2, 4.0, 0.1, "Feel", "Ease-out back to the normal camera after the hold, s."],
@@ -118,6 +121,9 @@ var feel_frame_margin: float
 var feel_close_shoulder: float
 var feel_close_height: float
 var feel_close_near: float
+var feel_cam_lead_rate: float
+var feel_cam_lead_max: float
+var feel_cam_cut_m: float
 var feel_finale_hold_s: float
 var feel_finale_ease_s: float
 var feel_finale_release_s: float
