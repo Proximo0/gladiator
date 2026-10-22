@@ -11,13 +11,14 @@ signal shop  ## the player wants the outfit shop ("Get in shop" on a locked outf
 var mode: String = "player_vs_cpu"
 var state: MenuState
 
-var _title: Label
+var _title: ScreenHeader
 var _scroll: ScrollContainer
 var _body: BoxContainer
 var _panel_a: LoadoutPanel
 var _panel_b: LoadoutPanel
 var _mid: VBoxContainer
 var _preview: LoadoutPreview
+var _frame: PreviewFrame
 var _vs: Label
 var _reroll: Button
 var _cpu_mode: MenuPicker
@@ -26,6 +27,7 @@ var _cpu_level: MenuPicker
 var _diff_note: Label
 var _start: Button
 var _tight: bool = false
+var _link_queued: bool = false
 var _back: Button
 var _outfit_rows: Array[Control] = []  ## per side: the picker row (a VBox with picker, lock note, shop button)
 var _outfit_pickers: Array[MenuPicker] = []
@@ -53,12 +55,12 @@ func _init(p_state: MenuState) -> void:
 	root.offset_bottom = -16.0
 	root.add_theme_constant_override("separation", 10)
 	add_child(root)
-	_title = MenuTheme.label("ARMA / Choose your arms", 52, MenuTheme.PARCHMENT)
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title = ScreenHeader.new("ARMA / Choose your arms")
 	root.add_child(_title)
 	_scroll = ScrollContainer.new()
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.follow_focus = true  # a pad walking down the rows scrolls them into view
 	root.add_child(_scroll)
 	_body = BoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -75,10 +77,11 @@ func _init(p_state: MenuState) -> void:
 	_mid = VBoxContainer.new()
 	_mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_mid.size_flags_stretch_ratio = 1.1
-	_preview = LoadoutPreview.new()
-	_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_preview.custom_minimum_size = Vector2(300.0, 520.0)
-	_mid.add_child(_preview)
+	_frame = PreviewFrame.new()
+	_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_frame.custom_minimum_size = Vector2(300.0, 520.0)
+	_preview = _frame.preview
+	_mid.add_child(_frame)
 	_vs = MenuTheme.label("", 30, MenuTheme.PARCHMENT)
 	_vs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_vs.clip_text = true
@@ -154,6 +157,42 @@ func open(p_mode: String) -> void:
 	_cpu_level.select(state.cpu_difficulty, false)
 	_sync_opponent()
 	_relayout()
+	focus_default()
+	_scroll.set_deferred("scroll_vertical", 0)  # open at the top: the preview first (portrait scrolls)
+
+
+## Pad and keyboard routes, set by hand because the rows sit in a scrolling box that Godot's own search sees through.
+## Landscape: each column runs top to bottom and wraps through the footer (the player's column to Back, the
+## opponent's to FIGHT); Re-roll hops left and right between the columns. Portrait: one long column, then the footer.
+## Re-linked whenever rows appear, disappear or lock.
+func _link_focus() -> void:
+	var a: Array[Control] = MenuNav.focusables(_panel_a)
+	var b: Array[Control] = MenuNav.focusables(_panel_b)
+	var mid: Array[Control] = MenuNav.focusables(_mid)
+	if _body.vertical:
+		MenuNav.link_screen([mid, a, b], _back, _start, true)
+	else:
+		MenuNav.link_screen([a, mid, b], _back, _start, false)
+		# FIGHT sits under the preview: up goes to Re-roll, which hops left and right to the two columns.
+		var over: Array[Control] = mid if not mid.is_empty() else b
+		if not over.is_empty():
+			MenuNav.link(_start, SIDE_TOP, over[over.size() - 1])
+			MenuNav.link(_start, SIDE_BOTTOM, over[0])
+	for m: Control in mid:
+		MenuNav.link(m, SIDE_LEFT, a[0] if not a.is_empty() else null)
+		MenuNav.link(m, SIDE_RIGHT, b[0] if not b.is_empty() else null)
+
+
+func _queue_link() -> void:
+	if not _link_queued:
+		_link_queued = true
+		(func() -> void:
+			_link_queued = false
+			_link_focus()).call_deferred()
+
+
+## The first control a pad or keyboard lands on: the player's weapon.
+func focus_default() -> void:
 	_panel_a.first_focus().grab_focus()
 
 
@@ -196,6 +235,7 @@ func _sync_opponent() -> void:
 	_reroll.visible = random_cpu
 	_diff_note.text = _note_text()
 	_refresh_preview()
+	_queue_link()
 
 
 func _note_for(id: String) -> String:
@@ -217,10 +257,41 @@ func _refresh_preview() -> void:
 	var right_look: Dictionary = LoadoutRules.sanitize(b)
 	if two:
 		right_look = OutfitRules.with_outfit(LoadoutRules.sanitize(_panel_b.browsed_loadout()), _browsing[1])
-	_preview.show_loadouts([left_look, right_look])
+	if two:
+		_preview.show_weapon("", false)
+		_preview.show_loadouts([left_look, right_look])
+	else:
+		# Vs CPU: the player alone on the turntable, holding what they will really fight with, and the weapon being
+		# browsed in close-up beside them (dark, with its unlock shown, while it is locked).
+		left_look = OutfitRules.with_outfit(LoadoutRules.sanitize(_panel_a.loadout()), _browsing[0])
+		var browsed: String = _panel_a.weapon_picker.current_id()
+		_preview.show_weapon(browsed if browsed != "fists" else "", _panel_a.weapon_picker.is_locked())
+		_preview.show_loadouts([left_look])
+	_sync_lock_banner()
+	_queue_link()
 	var left: String = LoadoutRules.display_name(str(state.loadouts[0]["weapon"]))
 	var right: String = LoadoutRules.display_name(str(b["weapon"]))
 	_vs.text = "%s  VS  %s" % [left, right]
+
+
+## The banner over the preview while a locked weapon is browsed (either human side): its name, how to unlock it and
+## the progress so far.
+func _sync_lock_banner() -> void:
+	var pk: MenuPicker = _panel_a.weapon_picker
+	var access: Variant = player_access()
+	if not pk.is_locked() and mode == "local_2p" and _panel_b.weapon_picker.is_locked():
+		pk = _panel_b.weapon_picker
+	if not pk.is_locked():
+		_frame.set_lock("", "", -1.0)
+		return
+	var id: String = pk.current_id()
+	var progress: Dictionary = PlayerProgress.shared().counters
+	var why: String = LoadoutRules.lock_reason(id, access, progress)
+	var frac: float = -1.0
+	var r: Dictionary = WeaponUnlocks.rule(id)
+	if not r.is_empty() and int(r["count"]) > 0:
+		frac = float(maxi(int(progress.get(str(r["stat"]), 0)), 0)) / float(r["count"])
+	_frame.set_lock(id, why if why != "" else "Not unlocked yet", frac)
 
 
 ## One side's outfit pick: a picker, then (while the choice is locked) a lock icon, a note and a "Get in shop" button.
@@ -285,6 +356,7 @@ func _sync_outfit_row(side: int) -> void:
 	var locked: bool = not OutfitRules.can_equip(id, state.store.owned())
 	_outfit_locks[side].visible = locked
 	_outfit_shop[side].visible = locked
+	_queue_link()
 	if locked:
 		_outfit_notes[side].text = "Locked. Fighting as %s." % OutfitRules.display_name(state.outfit_for(side))
 
@@ -331,8 +403,14 @@ func _on_reroll() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if visible and event.is_action_pressed("ui_cancel"):
+	if not visible:
+		return
+	if event.is_action_pressed("ui_cancel"):
 		back.emit()
+		get_viewport().set_input_as_handled()
+	elif event is InputEventJoypadButton and (event as InputEventJoypadButton).pressed \
+			and (event as InputEventJoypadButton).button_index == JOY_BUTTON_START:
+		start.emit(mode)  # Start on a pad: straight into the fight from any row
 		get_viewport().set_input_as_handled()
 
 
@@ -340,18 +418,19 @@ func _unhandled_input(event: InputEvent) -> void:
 func _relayout() -> void:
 	var portrait: bool = size.x < size.y * 1.05
 	_body.vertical = portrait
-	_title.add_theme_font_size_override("font_size", 40 if portrait else 52)
+	_title.set_compact(portrait)
 	if portrait:
 		_body.move_child(_mid, 0)
-		_preview.custom_minimum_size = Vector2(300.0, 340.0)
+		_frame.custom_minimum_size = Vector2(300.0, 400.0)
 		_panel_a.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		_panel_b.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	else:
 		_body.move_child(_mid, 1)
-		_preview.custom_minimum_size = Vector2(300.0, 420.0)
+		_frame.custom_minimum_size = Vector2(300.0, 420.0)
 	_set_density(portrait, false)
 	if not portrait and _body.get_combined_minimum_size().y > _scroll.size.y:
 		_set_density(false, true)  # not enough height for the full column: tighter rows, no flavour note
+	_queue_link()
 
 
 func _set_density(portrait: bool, tight: bool) -> void:

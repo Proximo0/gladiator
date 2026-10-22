@@ -34,7 +34,7 @@ var service: OnlineService = null
 var offset: int = 0  ## the first rank of the page asked for, minus one
 var view: View = View.LOADING
 
-var _title: Label
+var _title: ScreenHeader
 var _rows: VBoxContainer
 var _inner: VBoxContainer
 var _header: HBoxContainer
@@ -75,8 +75,7 @@ func _init() -> void:
 	root.offset_bottom = -16.0
 	root.add_theme_constant_override("separation", 10)
 	add_child(root)
-	_title = MenuTheme.label("ALBVM / Leaderboard", 52, MenuTheme.PARCHMENT)
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title = ScreenHeader.new("ALBVM / Leaderboard")
 	root.add_child(_title)
 	var panel := PanelContainer.new()
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -408,7 +407,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _relayout() -> void:
 	var portrait: bool = size.x < size.y * 1.05
-	_title.add_theme_font_size_override("font_size", 40 if portrait else 52)
+	_title.set_compact(portrait)
 	var h: float = TOUCH_H_PORTRAIT if portrait else TOUCH_H_WIDE
 	for b: Button in [_prev, _next, _mine, _back, _retry]:
 		b.custom_minimum_size.y = h
