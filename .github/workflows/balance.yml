@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: balance-${{ github.sha }}
-  cancel-in-progress: false
+  group: balance-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -23,10 +23,11 @@ env:
 jobs:
   shard:
     name: balance-${{ matrix.shard }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      max-parallel: 14  # leave runners for the checks workflow (20 concurrent jobs on a free account)
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
@@ -47,7 +48,7 @@ jobs:
   collect:
     needs: shard
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
