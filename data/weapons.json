@@ -153,7 +153,7 @@
       "name": "Longsword",
       "tier": 4,
       "mass": 1.4,
-      "length": 1.2,
+      "length": 1.05,
       "grip_offset": 0.1,
       "balance_point": 0.12,
       "shape": "sword",

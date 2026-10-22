@@ -33,6 +33,8 @@ const DEFAULTS: Dictionary = {
 	"dmg_grip_base": 18.0,
 	"dmg_grip_two_hands": 1.6,
 	"finisher_blood_frac": 0.6,
+	"limp_hit_scale": 0.15,
+	"dmg_pummel_scale": 0.8,
 	"dmg_finisher_min_scale": 0.15,
 	"dmg_skull_crush": 20.0,
 	"dmg_finisher_top_scale": 0.4,
@@ -61,13 +63,19 @@ static func empty_result() -> Dictionary:
 	}
 
 
+## Share of its force a blow keeps when the attacker is limp (KO'd or dead): the momentum is real, grip and drive are gone.
+static func limp_scale(attacker_limp: bool, tuning: Tuning) -> float:
+	return _tv(tuning, "limp_hit_scale") if attacker_limp else 1.0
+
+
 static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 	var out: Dictionary = empty_result()
 	var wear_in: Dictionary = hit.get("armor_wear", {})
 	out["armor_wear"] = wear_in.duplicate()
 	var rel_vel: Vector3 = hit.get("rel_vel", Vector3.ZERO)
 	var speed: float = rel_vel.length()
-	var mass: float = maxf(float(hit.get("effective_mass", 0.0)), 0.0)
+	var mass: float = maxf(float(hit.get("effective_mass", 0.0)), 0.0) * limp_scale(bool(hit.get("attacker_limp", false)), tuning)
+	var attacker_awake: bool = bool(hit.get("attacker_conscious", true))
 	var energy: float = 0.5 * mass * speed * speed
 	out["energy"] = energy
 	var wdef: Dictionary = CombatData.weapon(str(hit.get("weapon_id", "")))
@@ -172,7 +180,7 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 	# Finishing blows: below finisher_blood_frac a good enough hit kills, needing less force the lower the blood.
 	var bfrac: float = clampf(float(hit.get("blood_frac", 1.0)), 0.0, 1.0)
 	var fin_top: float = maxf(_tv(tuning, "finisher_blood_frac"), 0.001)
-	if bfrac < fin_top:
+	if bfrac < fin_top and attacker_awake:
 		var s: float = lerpf(_tv(tuning, "dmg_finisher_min_scale"), _tv(tuning, "dmg_finisher_top_scale"), bfrac / fin_top)
 		var fin: String = ""
 		var gut_need: float = _tv(tuning, "dmg_gut") * s
@@ -182,6 +190,9 @@ static func resolve(hit: Dictionary, tuning: Tuning) -> Dictionary:
 		elif part == "head" and (contact == "blunt" or contact == "flat") and str(wdef.get("shape", "")) != "fist" \
 				and blunt_f >= 0.5 and blunt >= _tv(tuning, "dmg_skull_crush") * s:
 			fin = "skull_crush"
+		elif part == "head" and str(wdef.get("shape", "")) == "fist" and bool(hit.get("target_down", false)) \
+				and blunt >= _tv(tuning, "dmg_skull_crush") * s * _tv(tuning, "dmg_pummel_scale"):
+			fin = "skull_crush"  # ground and pound: fists finish a downed foe on the head
 		elif is_torso and contact == "point" and pierce >= gut_need:
 			fin = "run_through"
 		elif is_torso and contact == "edge" and cut >= gut_need:

@@ -42,7 +42,7 @@ const FALLBACK: Dictionary = {
 	"torso_twist": 0.7, "stumble_tilt": 0.35, "fall_tilt": 1.0, "stagger_down": 0.85, "stagger_recover": 0.8,
 	"down_time": 1.5, "getup_time": 1.4, "down_strength": 0.3, "limp_strength": 0.04, "stamina_floor": 0.45,
 	"limb_floor": 0.25, "weapon_drop_hp": 0.15, "stride_base": 0.15, "stride_per_speed": 0.08, "stride_max": 0.45,
-	"foot_lift": 0.13, "pelvis_inertia": 2.0, "torso_inertia": 2.5, "balance_inertia": 3.0, "leg_reaction": 0.25, "pd_margin": 0.5, "self_hit_min_speed": 6.0, "hold_freq": 2.0, "blade_pivot_back": 0.45, "swing_reach": 0.35, "guard_hand_speed": 2.5, "swing_hand_speed": 30.0, "offhand_hand_speed": 5.0, "hit_debounce": 0.25, "grab_radius": 0.3, "knockback_scale": 1.0,
+	"foot_lift": 0.13, "pelvis_inertia": 2.0, "torso_inertia": 2.5, "balance_inertia": 3.0, "leg_reaction": 0.25, "pd_margin": 0.5, "self_hit_min_speed": 6.0, "hold_freq": 2.0, "blade_pivot_back": 0.45, "swing_reach": 0.35, "guard_hand_speed": 2.5, "swing_hand_speed": 30.0, "offhand_hand_speed": 5.0, "hit_debounce": 0.25, "grab_radius": 0.6, "knockback_scale": 1.0,
 	"arm_exertion": 0.7,
 	"reach_height": 0.5, "reach_pitch": 0.55, "reach_bend": 0.65, "reach_time": 0.35, "reach_hold": 0.4,
 	"reach_scan": 1.1, "reach_hand_lift": 0.05, "reach_hand_speed": 3.0, "reach_foot_fwd": 0.12,
@@ -1489,6 +1489,7 @@ func _resolve_hit(w: Weapon, target: Fighter, body: RigidBody3D, part: String, p
 		"armor_ids": target.armor_on(part), "armor_wear": target._armor_wear.duplicate(),
 		"part_hp_frac": target._hp(part), "blood_frac": target._finish_frac(),
 		"hit_on_weapon": on_weapon,
+		"target_down": target._state == "down" or target._state == "ko", "attacker_limp": _is_limp(), "attacker_conscious": _is_conscious(),
 	}
 	var res: Dictionary = DamageModel.resolve(hit_in, _tun)
 	var ev: Dictionary = hit_in.duplicate()
@@ -1497,6 +1498,24 @@ func _resolve_hit(w: Weapon, target: Fighter, body: RigidBody3D, part: String, p
 	ev["target"] = target.side
 	ev["point"] = p
 	target._take_hit(ev, body, w, self)
+
+
+## KO'd or dead: a weapon still flying from this fighter has no grip or drive behind it.
+func hand_target() -> Vector3:
+	return _hand_target
+
+
+func state_name() -> String:
+	return _state
+
+
+func _is_limp() -> bool:
+	return _state == "ko" or _state == "dead" or (health != null and (health.dead or health.knocked_out()))
+
+
+## Only a conscious attacker can land a finisher.
+func _is_conscious() -> bool:
+	return not _is_limp() and (health == null or health.consciousness >= _t("finisher_consc"))
 
 
 ## Blood fraction as the finisher rules see it: a dazed or downed fighter counts as deep in the finisher window.

@@ -41,7 +41,7 @@ func test_armor_defs_valid() -> void:
 func test_realistic_masses_and_lengths() -> void:
 	var ls: Dictionary = CombatData.weapon("longsword")
 	assert_near(float(ls["mass"]), 1.4, 0.2)
-	assert_near(float(ls["length"]), 1.2, 0.1)
+	assert_near(float(ls["length"]), 1.1, 0.1)
 	var sp: Dictionary = CombatData.weapon("spear")
 	assert_near(float(sp["mass"]), 2.0, 0.3)
 	assert_near(float(sp["length"]), 2.2, 0.2)

@@ -7,6 +7,8 @@ const CASES: Array = [[101, "sledgehammer", "falchion"], [202, "halberd", "mace"
 const SECONDS: float = 40.0
 const TAIL_SECONDS: float = 7.0
 const MAX_PLAYS_PER_S: float = 45.0
+## A fight shorter than this is mostly its opening clash and finisher burst (max/s covers bursts), so the mean uses at least this many seconds.
+const MEAN_MIN_SECS: float = 8.0
 const MAX_MEAN_PLAYS_PER_S: float = 25.0  # requests, before the voice caps drop any; run-to-run varies by about 10 percent
 const MAX_STEPS_PER_S: float = 7.0
 const MAX_POOL_FRACTION: float = 0.8
@@ -68,7 +70,7 @@ func _play(seed_value: int, wa: String, wb: String) -> Dictionary:
 		if SfxLogic.variant_count(str(k)) <= 0:
 			missing += 1
 	var out: Dictionary = {"counts": counts, "missing": missing, "peak": peak_playing, "max_per_s": max_per_s,
-		"dropped": d.dropped_count, "capped": d.capped_count, "dropped_keys": d.dropped_keys, "peak_use": peak_use, "pool_mean": float(sum_playing) / maxf(float(n_samples), 1.0), "pool_size": SfxDirector.POOL_SIZE, "secs": float(m.tick) / 60.0, "mean": float(d.played_count) / maxf(float(m.tick) / 60.0, 1.0)}
+		"dropped": d.dropped_count, "capped": d.capped_count, "dropped_keys": d.dropped_keys, "peak_use": peak_use, "pool_mean": float(sum_playing) / maxf(float(n_samples), 1.0), "pool_size": SfxDirector.POOL_SIZE, "secs": float(m.tick) / 60.0, "mean": float(d.played_count) / maxf(float(m.tick) / 60.0, MEAN_MIN_SECS)}
 	await clear()
 	return out
 

@@ -38,6 +38,7 @@ var blood: BloodFx = null
 var sfx: SfxDirector = null
 var hud: HUD = null
 var camera: FightCamera = null
+var aim: AimOverlay = null  ## the human fighter's aim aid (local only)
 var _finale_done: Array[bool] = [false, false]
 var _finale_fighter: Fighter = null  ## the finale's victim, to see when its head comes off
 var panel: TuningPanel = null
@@ -74,6 +75,9 @@ func build(camera_mode: String) -> void:
 	hud = HUD.new()
 	hud.name = "HUD"
 	add_child(hud)
+	aim = AimOverlay.new()
+	aim.name = "AimOverlay"
+	add_child(aim)
 	hit_fx = HitFx.new()
 	hit_fx.name = "HitFx"
 	add_child(hit_fx)
@@ -107,6 +111,7 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 	_player_side = human
 	hud.track((fighters[human] as Fighter).health, (fighters[1 - human] as Fighter).health,
 			str(names[human]), str(names[1 - human]))
+	aim.bind(fighters[human] as Fighter, camera)
 	camera.target = (fighters[human] as Fighter).parts["pelvis"]
 	camera.look_at_node = (fighters[1 - human] as Fighter).parts["pelvis"]
 	# Prime after the ragdolls have had a physics tick to settle, not on the freshly placed pose.

@@ -1,7 +1,7 @@
 class_name MatchJudge
 extends RefCounted
 ## Pure end-of-match rules. `update(frames, tick, delta)` returns {} while the fight goes on, else
-## {winner, reason}. Reasons: "blood_loss", "behead", "gut", "run_through", "skull_crush", "ko", "time". A knock-out while the loser is
+## {winner, reason}. Reasons: "blood_loss", "behead", "gut", "run_through", "skull_crush", "ko", "time", "mutual" (both dead on the same tick, a draw). A knock-out while the loser is
 ## under FAINT_BLOOD_L is the blood cap on consciousness, so it counts as "blood_loss".
 ## The Match tells it how each fighter died with `note_cause`; a death with no note is "blood_loss".
 
@@ -39,7 +39,7 @@ func update(frames: Array, tick: int, delta: float) -> Dictionary:
 		else:
 			_ko_time[i] = 0.0
 	if dead[0] and dead[1]:
-		return {"winner": -1, "reason": _reason(0)}
+		return {"winner": -1, "reason": "mutual"}  # same-tick mutual death: a draw, "Mutual death"
 	if dead[0] or dead[1]:
 		var loser: int = 0 if dead[0] else 1
 		return {"winner": 1 - loser, "reason": _reason(loser)}

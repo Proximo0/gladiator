@@ -191,6 +191,8 @@ func _start_match() -> void:
 		f.name = "Fighter%d" % side
 		add_child(f)
 		f.global_transform = Arena.spawn_transform(side, radius)
+		if mode == "practice":  # the training dummy starts close, so the first swing can reach it
+			f.global_transform.origin.z = signf(f.global_transform.origin.z) * Tuning.shared().practice_half_gap
 		f.look_seed = seed
 		f.setup((config["loadouts"] as Array)[side], side, Tuning.shared())
 		fighters.append(f)

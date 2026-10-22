@@ -96,6 +96,14 @@ func _build_main() -> void:
 		settings.apply()
 		settings.save_file())
 	v.add_child(motion)
+	var aim := MenuPicker.new()
+	aim.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
+	aim.setup("Weapon aim aid (tip marker, trail)", [["1", "On"], ["0", "Off"]], "1" if settings.aim_aid else "0")
+	aim.changed.connect(func(id: String) -> void:
+		settings.aim_aid = id == "1"
+		settings.apply()
+		settings.save_file())
+	v.add_child(aim)
 	var rumble := MenuPicker.new()
 	rumble.custom_minimum_size = Vector2(0.0, MenuTheme.ROW_H)
 	rumble.setup("Controller rumble and vibration", [["1", "On"], ["0", "Off"]], "1" if settings.rumble else "0")

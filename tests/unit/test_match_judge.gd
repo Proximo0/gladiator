@@ -75,3 +75,9 @@ func test_time_limit_blood_level_falls_back_to_hp() -> void:
 	assert_eq(j.update([b, a], 100, 0.1), {"winner": 1, "reason": "time"})
 	a["hp"] = 0.703
 	assert_eq(j.update([a, b], 100, 0.1), {"winner": -1, "reason": "time"})
+
+
+func test_same_tick_double_death_is_mutual_draw() -> void:
+	var j := MatchJudge.new(60.0)
+	j.note_cause(0, "behead")
+	assert_eq(j.update([_fr("dead"), _fr("dead")], 5, 0.1), {"winner": -1, "reason": "mutual"})

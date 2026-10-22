@@ -39,6 +39,8 @@ const FIELDS: Array = [
 	["dmg_grip_base", 18.0, 4.0, 60.0, 0.5, "Damage", "One-handed grip strength at full arm hp and stamina, N·s."],
 	["dmg_grip_two_hands", 1.6, 1.0, 3.0, 0.05, "Damage", "Grip strength multiplier with two hands on the weapon."],
 	["finisher_blood_frac", 0.6, 0.0, 1.0, 0.05, "Damage", "Blood fraction (0 = blood_death, 1 = full) below which a hit can be a killing blow."],
+	["limp_hit_scale", 0.15, 0.0, 1.0, 0.05, "Damage", "Share of its force a blow keeps when the attacker is KO'd or dead (momentum without grip or drive)."],
+	["dmg_pummel_scale", 0.8, 0.1, 1.0, 0.05, "Damage", "Ground and pound: share of the skull-crush blunt a fist head blow on a downed foe needs inside the finisher window."],
 	["dmg_finisher_min_scale", 0.15, 0.1, 1.0, 0.01, "Damage", "Share of the normal sever/gut/crush force a finisher needs when blood is at blood_death."],
 	["dmg_finisher_top_scale", 0.4, 0.2, 1.0, 0.01, "Damage", "Share of the normal sever/gut/crush force a finisher needs at the top edge of the finisher window."],
 	["dmg_skull_crush", 20.0, 5.0, 80.0, 1.0, "Damage", "Blunt points (after armor, head multiplier included) a heavy blunt hit needs to crush the skull."],
@@ -166,7 +168,7 @@ const FIELDS: Array = [
 	["reach_hand_lift", 0.05, 0.0, 0.2, 0.01, "Arms", "Height above the prop that the reaching hand aims for, m."],
 	["reach_hand_speed", 3.0, 0.5, 10.0, 0.1, "Arms", "Speed of the hand goal while reaching down, m/s."],
 	["reach_foot_fwd", 0.12, 0.0, 0.3, 0.01, "Arms", "How far the feet step forward under the pick-up bow, m."],
-	["grab_radius", 0.4, 0.1, 1.0, 0.05, "Arms", "GRAB pickup radius from the hand, m."],
+	["grab_radius", 0.6, 0.1, 1.0, 0.05, "Arms", "GRAB pickup radius from the hand, m."],
 	["knockback_scale", 1.0, 0.0, 3.0, 0.05, "Damage", "Multiplier on hit knockback impulses."],
 	["match_pause_s", 4.0, 1.0, 15.0, 0.5, "Match", "Pause after a match before the next bot match starts, s."],
 	["match_slowmo_scale", 0.4, 0.1, 1.0, 0.05, "Match", "Time scale during the finisher slow motion."],
@@ -190,6 +192,10 @@ const FIELDS: Array = [
 	["feel_rumble_scale", 1.0, 0.0, 1.0, 0.05, "Feel", "Gamepad rumble and phone vibration strength (the options toggle also gates it)."],
 	["feel_rumble_s", 0.3, 0.0, 1.0, 0.02, "Feel", "Rumble length at full impact, s."],
 	["feel_rumble_min", 0.2, 0.0, 0.8, 0.01, "Feel", "Impact below which a hit does not rumble."],
+	["aim_trail_s", 0.3, 0.05, 1.0, 0.05, "Feel", "Length of the player's own weapon-tip trail (aim aid), s."],
+	["aim_alpha", 0.8, 0.1, 1.0, 0.05, "Feel", "Opacity of the aim aid (tip marker, trail, hand reticle)."],
+	["aim_lost_delay_s", 0.4, 0.0, 3.0, 0.1, "Feel", "Disarmed for this long before the weapon-lost prompt shows, s."],
+	["practice_half_gap", 1.75, 0.8, 4.0, 0.05, "World", "Practice only: each fighter's spawn distance from the centre, m (the dummy starts twice this away)."],
 	["feel_frame_pull_max", 5.0, 0.0, 12.0, 0.5, "Feel", "Most the follow camera pulls back to keep both fighters on screen, m."],
 	["feel_frame_margin", 0.82, 0.4, 1.0, 0.01, "Feel", "Share of the half field of view both fighters must stay inside."],
 	["feel_close_shoulder", 1.1, 0.0, 2.5, 0.05, "Feel", "Extra sideways shift of the follow camera at melee range, so the opponent is not hidden behind your back, m."],
@@ -327,6 +333,8 @@ var dmg_disarm_forearm: float
 var dmg_grip_base: float
 var dmg_grip_two_hands: float
 var finisher_blood_frac: float
+var limp_hit_scale: float
+var dmg_pummel_scale: float
 var dmg_finisher_min_scale: float
 var dmg_finisher_top_scale: float
 var dmg_skull_crush: float
@@ -496,6 +504,10 @@ var feel_spark_min: float
 var feel_rumble_scale: float
 var feel_rumble_s: float
 var feel_rumble_min: float
+var aim_trail_s: float
+var aim_alpha: float
+var aim_lost_delay_s: float
+var practice_half_gap: float
 var feel_frame_pull_max: float
 var feel_frame_margin: float
 var feel_close_shoulder: float

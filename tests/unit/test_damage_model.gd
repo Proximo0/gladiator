@@ -322,3 +322,33 @@ func test_finisher_blocked_by_plate_and_wrong_contact() -> void:
 	assert_eq(_fin("torso", "spear", "point", 6.0, 2.0, 0.1, ["cuirass_iron"]), "")
 	assert_eq(_fin("torso", "spear", "flat", 8.0, 2.0, 0.1), "")
 	assert_eq(_fin("head", "longsword", "edge", 20.0, 1.0, 0.1, ["helm_iron"]), "")
+
+
+func test_limp_attacker_blow_is_damped_and_cannot_behead() -> void:
+	var h: Dictionary = _hit("head", "longsword", "edge", 20.0, 1.0)
+	h["blood_frac"] = 0.1
+	assert_eq(_r(h)["finisher"], "behead")
+	h["attacker_limp"] = true
+	h["attacker_conscious"] = false
+	var r: Dictionary = _r(h)
+	assert_eq(r["finisher"], "")
+	assert_false(bool(r["behead"]))
+	assert_near(float(r["energy"]), 0.5 * 20.0 * 20.0 * 0.15, 0.01)
+
+
+func test_unconscious_attacker_cannot_finish_but_hits_full_force() -> void:
+	var h: Dictionary = _hit("torso", "spear", "point", 8.0, 2.0)
+	h["blood_frac"] = 0.1
+	h["attacker_conscious"] = false
+	assert_eq(_r(h)["finisher"], "")
+	assert_near(float(_r(h)["energy"]), 0.5 * 2.0 * 64.0, 0.01)
+
+
+func test_fists_pummel_finishes_downed_foe_head_only() -> void:
+	var h: Dictionary = _hit("head", "fists", "blunt", 9.0, 8.0)
+	h["blood_frac"] = 0.1
+	assert_eq(_r(h)["finisher"], "")
+	h["target_down"] = true
+	var up: Dictionary = _r(h)
+	h["part"] = "torso"
+	assert_eq(_r(h)["finisher"], "")
