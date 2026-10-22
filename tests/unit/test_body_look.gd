@@ -23,3 +23,9 @@ func test_caps() -> void:
 	assert_eq(BodyLook.cap_for("head"), "cap_neck")
 	assert_eq(BodyLook.cap_for("shin_r"), "cap_knee")
 	assert_eq(BodyLook.cap_for("torso"), "")
+
+
+func test_cap_for_outfit() -> void:
+	assert_eq(BodyLook.cap_for("forearm_l", "alien"), "outfits/alien/cap_elbow")
+	assert_eq(BodyLook.cap_for("forearm_l", "samurai"), "cap_elbow")
+	assert_eq(BodyLook.cap_for("torso", "alien"), "")

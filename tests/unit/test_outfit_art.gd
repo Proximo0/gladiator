@@ -48,13 +48,52 @@ func test_covered_parts_use_armor_and_exposed_use_skin() -> void:
 	arm.free()
 
 
-func test_own_art_keeps_its_materials() -> void:
+func test_own_art_skin_and_team_cloth() -> void:
 	var a := FighterArt.new(0, 5, "samurai")
-	var m := _mesh_with(["skin", "cloth"])
+	var m := _mesh_with(["skin", "cloth", "lacquer_red"])
 	a._tint(m, true, true)
-	assert_true(m.get_surface_override_material(0) == null, "covered outfit-art skin untouched")
-	assert_true(m.get_surface_override_material(1) == null, "outfit art cloth untouched")
+	assert_true(m.get_surface_override_material(0) == a._skin, "samurai skin surface takes the skin tone")
+	assert_eq(a._skin.albedo_color, BodyLook.skin_color(5, 0))
+	assert_true(m.get_surface_override_material(1) == a._team, "cloth takes the team colour")
+	assert_eq(a._team.albedo_color, BodyLook.cloth_color(0))
+	assert_true(m.get_surface_override_material(2) == null, "other surfaces keep the glb material")
 	m.free()
+
+
+func test_alien_surfaces_never_take_skin_tone() -> void:
+	var a := FighterArt.new(0, 5, "alien")
+	var m := _mesh_with(["alien_skin", "alien_chitin", "alien_eye"])
+	a._tint(m, true, true)
+	var sk: Material = m.get_surface_override_material(0)
+	assert_true(sk != null and sk != a._skin, "alien_skin has its own override")
+	assert_true(m.get_surface_override_material(1) == null)
+	var eye: StandardMaterial3D = m.get_surface_override_material(2) as StandardMaterial3D
+	assert_true(eye != null and eye.roughness < 0.1 and eye.albedo_color.v < 0.01, "glossy black eyes")
+	m.free()
+
+
+func test_cap_surfaces_use_blood_palette() -> void:
+	var al := FighterArt.new(0, 5, "alien")
+	var m := _mesh_with(["alien_flesh", "alien_fat", "alien_bone", "alien_skin"])
+	al._tint(m, false, true, true)
+	var pal: BloodPalette = OutfitRules.blood_palette("alien")
+	assert_eq((m.get_surface_override_material(0) as StandardMaterial3D).albedo_color, pal.flesh)
+	assert_eq((m.get_surface_override_material(1) as StandardMaterial3D).albedo_color, pal.fat)
+	assert_eq((m.get_surface_override_material(2) as StandardMaterial3D).albedo_color, pal.bone)
+	m.free()
+	var hu := FighterArt.new(0, 5)
+	var h := _mesh_with(["flesh", "skin"])
+	hu._tint(h, false, false, true)
+	assert_eq((h.get_surface_override_material(0) as StandardMaterial3D).albedo_color, BloodPalette.red().flesh)
+	assert_true(h.get_surface_override_material(1) == hu._skin, "cap skin ring keeps the skin tone")
+	h.free()
+
+
+func test_shows_armor_rule() -> void:
+	assert_true(OutfitRules.art_shows_armor("samurai", "torso"))
+	assert_true(OutfitRules.art_shows_armor("samurai", "pelvis"))
+	assert_false(OutfitRules.art_shows_armor("alien", "torso"))
+	assert_false(OutfitRules.art_shows_armor("default", "torso"))
 
 
 func _mesh_with(names: Array) -> MeshInstance3D:

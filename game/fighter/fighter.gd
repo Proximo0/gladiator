@@ -511,6 +511,11 @@ func _armor_mesh(b: RigidBody3D, pn: String, ad: Dictionary) -> MeshInstance3D:
 	mi.name = "Armor_" + pn
 	_slot(b, "ArmorSlot").add_child(mi)
 	FighterArt.apply_shadow(mi, pn)
+	if _art.shows_armor(pn):
+		# The outfit art already draws armor here: keep the node (a knocked-off piece copies its mesh) but draw nothing.
+		# Not `visible`, which restore() and _dislodge() own: an empty render layer draws it for no camera.
+		mi.layers = 0
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return mi
 
 

@@ -120,6 +120,12 @@ static func covers(id: String, part: String) -> bool:
 	return (palette(id).get("covered", []) as Array).has(part)
 
 
+## Whether the outfit's own art already draws armor on `part` (data "art_armor" list), so the placeholder armor shell
+## for equipped armor is hidden there. Empty for outfits whose art is bare skin (the alien): their armor shows.
+static func art_shows_armor(id: String, part: String) -> bool:
+	return (def(id).get("art_armor", []) as Array).has(part)
+
+
 ## The id the local player may actually wear: `wanted` when free or in `owned`, else the default.
 static func usable_id(wanted: Variant, owned: Array) -> String:
 	var id: String = clean_id(wanted)

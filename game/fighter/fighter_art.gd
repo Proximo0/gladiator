@@ -15,6 +15,12 @@ const CUT_REACH: float = 0.5
 
 ## Parts whose meshes (art, caps, armor on them) are too small to matter in the shadow map; they stop casting when
 ## `GfxQuality.small_part_shadows()` is false (low). The torso, pelvis, head, thighs and upper arms keep their shadow.
+## Alien art overrides, set here and not in the glb: the Houdini preview reads dark and drab at fight distance.
+const ALIEN_SKIN_COLOR: Color = Color(0.42, 0.58, 0.47)  ## brighter and more green-grey saturated than the glb's 0.51/0.58/0.51
+const ALIEN_SKIN_ROUGH: float = 0.42
+const ALIEN_EYE_ROUGH: float = 0.02
+const ALIEN_EYE_SPEC: float = 1.0
+
 const SMALL_SHADOW_PARTS: PackedStringArray = ["forearm_l", "forearm_r", "shin_l", "shin_r"]
 
 var _skin: StandardMaterial3D = null
@@ -23,6 +29,10 @@ var _head_scene: String = "head"
 var _caps: Dictionary = {}
 var _outfit: String = OutfitRules.DEFAULT_ID
 var _armor: StandardMaterial3D = null  ## the outfit palette's armor material (palette fallback and covered parts)
+var _team: StandardMaterial3D = null  ## side colour for "cloth" surfaces of outfit art (palette cloth is for the fallback)
+var _blood: BloodPalette = BloodPalette.red()  ## inner colours of cut caps (flesh, fat, bone or chitin)
+var _cap_mats: Dictionary = {}  ## cap surface kind -> tinted material, shared by every cap of this fighter
+var _alien_mats: Dictionary = {}  ## glb material name -> override (see ALIEN_SKIN_LIFT, ALIEN_EYE)
 
 
 ## `outfit_id` is a premium or default outfit (see OutfitRules). Parts load from OUTFIT_DIR/<id>/<part>.glb when the
@@ -41,6 +51,8 @@ func _init(side: int, match_seed: int, outfit_id: String = OutfitRules.DEFAULT_I
 		_armor.roughness = float(pal.get("rough", 0.6))
 	_skin = _tinted("skin", skin_col)
 	_cloth = _tinted("cloth", cloth_col)
+	_team = _tinted("cloth", BodyLook.cloth_color(side))
+	_blood = OutfitRules.blood_palette(_outfit)
 	if BodyLook.bearded(match_seed, side) and not OutfitRules.covers(_outfit, "head"):
 		_head_scene = "head_b"
 
@@ -53,8 +65,11 @@ func _tinted(kind: String, col: Color) -> StandardMaterial3D:
 	return m
 
 
+## `asset` is a base body asset ("torso", "cap_neck") or "outfits/<id>/<name>" (an outfit's own cap, see BodyLook.cap_for).
 static func _scene(asset: String) -> PackedScene:
 	var path: String = DIR + asset + ".glb"
+	if asset.begins_with("outfits/"):
+		path = "res://assets/" + asset + ".glb"
 	if not ResourceLoader.exists(path):
 		return null
 	return load(path) as PackedScene
@@ -90,7 +105,7 @@ func _outfit_scene(asset: String) -> PackedScene:
 ## `part` is the body part the asset dresses ("" for caps, which keep flesh tint). Outfit art keeps its own materials,
 ## except "skin" surfaces on parts the outfit does not cover. The base body under an outfit palette tints "skin" with
 ## the armor colour on covered parts (skin tone never shows through armor) and "cloth" with the outfit cloth.
-func _instance(asset: String, part: String = "") -> Node3D:
+func _instance(asset: String, part: String = "", cap: bool = false) -> Node3D:
 	var sc: PackedScene = null
 	var own_art: bool = false
 	if part != "":
@@ -104,11 +119,15 @@ func _instance(asset: String, part: String = "") -> Node3D:
 	if root == null:
 		return null
 	var covered: bool = part != "" and _armor != null and OutfitRules.covers(_outfit, part)
-	_tint(root, covered, own_art)
+	_tint(root, covered, own_art or (cap and asset.begins_with("outfits/")), cap)
 	return root
 
 
-func _tint(n: Node, covered: bool = false, own_art: bool = false) -> void:
+## Material rules. Base body art: "skin" takes the skin tone (the armor colour on covered palette-fallback parts) and
+## "cloth" the outfit cloth. Outfit art (`own_art`): "skin" surfaces take the skin tone, "cloth" the side's team colour,
+## the alien_* surfaces never take the skin tone (the alien keeps its own skin, lifted by ALIEN_* overrides), and every
+## other surface keeps the imported material. `cap` colours the flesh, fat and bone surfaces from the blood palette.
+func _tint(n: Node, covered: bool = false, own_art: bool = false, cap: bool = false) -> void:
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
@@ -117,15 +136,69 @@ func _tint(n: Node, covered: bool = false, own_art: bool = false) -> void:
 				var m: Material = mi.mesh.surface_get_material(i)
 				if m == null:
 					continue
-				if m.resource_name == "skin":
-					if not covered:
-						mi.set_surface_override_material(i, _skin)
-					elif not own_art:
-						mi.set_surface_override_material(i, _armor)
-				elif m.resource_name == "cloth" and not own_art:
-					mi.set_surface_override_material(i, _cloth)
+				var o: Material = override_for(m, covered, own_art, cap)
+				if o != null:
+					mi.set_surface_override_material(i, o)
 	for c: Node in n.get_children():
-		_tint(c, covered, own_art)
+		_tint(c, covered, own_art, cap)
+
+
+## The override material for glb material `m`, or null to keep it. See `_tint` for the rules.
+func override_for(m: Material, covered: bool, own_art: bool, cap: bool) -> Material:
+	var mn: String = m.resource_name
+	if cap:
+		var kind: String = mn.trim_prefix("alien_")
+		if kind == "flesh" or kind == "fat" or kind == "bone":
+			return _cap_material(kind, m)
+	if mn == "skin":
+		if own_art or not covered:
+			return _skin
+		return _armor
+	if mn == "cloth":
+		return _team if own_art else _cloth
+	if mn == "alien_skin" or mn == "alien_eye":
+		return _alien_material(mn, m)
+	return null
+
+
+## Cut-surface material: the glb's own material with the albedo from the blood palette (and a faint glow for ichor).
+func _cap_material(kind: String, src: Material) -> Material:
+	if _cap_mats.has(kind):
+		return _cap_mats[kind]
+	var m: StandardMaterial3D = (src as StandardMaterial3D).duplicate() as StandardMaterial3D
+	m.albedo_color = _blood.inner(kind)
+	m.vertex_color_use_as_albedo = false
+	if _blood.emission > 0.0 and kind != "bone":
+		m.emission_enabled = true
+		m.emission = _blood.inner(kind)
+		m.emission_energy_multiplier = _blood.emission * 0.5
+	_cap_mats[kind] = m
+	return m
+
+
+## Alien skin brighter and greener than the glb, eyes glossy black. Only materials the alien glbs name.
+func _alien_material(mn: String, src: Material) -> Material:
+	if _alien_mats.has(mn):
+		return _alien_mats[mn]
+	var m: StandardMaterial3D = (src as StandardMaterial3D).duplicate() as StandardMaterial3D
+	if mn == "alien_skin":
+		m.albedo_color = ALIEN_SKIN_COLOR
+		m.roughness = ALIEN_SKIN_ROUGH
+	else:
+		m.albedo_color = Color(0.0, 0.0, 0.0)
+		m.roughness = ALIEN_EYE_ROUGH
+		m.metallic_specular = ALIEN_EYE_SPEC
+		m.clearcoat_enabled = true
+		m.clearcoat = 1.0
+		m.clearcoat_roughness = 0.03
+	_alien_mats[mn] = m
+	return m
+
+
+## Whether the outfit's own art for part `pn` already shows armor, so the drawn ARMOR_FIT shell is not drawn over it
+## (a shell on the samurai's lacquer plates would clip). The part's armor still protects; only the shell is hidden.
+func shows_armor(pn: String) -> bool:
+	return OutfitRules.art_shows_armor(_outfit, pn) and _outfit_scene(pn) != null
 
 
 ## Puts the art for part `pn` under body `b`'s Look slot and hides the primitive meshes there. False when the asset is
@@ -172,7 +245,7 @@ static func _plane(b: Node3D, dir: Vector3) -> Vector3:
 
 
 func _add_cap(b: Node3D, key: String, asset: String, at: Vector3, normal: Vector3) -> void:
-	var cap: Node3D = _instance(asset)
+	var cap: Node3D = _instance(asset, "", true)
 	if cap == null:
 		return
 	cap.name = "Cap_" + key
@@ -190,7 +263,7 @@ func _add_cap(b: Node3D, key: String, asset: String, at: Vector3, normal: Vector
 ## Part `n` was cut from its parent: a cap on the stump (parent side, facing the piece) and one on the piece.
 ## `parts` maps names to bodies. Cap positions follow the joint pivot and the art's end faces.
 func cut(parts: Dictionary, n: String) -> void:
-	var asset: String = BodyLook.cap_for(n)
+	var asset: String = BodyLook.cap_for(n, _outfit)
 	var pd: Dictionary = FighterRig.part(n)
 	if asset == "" or pd.is_empty() or _caps.has(n + "_piece"):
 		return

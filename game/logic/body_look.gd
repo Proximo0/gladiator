@@ -43,16 +43,24 @@ static func cloth_color(side: int) -> Color:
 	return CLOTH_RED if side == 0 else CLOTH_BLUE
 
 
-## Joint -> cap asset for a severed part ("" when the part has no cap).
-static func cap_for(part: String) -> String:
+## Outfits that ship their own cap_*.glb in assets/outfits/<id>/ (the others use the base body's caps).
+const OUTFITS_WITH_CAPS: PackedStringArray = ["alien"]
+
+
+## Joint -> cap asset for a severed part ("" when the part has no cap). An outfit with its own caps gives
+## "outfits/<id>/cap_x", else the base "cap_x".
+static func cap_for(part: String, outfit: String = "default") -> String:
+	var base: String = ""
 	if part == "head":
-		return "cap_neck"
-	if part.begins_with("upper_arm"):
-		return "cap_shoulder"
-	if part.begins_with("forearm"):
-		return "cap_elbow"
-	if part.begins_with("thigh"):
-		return "cap_hip"
-	if part.begins_with("shin"):
-		return "cap_knee"
-	return ""
+		base = "cap_neck"
+	elif part.begins_with("upper_arm"):
+		base = "cap_shoulder"
+	elif part.begins_with("forearm"):
+		base = "cap_elbow"
+	elif part.begins_with("thigh"):
+		base = "cap_hip"
+	elif part.begins_with("shin"):
+		base = "cap_knee"
+	if base != "" and OUTFITS_WITH_CAPS.has(outfit):
+		return "outfits/" + outfit + "/" + base
+	return base

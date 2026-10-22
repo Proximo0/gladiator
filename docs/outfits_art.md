@@ -145,3 +145,21 @@ rim/fresnel to the `alien_chitin` material in a shader; the baked colour then ac
   faceted.
 - Alien lean proportions (slim arms, thin ankles) are art-only; the physics body is as thick as before, so weapons
   collide with a larger volume than drawn, by up to about 2 cm on the arms and 3 cm on the thighs.
+
+## In-game rules (implemented in `FighterArt`, `BodyLook`, `OutfitRules`)
+
+- Loading: an outfit's part glb replaces the base part (`FighterArt._outfit_scene`); `head_b` maps to `head`, so no
+  beard or hair shows. Imports need no setting changes.
+- Materials on outfit art: surfaces named `skin` take the seeded skin tone (samurai face, hands, feet); `cloth` takes the
+  side's team colour (`BodyLook.cloth_color`, not the palette cloth, which is only for the palette fallback); everything
+  else keeps the glb material. `alien_*` surfaces never take the skin tone. Overrides, set in code and not in the glb:
+  `alien_skin` is lifted to `ALIEN_SKIN_COLOR` (brighter, greener) and `alien_eye` is glossy black (clearcoat).
+- Equipped armor shells: the `ARMOR_FIT` shell of a worn piece is not drawn where the outfit's art already shows armor
+  (data `art_armor` list of the outfit: samurai head, torso, pelvis, both arms' upper and lower parts, thighs, shins).
+  The node stays (render layers set to 0, shadow off), so wear, protection, restore and a knocked-off piece (the prop
+  copies the shell mesh and falls) behave as before. The alien has no `art_armor`, so its drawn armor shows as for the
+  default outfit. Armor that is knocked off the samurai shows as a prop only; the samurai art underneath is unchanged.
+- Caps: `BodyLook.cap_for(part, outfit)` gives `outfits/alien/cap_*` for outfits in `BodyLook.OUTFITS_WITH_CAPS` and the
+  base cap otherwise. For every outfit the cap's flesh, fat and bone surfaces (`alien_` prefix too) take
+  `OutfitRules.blood_palette(outfit)` inner colours (ichor also gets a faint emission); the `skin` ring keeps the skin tone.
+- Renders: `/tmp/outfits_game/` (samurai_vs_default, alien_vs_samurai, alien_severed_arm_cap).
