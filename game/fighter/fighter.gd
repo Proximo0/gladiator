@@ -712,10 +712,10 @@ func _update_state(delta: float) -> void:
 			if _state_t > _t("down_time") and _legs_ok() and _stagger < 0.3:
 				_set_state("getting_up")
 		"getting_up":
-			var done: bool = _state_t >= _t("getup_time")
+			var done: bool = _state_t >= _getup_time()
 			if done and tl < _t("stumble_tilt") and h > _t("stand_height") * 0.85:
 				_set_state("standing")
-			elif _state_t > _t("getup_time") * 3.0 or not _legs_ok():
+			elif _state_t > _getup_time() * 3.0 or not _legs_ok():
 				_set_state("down")
 
 
@@ -730,6 +730,15 @@ func _die() -> void:
 	if not _died_emitted:
 		_died_emitted = true
 		died.emit()
+
+
+## Worn armor as a share of a full load (ArmorLoad): slows the gait and the get-up and costs stamina per step and swing.
+func _armor_load() -> float:
+	return ArmorLoad.load_of(ArmorLoad.mass(_armor), _tun)
+
+
+func _getup_time() -> float:
+	return _t("getup_time") * ArmorLoad.getup_scale(_armor_load(), _tun)
 
 
 func _strength() -> float:
@@ -750,7 +759,7 @@ func _control(delta: float) -> void:
 			support = 0.0
 			joint_scale = s * _t("down_strength")
 		"getting_up":
-			support = clampf(_state_t / maxf(_t("getup_time"), 0.01), 0.15, 1.0)
+			support = clampf(_state_t / maxf(_getup_time(), 0.01), 0.15, 1.0)
 		"ko", "dead":
 			support = 0.0
 			joint_scale = _t("limp_strength")
@@ -814,7 +823,7 @@ func _control(delta: float) -> void:
 	if rk > 0.0:
 		h_target = lerpf(h_target, _t("reach_height"), rk)
 	if _state == "getting_up":
-		h_target = lerpf(pelvis.global_position.y, h_target, clampf(_state_t / maxf(_t("getup_time"), 0.01), 0.3, 1.0))
+		h_target = lerpf(pelvis.global_position.y, h_target, clampf(_state_t / maxf(_getup_time(), 0.01), 0.3, 1.0))
 	var grounded: bool = _lowest_foot() < 0.3 or pelvis.global_position.y < h_target + 0.15
 	var pvel: Vector3 = pelvis.linear_velocity
 	var hvel := Vector3(pvel.x, 0.0, pvel.z)
@@ -823,6 +832,8 @@ func _control(delta: float) -> void:
 	var move: Vector2 = inp.move().limit_length(1.0)
 	var speed: float = _t("sprint_speed") if inp.has(SPRINT) else _t("move_speed")
 	speed *= lerpf(0.35, 1.0, leg_factor)
+	var armor_ld: float = _armor_load()
+	speed *= ArmorLoad.speed_scale(armor_ld, _tun)
 	if crouch:
 		speed *= 0.6
 	speed *= lerpf(1.0, 0.5, rk)
@@ -861,7 +872,7 @@ func _control(delta: float) -> void:
 			fh += off * (total_mass * hf * hf)
 		else:
 			_anchor_set = false
-		var acc_max: float = _t("roll_accel") if rolling else _t("move_accel")
+		var acc_max: float = _t("roll_accel") if rolling else _t("move_accel") * ArmorLoad.accel_scale(armor_ld, _tun)
 		fh = fh.limit_length(acc_max * total_mass * support * (0.5 if _state == "stumbling" else 1.0))
 		pelvis.apply_central_force(Vector3(fh.x, fy, fh.z))
 		if tk < 0.5:
@@ -914,8 +925,11 @@ func _control(delta: float) -> void:
 		var v_plan: Vector3 = v_move if not rolling else Vector3.ZERO  # landing a roll: feet stay where they open
 		if not _gait.ready:
 			_gait.replant([_foot_point("shin_l"), _foot_point("shin_r")])  # start from where the feet are
+		var steps0: int = _gait.steps
 		_gait.tick(delta, [_hip_point(0), _hip_point(1)], yb, v_plan, _gait_params(), _state != "getting_up" and not _close.kicking(),
 			[_foot_point("shin_l"), _foot_point("shin_r")])
+		if _gait.steps > steps0:
+			_pay_stamina(ArmorLoad.step_cost(armor_ld, _tun) * float(_gait.steps - steps0))
 
 	# Pose targets (child relative to parent).
 	var targets: Dictionary = {}
@@ -1264,6 +1278,7 @@ func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active:
 	if active:
 		var arm_hp_r: float = minf(_hp("upper_arm_r"), _hp("forearm_r"))
 		var cap_r: float = _t("arm_force") * s * FighterMath.limb_factor(arm_hp_r, _t("limb_floor"))
+		cap_r *= ArmorLoad.arm_force_scale(ArmorLoad.arm_mass(_armor, "r"), _tun)
 		cap_r *= 1.0 if inp.has(SWING) or inp.has(THRUST) else _t("guard_force_frac")
 		if held_part() == "forearm_r":
 			cap_r *= _t("clinch_pin")
@@ -1275,6 +1290,7 @@ func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active:
 		if close_lt:
 			frac_l = "clinch_pull_force_frac" if _close.holding() else "shove_force_frac"
 		var cap_l: float = _t("arm_force") * _t(frac_l) * s * FighterMath.limb_factor(arm_hp_l, _t("limb_floor"))
+		cap_l *= ArmorLoad.arm_force_scale(ArmorLoad.arm_mass(_armor, "l"), _tun)
 		_hand_force("l", lt, cap_l, shoulder_l)
 	for h: String in ["r", "l"]:
 		var shoulder: Vector3 = shoulder_r if h == "r" else shoulder_l
@@ -1492,6 +1508,8 @@ func _close_moves(inp: FighterInput, active: bool, delta: float) -> void:
 	if (pressed & KICK) != 0 and _close.can_kick(free and _state == "standing", _legs_ok(), stamina, _t("kick_stamina")):
 		_close.start_kick()
 		_pay_stamina(_t("kick_stamina"))
+	if (pressed & (SWING | THRUST)) != 0 and active:
+		_pay_stamina(ArmorLoad.swing_cost(_armor_load(), _tun))
 	if (pressed & CLINCH) != 0 and _close.can_grab(able, _left_free()):
 		_close.start_grab(inp.aim().y > 0.35)
 	if (_close.holding() or _close.reaching()) and (not inp.has(CLINCH) or not _left_free()):
