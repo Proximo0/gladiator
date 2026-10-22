@@ -5,15 +5,13 @@ extends "res://tests/sim/sim_base.gd"
 ## Part 2: the Quick Match menu against ServiceStub in this process: search, found, host listens, Cancel, and the
 ## result line from the agreed reports. Takes ~35 s of real time (the children run in real time).
 
-const GPORT: int = 17961
-const DPORT: int = 17790
 const WAIT_MS: int = 90000
 
 
 func _spawn(id: String, player_name: String, weapon: String) -> Dictionary:
 	var args: PackedStringArray = ["--headless", "--path", ProjectSettings.globalize_path("res://"), "-s",
-		"res://tests/sim/sim_net_quick_peer.gd", "--", "--id=%s" % id, "--name=%s" % player_name, "--gport=%d" % GPORT,
-		"--dport=%d" % DPORT, "--weapon=%s" % weapon]
+		"res://tests/sim/sim_net_quick_peer.gd", "--", "--id=%s" % id, "--name=%s" % player_name, "--gport=%d" % net_port(47),
+		"--dport=%d" % net_port(52), "--weapon=%s" % weapon]
 	return OS.execute_with_pipe(OS.get_executable_path(), args)
 
 
@@ -73,6 +71,7 @@ func _menu_rows() -> Array:
 	await step(2)
 	# Stub backend: fake it through the flag the menu reads.
 	Flags.args["online-service"] = "stub"
+	Flags.args["net-port"] = str(net_port(48))
 	flow.call("_on_title", "quick")
 	var svc: ServiceStub = flow.get("_service") as ServiceStub
 	var scr: OnlineScreen = flow.get("_online")

@@ -5,7 +5,6 @@ extends "res://tests/sim/sim_base.gd"
 ## Not in the suite (long). Run with tools/net_soak.sh; each match prints `SOAK key=value ...` lines that the tool
 ## turns into a table. Arguments (after the sim name): rtt_ms loss matches time_limit_s.
 
-const PORT: int = 17961
 const BASE_SEED: int = 9100
 const WEAPONS: Array = [["gladius", "spear"], ["dai_katana", "mace"], ["halberd", "longsword"], ["warhammer", "machete"],
 	["laser_sword", "falchion"], ["axe", "shield_round"], ["sledgehammer", "rake"], ["fists", "bat"]]
@@ -16,7 +15,7 @@ var loss: float = 0.03
 var matches: int = 3
 var drill: bool = false  ## scripted gore (gut, sever, behead) with full presentation, instead of bot matches
 var time_limit_s: float = 30.0
-var port: int = PORT
+var port: int = net_port(22)
 var out: Array = []  ## printed key=value lines are also returned as INFO rows
 
 var _host: NetSession
