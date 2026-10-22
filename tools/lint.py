@@ -11,6 +11,7 @@ Rules:
   func-return-type  named func without "-> type"
   func-param-type   named func parameter without a ": type"
   class-var-type    class-level var without a type or ":="
+  lessons           a docs/lessons/*.md file that is misnamed or not the two-line format (tools/lessons_index.py)
 
 Prints "path:line rule message" per problem, then "LINT problems=<n>".
 Exits 1 when n > 0.
@@ -18,6 +19,9 @@ Exits 1 when n > 0.
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lessons_index  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = "game"
@@ -139,6 +143,7 @@ def main() -> int:
         rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
         with open(path, encoding="utf-8") as fh:
             check_file(rel, fh.read(), problems)
+    problems.extend((rel, lineno, "lessons", message) for rel, lineno, message in lessons_index.check(ROOT))
 
     problems.sort(key=lambda p: (p[0], p[1]))
     for rel, lineno, rule, message in problems:

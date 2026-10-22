@@ -1,0 +1,2 @@
+What happened: Merging the results screen onto the killcam branch: sim_match_show waited 600 ticks for the results, the instant replay made it 688, and the sim died on a null and printed no rows; sim_net_cheat still read the soak sim's removed `PORT`
+Rule: Size a sim's wait from every step between its trigger and the state it waits for (delays, replays) and guard what the wait returns; lint the merged tree, not each side
