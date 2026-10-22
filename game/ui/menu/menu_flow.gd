@@ -13,7 +13,7 @@ extends Node
 signal match_started(match_node: Match)
 signal match_closed
 
-enum Screen { TITLE, LOADOUT, OPTIONS, FIGHT, PAUSED, RESULT, ONLINE, LEADERBOARD }
+enum Screen { TITLE, LOADOUT, OPTIONS, FIGHT, PAUSED, RESULT, ONLINE, LEADERBOARD, SHOP }
 
 const LAYER: int = 60
 const RESULT_DELAY_S: float = 3.4
@@ -37,6 +37,8 @@ var _options: OptionsScreen
 var _online: OnlineScreen
 var _net: NetSession = null
 var _leaderboard: LeaderboardScreen
+var _shop: ShopScreen
+var _shop_from_loadout: bool = false  ## "Get in shop" returns to the loadout, the title's Shop to the title
 var _service: OnlineService = null  ## the matchmaking / rating backend (ServiceLocal until another is wired in)
 var _quick: bool = false  ## the online screen / match in progress is a Quick Match (rated), not direct IP
 var _rating_line: String = ""
@@ -93,6 +95,10 @@ func _build_ui() -> void:
 	_loadout.start.connect(_begin_fight)
 	_loadout.back.connect(_show_title)
 	_root.add_child(_loadout)
+	_shop = ShopScreen.new(state)
+	_shop.back.connect(_on_shop_back)
+	_root.add_child(_shop)
+	_loadout.shop.connect(_open_shop.bind(true))
 	_options = OptionsScreen.new(settings)
 	_options.back.connect(_show_title)
 	_root.add_child(_options)
@@ -147,6 +153,7 @@ func _hide_screens() -> void:
 	_options.visible = false
 	_online.visible = false
 	_leaderboard.visible = false
+	_shop.visible = false
 	_pause_dim.visible = false
 	_hint.hide_now()
 	_pause_btn.visible = false
@@ -184,6 +191,8 @@ func _on_title(id: String) -> void:
 			_open_online(true)
 		"leaderboard":
 			_open_leaderboard()
+		"shop":
+			_open_shop(false)
 		"online":
 			_open_online()
 		"bots":
@@ -341,6 +350,25 @@ func _open_leaderboard() -> void:
 	screen = Screen.LEADERBOARD
 	_leaderboard.visible = true
 	_leaderboard.open(_service)
+
+
+func _open_shop(from_loadout: bool) -> void:
+	_shop_from_loadout = from_loadout
+	_hide_screens()
+	_ensure_backdrop()
+	screen = Screen.SHOP
+	_shop.visible = true
+	_shop.open()
+
+
+func _on_shop_back() -> void:
+	if _shop_from_loadout:
+		_hide_screens()
+		screen = Screen.LOADOUT
+		_loadout.visible = true
+		_loadout.open(_loadout.mode)
+	else:
+		_show_title()
 
 
 func _on_recorded(summary: Dictionary) -> void:

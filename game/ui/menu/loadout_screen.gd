@@ -6,6 +6,7 @@ extends Control
 
 signal start(mode: String)
 signal back
+signal shop  ## the player wants the outfit shop ("Get in shop" on a locked outfit)
 
 var mode: String = "player_vs_cpu"
 var state: MenuState
@@ -25,6 +26,12 @@ var _cpu_level: MenuPicker
 var _diff_note: Label
 var _start: Button
 var _back: Button
+var _outfit_rows: Array[Control] = []  ## per side: the picker row (a VBox with picker, lock note, shop button)
+var _outfit_pickers: Array[MenuPicker] = []
+var _outfit_notes: Array[Label] = []
+var _outfit_locks: Array[Control] = []
+var _outfit_shop: Array[Button] = []
+var _browsing: Array[String] = [OutfitRules.DEFAULT_ID, OutfitRules.DEFAULT_ID]  ## what each picker shows (maybe locked)
 
 
 func _init(p_state: MenuState) -> void:
@@ -61,6 +68,7 @@ func _init(p_state: MenuState) -> void:
 	_panel_a = LoadoutPanel.new()
 	_panel_a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_panel_a.loadout_changed.connect(_on_a)
+	_panel_a.add_row(_make_outfit_row(0))
 	_body.add_child(_panel_a)
 
 	_mid = VBoxContainer.new()
@@ -82,6 +90,7 @@ func _init(p_state: MenuState) -> void:
 	_panel_b = LoadoutPanel.new()
 	_panel_b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_panel_b.loadout_changed.connect(_on_b)
+	_panel_b.add_row(_make_outfit_row(1))
 	_cpu_mode = MenuPicker.new()
 	_cpu_mode.custom_minimum_size = Vector2(0.0, LoadoutPanel.ROW_H)
 	_cpu_mode.setup("Loadout", [[MenuState.CPU_RANDOM, "Random"], [MenuState.CPU_CUSTOM, "Pick"]])
@@ -131,6 +140,8 @@ func open(p_mode: String) -> void:
 	_panel_a.set_header("YOU" if not two else "PLAYER 1  -  mouse and keys")
 	_panel_b.set_header("PLAYER 2  -  gamepad" if two else "OPPONENT")
 	_panel_a.set_loadout(state.loadouts[0])
+	_outfit_rows[1].visible = two
+	refresh_outfits()
 	_cpu_mode.visible = not two
 	_cpu_diff.visible = not two
 	_cpu_level.visible = not two
@@ -173,10 +184,86 @@ func _note_text() -> String:
 func _refresh_preview() -> void:
 	var two: bool = mode == "local_2p"
 	var b: Dictionary = state.loadouts[1] if (two or state.cpu_loadout_mode == MenuState.CPU_CUSTOM) else state.cpu_shown_loadout()
-	_preview.show_loadouts([LoadoutRules.sanitize(state.loadouts[0]), LoadoutRules.sanitize(b)])
+	var left_look: Dictionary = OutfitRules.with_outfit(LoadoutRules.sanitize(state.loadouts[0]), _browsing[0])
+	var right_look: Dictionary = LoadoutRules.sanitize(b)
+	if two:
+		right_look = OutfitRules.with_outfit(right_look, _browsing[1])
+	_preview.show_loadouts([left_look, right_look])
 	var left: String = LoadoutRules.display_name(str(state.loadouts[0]["weapon"]))
 	var right: String = LoadoutRules.display_name(str(b["weapon"]))
 	_vs.text = "%s  VS  %s" % [left, right]
+
+
+## One side's outfit pick: a picker, then (while the choice is locked) a lock icon, a note and a "Get in shop" button.
+func _make_outfit_row(side: int) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	var pk := MenuPicker.new()
+	pk.custom_minimum_size = Vector2(0.0, LoadoutPanel.ROW_H)
+	pk.setup("Outfit", _outfit_items())
+	pk.changed.connect(_on_outfit.bind(side))
+	box.add_child(pk)
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 10)
+	var lock := OutfitLockIcon.new()
+	lock.custom_minimum_size = Vector2(30.0, 34.0)
+	line.add_child(lock)
+	var note := MenuTheme.label("", 22, MenuTheme.OCHRE)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(note)
+	line.visible = false
+	box.add_child(line)
+	var sb: Button = MenuTheme.button("Get in shop")
+	sb.custom_minimum_size.y = 48.0
+	sb.visible = false
+	sb.pressed.connect(func() -> void: shop.emit())
+	box.add_child(sb)
+	_outfit_rows.append(box)
+	_outfit_pickers.append(pk)
+	_outfit_notes.append(note)
+	_outfit_locks.append(line)
+	_outfit_shop.append(sb)
+	return box
+
+
+## [[id, label]] for the picker; a locked outfit's label carries its price.
+func _outfit_items() -> Array:
+	var owned: Array = state.store.owned()
+	var items: Array = []
+	for id: String in OutfitRules.ids():
+		var label: String = OutfitRules.display_name(id)
+		if not OutfitRules.can_equip(id, owned):
+			label += "  " + state.store.price_label(OutfitRules.product_id(id))
+		items.append([id, label])
+	return items
+
+
+## Re-reads what is owned (call when the screen opens or after a shop visit).
+func refresh_outfits() -> void:
+	for side: int in 2:
+		var pk: MenuPicker = _outfit_pickers[side]
+		pk.items = _outfit_items()
+		_browsing[side] = state.outfit_for(side)
+		pk.select(_browsing[side], false)
+		_sync_outfit_row(side)
+	_refresh_preview()
+
+
+func _sync_outfit_row(side: int) -> void:
+	var id: String = _browsing[side]
+	var locked: bool = not OutfitRules.can_equip(id, state.store.owned())
+	_outfit_locks[side].visible = locked
+	_outfit_shop[side].visible = locked
+	if locked:
+		_outfit_notes[side].text = "Locked. Fighting as %s." % OutfitRules.display_name(state.outfit_for(side))
+
+
+func _on_outfit(id: String, side: int) -> void:
+	_browsing[side] = OutfitRules.clean_id(id)
+	state.set_outfit(side, _browsing[side])  # refused while locked: the last owned pick stays
+	_sync_outfit_row(side)
+	_refresh_preview()
 
 
 func _on_a(l: Dictionary) -> void:
@@ -230,3 +317,16 @@ func _relayout() -> void:
 	else:
 		_body.move_child(_mid, 1)
 		_preview.custom_minimum_size = Vector2(300.0, 420.0)
+
+
+## A small padlock for locked outfits (drawn, so it needs no font glyph).
+class OutfitLockIcon extends Control:
+	func _draw() -> void:
+		var c: Color = MenuTheme.OCHRE
+		var w: float = size.x
+		var h: float = size.y
+		draw_arc(Vector2(w * 0.5, h * 0.42), w * 0.28, PI, TAU, 14, c, 3.0, true)
+		draw_line(Vector2(w * 0.22, h * 0.42), Vector2(w * 0.22, h * 0.5), c, 3.0)
+		draw_line(Vector2(w * 0.78, h * 0.42), Vector2(w * 0.78, h * 0.5), c, 3.0)
+		draw_rect(Rect2(w * 0.1, h * 0.5, w * 0.8, h * 0.42), c)
+		draw_circle(Vector2(w * 0.5, h * 0.7), w * 0.08, MenuTheme.INK)

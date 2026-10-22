@@ -6,6 +6,7 @@ extends RefCounted
 ## and physics never change. A missing asset leaves the primitive mesh in place.
 
 const DIR: String = "res://assets/body/"
+const OUTFIT_DIR: String = "res://assets/outfits/"
 const ART_NAME: String = "Art"
 ## Distance the cap's origin sits inside the cut plane along its normal (the disc is 0.0165 thick, top at +0.0045).
 const CAP_SINK: float = 0.004
@@ -20,12 +21,27 @@ var _skin: StandardMaterial3D = null
 var _cloth: StandardMaterial3D = null
 var _head_scene: String = "head"
 var _caps: Dictionary = {}
+var _outfit: String = OutfitRules.DEFAULT_ID
+var _armor: StandardMaterial3D = null  ## the outfit palette's armor material (palette fallback and covered parts)
 
 
-func _init(side: int, match_seed: int) -> void:
-	_skin = _tinted("skin", BodyLook.skin_color(match_seed, side))
-	_cloth = _tinted("cloth", BodyLook.cloth_color(side))
-	if BodyLook.bearded(match_seed, side):
+## `outfit_id` is a premium or default outfit (see OutfitRules). Parts load from OUTFIT_DIR/<id>/<part>.glb when the
+## art exists, else the base body is tinted with the outfit palette, so an outfit works before its art lands.
+## Cosmetic only: nothing here touches physics or the match state.
+func _init(side: int, match_seed: int, outfit_id: String = OutfitRules.DEFAULT_ID) -> void:
+	_outfit = OutfitRules.clean_id(outfit_id)
+	var pal: Dictionary = OutfitRules.palette(_outfit)
+	var skin_col: Color = BodyLook.skin_color(match_seed, side)
+	var cloth_col: Color = BodyLook.cloth_color(side)
+	if _outfit != OutfitRules.DEFAULT_ID:
+		skin_col = OutfitRules.color(pal, "skin", skin_col)
+		cloth_col = OutfitRules.color(pal, "cloth", cloth_col)
+		_armor = _tinted("armor", OutfitRules.color(pal, "armor", Color(0.4, 0.4, 0.4)))
+		_armor.metallic = float(pal.get("metal", 0.0))
+		_armor.roughness = float(pal.get("rough", 0.6))
+	_skin = _tinted("skin", skin_col)
+	_cloth = _tinted("cloth", cloth_col)
+	if BodyLook.bearded(match_seed, side) and not OutfitRules.covers(_outfit, "head"):
 		_head_scene = "head_b"
 
 
@@ -59,18 +75,40 @@ static func apply_shadow(n: Node, pn: String) -> void:
 		apply_shadow(c, pn)
 
 
-func _instance(asset: String) -> Node3D:
-	var sc: PackedScene = _scene(asset)
+## Outfit art for body part `asset` (the head asset may be head_b): "res://assets/outfits/<id>/<part>.glb", or null.
+## The bearded head has no outfit twin; an outfit ships one "head".
+func _outfit_scene(asset: String) -> PackedScene:
+	if _outfit == OutfitRules.DEFAULT_ID:
+		return null
+	var name: String = "head" if asset == "head_b" else asset
+	var path: String = OUTFIT_DIR + _outfit + "/" + name + ".glb"
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as PackedScene
+
+
+## `part` is the body part the asset dresses ("" for caps, which keep flesh tint). Outfit art keeps its own materials,
+## except "skin" surfaces on parts the outfit does not cover. The base body under an outfit palette tints "skin" with
+## the armor colour on covered parts (skin tone never shows through armor) and "cloth" with the outfit cloth.
+func _instance(asset: String, part: String = "") -> Node3D:
+	var sc: PackedScene = null
+	var own_art: bool = false
+	if part != "":
+		sc = _outfit_scene(asset)
+		own_art = sc != null
+	if sc == null:
+		sc = _scene(asset)
 	if sc == null:
 		return null
 	var root: Node3D = sc.instantiate() as Node3D
 	if root == null:
 		return null
-	_tint(root)
+	var covered: bool = part != "" and _armor != null and OutfitRules.covers(_outfit, part)
+	_tint(root, covered, own_art)
 	return root
 
 
-func _tint(n: Node) -> void:
+func _tint(n: Node, covered: bool = false, own_art: bool = false) -> void:
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
@@ -80,18 +118,21 @@ func _tint(n: Node) -> void:
 				if m == null:
 					continue
 				if m.resource_name == "skin":
-					mi.set_surface_override_material(i, _skin)
-				elif m.resource_name == "cloth":
+					if not covered:
+						mi.set_surface_override_material(i, _skin)
+					elif not own_art:
+						mi.set_surface_override_material(i, _armor)
+				elif m.resource_name == "cloth" and not own_art:
 					mi.set_surface_override_material(i, _cloth)
 	for c: Node in n.get_children():
-		_tint(c)
+		_tint(c, covered, own_art)
 
 
 ## Puts the art for part `pn` under body `b`'s Look slot and hides the primitive meshes there. False when the asset is
 ## missing (the primitives stay).
 func dress(b: Node3D, pn: String) -> bool:
 	var asset: String = _head_scene if pn == "head" else pn
-	var art: Node3D = _instance(asset)
+	var art: Node3D = _instance(asset, pn)
 	if art == null:
 		return false
 	var look: Node3D = b.get_node_or_null("Look") as Node3D

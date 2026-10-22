@@ -164,7 +164,7 @@ func _edit(text: String, hint: String) -> LineEdit:
 func open(p_session: NetSession) -> void:
 	_set_mode(false)
 	_bind_session(p_session)
-	_panel.set_loadout(state.loadouts[0])
+	_panel.set_loadout(state.loadout_with_outfit(0))
 	_name_edit.text = player_name
 	_push_local()
 	refresh()
@@ -223,7 +223,7 @@ func open_quick(p_session: NetSession, p_service: OnlineService) -> void:
 		service.matched.connect(_on_matched)
 		service.match_failed.connect(_on_match_failed)
 		service.status_changed.connect(show_status)
-	_panel.set_loadout(state.loadouts[0])
+	_panel.set_loadout(state.loadout_with_outfit(0))
 	_name_edit.text = player_name
 	_status_text = ""
 	_relayout()
@@ -244,7 +244,7 @@ func _begin_search() -> void:
 
 func _on_logged_in(_profile: Dictionary) -> void:
 	if _quick and _phase == Phase.SEARCHING and not service.is_searching():
-		service.quick_match(state.loadouts[0])
+		service.quick_match(state.loadout_with_outfit(0))
 
 
 func _on_login_failed(reason: String) -> void:

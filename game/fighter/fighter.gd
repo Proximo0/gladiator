@@ -165,7 +165,7 @@ func _build() -> void:
 	var skin := Color(0.78, 0.6, 0.47)
 	var cloth := Color(0.62, 0.16, 0.12) if side == 0 else Color(0.16, 0.26, 0.55)
 	var legs := Color(0.36, 0.28, 0.2)
-	_art = FighterArt.new(side, look_seed)
+	_art = FighterArt.new(side, look_seed, OutfitRules.outfit_of(loadout))
 	for pd: Dictionary in FighterRig.PARTS:
 		var n: String = pd["name"]
 		_rest[n] = Transform3D(Basis(), pd["center"])

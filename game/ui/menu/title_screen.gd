@@ -40,7 +40,7 @@ func _init() -> void:
 	gap.custom_minimum_size = Vector2(0.0, 30.0)
 	_col.add_child(gap)
 	var entries: Array = [["quick", "Quick Match"], ["fight", "Fight  (vs CPU)"], ["local_2p", "Local 2 players"],
-			["leaderboard", "Leaderboard"], ["online", "Online 1v1 (direct IP)"], ["bots", "Watch bots"], ["options", "Options"]]
+			["leaderboard", "Leaderboard"], ["shop", "Shop"], ["online", "Online 1v1 (direct IP)"], ["bots", "Watch bots"], ["options", "Options"]]
 	if not OS.has_feature("mobile") and not OS.has_feature("web"):
 		entries.append(["quit", "Quit"])
 	for e: Array in entries:

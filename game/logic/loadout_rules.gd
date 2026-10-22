@@ -84,7 +84,12 @@ static func sanitize(loadout: Dictionary) -> Dictionary:
 		var id: String = str(given.get(slot, ""))
 		if id != "" and str(CombatData.armor(id).get("part", "")) == slot:
 			armor[slot] = id
-	return {"weapon": weapon, "offhand": off, "armor": armor}
+	var out: Dictionary = {"weapon": weapon, "offhand": off, "armor": armor}
+	# Outfits are cosmetic: carry a known premium id so the opponent sees it.
+	var outfit: String = OutfitRules.clean_id(str(loadout.get("outfit", "default")))
+	if outfit != "default":
+		out["outfit"] = outfit
+	return out
 
 
 ## Total carried mass in kg (weapon, off hand, armor).
