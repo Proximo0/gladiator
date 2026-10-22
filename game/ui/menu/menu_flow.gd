@@ -596,7 +596,8 @@ func _leader_side() -> int:
 func _on_match_over(result: Dictionary, token: int) -> void:
 	_record_progress(result, token)
 	if _quick and _is_online() and _online.has_open_match():
-		_online.report_finished(int(result.get("winner", -1)), int(result.get("ticks", 0)), str(result.get("reason", "")))
+		var suspect: bool = result.has("suspect")  # NetResultCheck: a draw claim makes the reports disagree (disputed)
+		_online.report_finished(-1 if suspect else int(result.get("winner", -1)), int(result.get("ticks", 0)), "suspect" if suspect else str(result.get("reason", "")))
 	if current_match == null or bool(current_match.config.get("loop", false)):
 		return
 	var t: SceneTreeTimer = get_tree().create_timer(RESULT_DELAY_S, true, false, true)

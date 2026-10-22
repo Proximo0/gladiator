@@ -202,6 +202,10 @@ func _finish() -> void:
 	match_node.over = true
 	var full: Dictionary = result.duplicate()
 	full["loadouts"] = (match_node.config.get("loadouts", []) as Array).duplicate(true)
+	var why: String = NetResultCheck.check(result, interp.first_at_or_after(last_tick), float(match_node.config.get("time_limit_s", 180.0)))
+	if why != "":
+		full["suspect"] = why  # the host's result does not fit its own snapshots: reported as a draw (disputed)
+		push_warning("NetClientDriver: host result looks forged (%s)" % why)
 	match_node.result = full
 	if match_node.presenter != null:
 		match_node.presenter.announce(MatchJudge.result_banner(full, match_node.names))

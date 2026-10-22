@@ -169,9 +169,10 @@ func run() -> Array:
 	var cr: Dictionary = _client_match.result if _client_match != null else {}
 	var same: bool = _host_match != null and _host_match.over and _client_match != null and _client_match.over \
 		and int(hr.get("winner", -9)) == int(cr.get("winner", -8)) and str(hr.get("reason", "a")) == str(cr.get("reason", "b")) \
-		and int(hr.get("ticks", -1)) == int(cr.get("ticks", -2))
-	rows.append(row(prefix + "_same_result", same, "host winner=%s reason=%s ticks=%s, client winner=%s reason=%s ticks=%s" % [
-		hr.get("winner"), hr.get("reason"), hr.get("ticks"), cr.get("winner"), cr.get("reason"), cr.get("ticks")]))
+		and int(hr.get("ticks", -1)) == int(cr.get("ticks", -2)) and not cr.has("suspect")
+	rows.append(row(prefix + "_same_result", same, "host winner=%s reason=%s ticks=%s, client winner=%s reason=%s ticks=%s%s" % [
+		hr.get("winner"), hr.get("reason"), hr.get("ticks"), cr.get("winner"), cr.get("reason"), cr.get("ticks"),
+		" SUSPECT " + str(cr["suspect"]) if cr.has("suspect") else ""]))
 	# The client's newest snapshot against the host's state at that tick (quantisation only).
 	var worst: float = -1.0
 	var newest: int = -1

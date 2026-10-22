@@ -50,6 +50,14 @@ func size() -> int:
 	return _snaps.size()
 
 
+## The oldest snapshot held at or after `tick`, or null.
+func first_at_or_after(tick: int) -> NetSnapshot:
+	for s: NetSnapshot in _snaps:
+		if s.tick >= tick:
+			return s
+	return null
+
+
 func push(s: NetSnapshot, local_tick: int) -> void:
 	if s == null:
 		return

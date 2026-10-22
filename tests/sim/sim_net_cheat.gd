@@ -6,7 +6,8 @@ extends "res://tests/sim/sim_net_soak.gd"
 ## packet, HELLO and LOADOUT with wrong types or a premium weapon). Then 2 s where the host turns hostile and sends
 ## the client mutated snapshots and events. Checks: the host's hand goal never moves faster than Tuning allows,
 ## its fighter 1 runs no faster than the legal baselines allow, the loadout cannot change mid-match, the host's
-## buffers stay bounded, the flood is dropped, nothing logs a script error, both sessions stay open.
+## buffers stay bounded, the flood is dropped, nothing logs a script error, both sessions stay open, and a forged OVER
+## (a killing blow on a fighter the snapshots show alive) is flagged by the client.
 
 const BASELINE_TICKS: int = 360
 const CHEAT_TICKS: int = 600
@@ -122,6 +123,7 @@ func run() -> Array:
 				hostile_ok = hostile_ok and is_finite(pv.x + pv.y + pv.z)
 	var errors_hostile: int = int(errlog.get("count")) - errors_honest - errors_cheat
 	OS.remove_logger(errlog)
+	var forged: Array = await _forged_over_row()
 	var buf: NetInputBuffer = _host.host_driver.inputs
 	var held: int = (buf.get("_inputs") as Dictionary).size()
 	rows.append(row("net_cheat_hand_goal_capped", float(cheat["goal_step"]) <= goal_cap * 1.02,
@@ -144,8 +146,29 @@ func run() -> Array:
 	rows.append(row("net_cheat_no_script_errors", errors_cheat == 0 and errors_hostile == 0 and hostile_ok,
 		"errors: honest %d, cheating client %d, hostile host %d; engine unmarshal noise %d; client poses finite %s" % [
 			errors_honest, errors_cheat, errors_hostile, int(errlog.get("unmarshal")), str(hostile_ok)]))
+	rows.append(forged)
 	await _teardown()
 	return rows
+
+
+## The host's OVER names a killing blow on a fighter its own snapshots show alive: the client flags the result
+## (NetResultCheck) so its report disagrees and the match is not rated.
+func _forged_over_row() -> Array:
+	await step(90)  # only real snapshots in the client's buffer again
+	if _host == null or not _host.is_open() or _cm == null:
+		return row("net_cheat_forged_over_flagged", false, "session gone before the forged result")
+	var alive: Array = [not (_hm.fighters[0] as Fighter).health.dead, not (_hm.fighters[1] as Fighter).health.dead]
+	if not alive[0] and not alive[1]:
+		return row("net_cheat_forged_over_flagged", null, "both fighters dead: nothing to forge")
+	var winner: int = 0 if alive[1] else 1
+	_host.send(NetLobby.over({"winner": winner, "reason": "behead", "ticks": _hm.tick - 30, "seed": 1}), true)
+	var n: int = 0
+	while n < 120 and not _cm.over:
+		await host.get_tree().physics_frame
+		n += 1
+	var why: String = str(_cm.result.get("suspect", ""))
+	return row("net_cheat_forged_over_flagged", _cm.over and why != "", "client result %s/%s, flagged: \"%s\"" % [
+		str(_cm.result.get("winner", "?")), str(_cm.result.get("reason", "?")), why])
 
 
 ## Over `ticks` host ticks: the largest per-tick step of fighter 1's hand goal while it stands (the arm is driven),

@@ -15,7 +15,7 @@ or a bounded nuisance.
 | --- | --- | --- | --- |
 | 1 | Critical | **Host freeze from one input packet.** `NetInputBuffer.pop()` skipped a too-deep buffer by walking every tick from the next one to the newest. A client packet with tick 4 294 967 000 made the host loop ~4 billion times in one physics tick (measured 80 ms per million ticks, so ~340 s per packet, repeatable). | Fixed: a tick may jump at most `MAX_AHEAD` = 600 past the newest held, at most `MAX_HELD` = 256 wait, and skipping walks the held keys. Worst pop on a hostile stream now under 1 ms (`test_net_fuzz`). |
 | 2 | High | **Drop-to-win on Tier 0.** A losing player blocks the game's traffic (a firewall rule, no modding) and leaves the EOS lobby. On its own device only its own `dropped` report exists, and `Rating.reconcile` made a lone `dropped` a forfeit **win for the reporter**. Also a `dropped` report beat the other side's real `result` when it came first. | Fixed: a `dropped` report names who was ahead on points when the link died (`MatchJudge.leader`, the time-limit rule) as its winner, and a lone `dropped` forfeits only to a reporter that was ahead after `MIN_RATED_TICKS`; otherwise void. A `result` report beats a `dropped` one on both devices. |
-| 3 | High | **The host decides the result.** The client reports what the host's OVER says, so a modded host (any Quick Match lobby owner) can send itself as the winner and both reports agree. | Accepted risk for v1. Next step: the client cross-checks OVER against the snapshots it saw (claimed loser dead or KO'd, blood order for a time decision) and reports "disputed" on a mismatch; then a Tier 1 verifier. |
+| 3 | High | **The host decides the result.** The client reported whatever the host's OVER said, so a modded host (any Quick Match lobby owner) could send itself as the winner and both reports agreed. | Partly fixed: `NetResultCheck` compares OVER with the host's own snapshot at the result tick (a dead winner, a living loser of a killing blow, a "mutual" with a survivor, a time decision before the limit or against a 0.5 L blood lead) and the client then reports a draw, so the reports disagree and nobody is rated (`sim_net_cheat` forges one). A host that also forges its snapshots consistently still wins; that needs the Tier 1 verifier or a dedicated server. |
 | 4 | High | **Self-written stats.** On Tier 0 each client ingests its own `sb_rating` (a "Latest" stat), games, wins and losses. A modded client can write any rating and top the leaderboard. | Accepted risk until a server exists. Fix: the client policy loses Stats ingest; a small verifier (both signed reports in, `Rating.reconcile`, ingest with server credentials) writes the stats. Shadow-flag ratings that move more than K per game in the meantime. |
 | 5 | High | **Premium and earned items are not verified online.** The host sanitizes the client's loadout with `owned = null` (`LoadoutRules.sanitize`), so a modded client can fight with `dai_katana` / `laser_sword` and wear the premium outfits without buying them; earned weapons live in a local file. `StoreLocal` grants for free (dev only, never in release, `StoreFactory`). | Accepted risk: needs proof of ownership. The client sends a store receipt with HELLO (an Epic Ecom ownership token is a JWT signed by Epic that the host can check offline against Epic's public keys; a Google Play purchase token needs a server call) and the host falls back to `PREMIUM_FALLBACK` without one. Ranked Quick Match could also allow only starter weapons until then. |
 | 6 | Medium | **Lobby messages with wrong-typed fields raised script errors** and aborted the handler: a non-numeric `v` ("Nonexistent 'int' constructor"), a `loadout` or `armor` that is not a dictionary, a body that decodes as a typed dictionary (refuses the `_type` key), a non-bool `accepted`, NaN or huge `time_limit_s`. | Fixed: `NetLobby.dict_of` / `int_of` / `float_of` for every decoded field, typed dictionaries refused, `LoadoutRules.sanitize` takes any armor value, START's time limit capped at 3600 s, `NetClientDriver.on_over` typed. |
@@ -50,7 +50,9 @@ packet a legit build sends (exact-size input packets of 1-16 rows, plain diction
   packets of random rows, every message type mutated, START/OVER/SNAP/EVENTS sent the wrong way, a 500-packet
   flood, a 64 KB packet, HELLO and LOADOUT with wrong types and a premium weapon, a tick walk past `MAX_AHEAD`),
   then 2 s of a hostile host sending mutated snapshots and far-future events.
-- `tests/unit/test_rating.gd`: the drop rule (#2); `test_match_judge.gd`: `MatchJudge.leader`.
+- `tests/unit/test_rating.gd`: the drop rule (#2); `test_match_judge.gd`: `MatchJudge.leader`;
+  `test_net_result_check.gd`: honest results pass, forged ones are flagged, short snapshots are never flagged.
+- `sim_net_loopback` / `sim_net_presented`: an honest online match's result is never flagged (`_same_result`).
 
 ## Numbers
 
@@ -64,9 +66,10 @@ packet a legit build sends (exact-size input packets of 1-16 rows, plain diction
 | Peak pelvis speed, modded client | n/a | 5.2 m/s (legal mashing 5.9, bot 2.4) |
 | Side-1 hits per second (INFO; varies run to run with Jolt) | n/a | modded 1.7, legal mashing 1.5, bot 0.8 (a second run: 0.0, 2.3, 0.5) |
 | Rated outcome of "block traffic while losing, leave the lobby" | a win on the cheater's device | void |
+| Rated outcome of a host's OVER claiming a beheading nobody suffered | the host's win, both reports agree | disputed, not rated |
 
 ## Next defects
 
-1. The host can declare itself the winner (#3): client-side cross-check of OVER against snapshots, then the verifier.
-2. Stats are client-written (#4): a Tier 1 verifier with server credentials; Stats ingest off in the client policy.
-3. Ownership of premium weapons and outfits is not proven online (#5): a store receipt in HELLO, checked by the host.
+1. Stats are client-written (#4): a Tier 1 verifier with server credentials; Stats ingest off in the client policy.
+2. Ownership of premium weapons and outfits is not proven online (#5): a store receipt in HELLO, checked by the host.
+3. A host that forges its snapshots as well as its result still wins (#3): the verifier, or a dedicated server.
