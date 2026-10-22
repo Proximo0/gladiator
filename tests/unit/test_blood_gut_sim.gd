@@ -142,7 +142,7 @@ func test_gut_art_meshes_are_normalised_and_coloured() -> void:
 		var ab: AABB = m.get_aabb()
 		match k:
 			GutSim.K_LINK:
-				assert_near(ab.size.z, 2.0, 0.01)
+				assert_near(ab.size.z, 2.0 + 2.0 * GutArt.LINK_CAP, 0.01, "tube -1..1 plus the rounded caps")
 				assert_near(ab.size.x, 2.0, 0.05)
 			GutSim.K_TORN:
 				assert_near(ab.position.z, 0.0, 0.01)
@@ -151,6 +151,8 @@ func test_gut_art_meshes_are_normalised_and_coloured() -> void:
 				assert_near(maxf(ab.size.x, ab.size.z), 2.0, 0.01)
 		assert_true(GutArt.authored_size(k) > 0.0)
 		assert_true(GutArt.floor_share(k) > 0.0)
+	var link_tris: int = (GutArt.mesh(GutSim.K_LINK).surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+	assert_true(link_tris > 20 and link_tris < 300, "the link is the cropped middle of the rope tile, got %d" % link_tris)
 	assert_true(GutArt.authored_size(GutSim.K_LIVER) > 0.1, "a liver keeps its authored size (about 0.13 m half width)")
 
 

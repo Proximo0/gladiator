@@ -228,7 +228,7 @@ func _hide_parts() -> void:
 						(c as MeshInstance3D).visible = false
 
 
-## --heavy: worst case. At the start of the measured window both fighters get a beheading, a gut spill and severed
+## --heavy: worst case. At the start of the measured window both fighters get a beheading, a big gut spill and severed
 ## arms (the fountains, rope sims, stump wounds and drips all running at once).
 func _inject_gore() -> void:
 	var b: BloodFx = _match.presenter.blood
@@ -247,7 +247,9 @@ func _inject_gore() -> void:
 			if not d.has(part):
 				continue
 			var n: Node3D = d[part]
-			b.on_gore({"kind": kind, "part": part, "point": n.global_position, "amount": 1.5, "normal": other}, f)
+			# A big gutting (organs fall out); the other kinds clamp their strength at 1.5 anyway.
+			var amt: float = 60.0 if kind == "gut" else 1.5
+			b.on_gore({"kind": kind, "part": part, "point": n.global_position, "amount": amt, "normal": other}, f)
 
 
 ## MultiMesh triangles drawn per group (instances shown x mesh faces), the counter Godot's primitives skip.
