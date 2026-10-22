@@ -1,7 +1,7 @@
 extends Node
 ## Runs the regression sims listed in SIM_FILES (each tests/sim/sim_<name>.gd extends sim_base.gd and returns
 ## [[name, ok, detail], ...] from run()). Prints "SIM <name> PASS|FAIL <detail>" and "SIMS passed=N failed=M".
-## Part of tools/run_sims.sh. Run alone: godot --headless --path . res://tests/sim/sim_suite.tscn [-- name ...]
+## Part of tools/run_sims.sh. Run alone: godot --headless --path . res://tests/sim/sim_suite.tscn [-- name ... | -name ...]
 
 const SIM_FILES: Array = [
 	"sim_example",
@@ -27,16 +27,28 @@ const SIM_FILES: Array = [
 	"sim_net_quick_flow",
 	"sim_touch",
 	"sim_sandbox_isolation",
+	"sim_decor_clip",
 	"sim_match_show",  # last: the audio bot sim before it is sensitive to what ran earlier in the process
 ]
 
 
 func _ready() -> void:
-	var only: PackedStringArray = OS.get_cmdline_user_args()
+	# Args pick sims: "sim_a sim_b" runs only those; "-sim_a" skips one (CI shards: the last shard skips the others' sims).
+	var only: PackedStringArray = PackedStringArray()
+	var skip: PackedStringArray = PackedStringArray()
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with("-"):
+			skip.append(a.substr(1))
+		else:
+			only.append(a)
 	var passed: int = 0
 	var failed: int = 0
+	for n: String in only + skip:
+		if not SIM_FILES.has(n):
+			print("SIM sim_suite FAIL unknown sim name %s (not in SIM_FILES)" % n)
+			failed += 1
 	for f: String in SIM_FILES:
-		if not only.is_empty() and not only.has(f):
+		if (not only.is_empty() and not only.has(f)) or skip.has(f):
 			continue
 		var scr: GDScript = load("res://tests/sim/%s.gd" % f) as GDScript
 		var sim: Variant = scr.new()

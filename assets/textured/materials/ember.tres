@@ -1,0 +1,8 @@
+[gd_resource type="ORMMaterial3D" load_steps=1 format=3]
+
+
+[resource]
+resource_name = "ember"
+albedo_color = Color(0.6262, 0.3133, 0.1517, 1)
+metallic = 0
+roughness = 0.9

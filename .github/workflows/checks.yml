@@ -27,12 +27,21 @@ jobs:
         include:
           - { name: unit, cmd: "tools/run_tests.sh" }
           - { name: lint, cmd: "tools/lint.sh" }
-          - { name: sims, cmd: "tools/run_sims.sh" }
-          # Play-bot / sweep fan-out: once tests/bot/bot.tscn exists, uncomment one row per shard and keep
-          # --nshards equal to the number of rows. Each shard gets its own runner, so scale it as high as you like.
-          - { name: bot-0, cmd: "timeout 300 godot --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=0 --nshards=3 | tee out.log; grep -q '^BOT score=' out.log && ! grep -q '^BOT .* FAIL ' out.log" }
-          - { name: bot-1, cmd: "timeout 300 godot --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=1 --nshards=3 | tee out.log; grep -q '^BOT score=' out.log && ! grep -q '^BOT .* FAIL ' out.log" }
-          - { name: bot-2, cmd: "timeout 300 godot --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=2 --nshards=3 | tee out.log; grep -q '^BOT score=' out.log && ! grep -q '^BOT .* FAIL ' out.log" }
+          # Sims in fresh-process shards of about 45 s each (2026-10-22 timings; also keeps one sim's leftover state
+          # out of the next). Named sims run only those; "-name" skips one, so the `sims` row runs every sim the other
+          # rows don't, new ones included.
+          # When a sim moves to a named row, add its -name to the `sims` row so it runs once.
+          - { name: sims, cmd: "tools/run_sims.sh -sim_net_quick -sim_camera_follow -sim_hit_feel -sim_match_smoke -sim_audio_bot -sim_killcam_net -sim_net_cheat -sim_net_presented -sim_match_show -sim_net_feel" }
+          - { name: sims-net, cmd: "tools/run_sims.sh sim_net_quick" }
+          # net_feel passes alone but fails after other net sims in the same process (state leak, 2026-10-22).
+          - { name: sims-net-feel, cmd: "tools/run_sims.sh sim_net_feel" }
+          - { name: sims-feel, cmd: "tools/run_sims.sh sim_camera_follow sim_hit_feel sim_match_smoke" }
+          - { name: sims-match, cmd: "tools/run_sims.sh sim_audio_bot sim_killcam_net sim_net_cheat sim_net_presented sim_match_show" }
+          # Play-bot shards: keep --nshards equal to the number of rows. Every row is a runner, and a free account
+          # runs at most 20 jobs at once across all workflows, so keep checks well under that.
+          - { name: bot-0, cmd: "timeout 300 godot --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=0 --nshards=3 | tee bot.log; grep -q '^BOT score=' bot.log && ! grep -q '^BOT .* FAIL ' bot.log" }
+          - { name: bot-1, cmd: "timeout 300 godot --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=1 --nshards=3 | tee bot.log; grep -q '^BOT score=' bot.log && ! grep -q '^BOT .* FAIL ' bot.log" }
+          - { name: bot-2, cmd: "timeout 300 godot --headless --fixed-fps 60 --path . res://tests/bot/bot.tscn -- --shard=2 --nshards=3 | tee bot.log; grep -q '^BOT score=' bot.log && ! grep -q '^BOT .* FAIL ' bot.log" }
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
@@ -41,7 +50,11 @@ jobs:
         run: |
           set -o pipefail
           godot --headless --path . --import > /tmp/import.log 2>&1 || { cat /tmp/import.log; exit 1; }
-          bash -c "${{ matrix.cmd }}"
+          rc=0
+          bash -c "${{ matrix.cmd }}" 2>&1 | tee out.log || rc=$?
+          # Failures as annotations and summary lines, readable through the checks API without the log.
+          if [ "$rc" -ne 0 ]; then python3 -I tools/ci_annotate.py "${{ matrix.name }}" out.log; fi
+          exit "$rc"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

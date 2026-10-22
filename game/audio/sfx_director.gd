@@ -70,6 +70,8 @@ var capped_count: int = 0
 var dropped_keys: Dictionary = {}
 ## Important sounds (SfxLogic.is_important) that were dropped, or stolen while still important: key -> count.
 var lost_important: Dictionary = {}
+## The last few losses in words (key, priority, tier, why, what took the voice): for the sim and the overlay.
+var lost_log: PackedStringArray = PackedStringArray()
 ## Steals where the stopped sound outranked the new one (should stay 0).
 var inversions: int = 0
 ## Sounds started with a finisher boost (for the sim).
@@ -123,11 +125,13 @@ func track(f: Node3D) -> void:
 			return
 	_tracked.append({
 		"f": f, "whoosh": SfxWhooshGate.new(), "steps": SfxStepTracker.new(), "state": "standing",
-		"last_sand": -10.0, "spurts": [], "gushes": [], "rolling": false,
+		"last_sand": -10.0, "spurts": [], "gushes": [], "rolling": false, "close_at": -10.0, "held_grunt": 0.0,
 	})
 	f.hit.connect(on_hit.bind(f))
 	f.gore.connect(on_gore.bind(f))
 	f.died.connect(on_died.bind(f))
+	if f.has_signal("close"):
+		f.connect("close", on_close.bind(f))
 
 
 ## 0..1: how worked up the crowd is. Swells on action, decays when the fight goes quiet.
@@ -162,7 +166,7 @@ func _physics_process(delta: float) -> void:
 ## A resolved weapon contact on `victim` (a Fighter, or null in tests). `ev` is Fighter.hit's event.
 func on_hit(ev: Dictionary, victim: Object = null) -> void:
 	var atk_def: Dictionary = CombatData.weapon(str(ev.get("weapon_id", "")))
-	var atk_mat: String = SfxLogic.weapon_material(atk_def)
+	var atk_mat: String = "kick" if bool(ev.get("kick", false)) else SfxLogic.weapon_material(atk_def)
 	var other_mat: String = ""
 	var on_weapon: bool = bool(ev.get("hit_on_weapon", false))
 	if on_weapon and victim != null:
@@ -223,6 +227,38 @@ func on_died(f: Object = null) -> void:
 	_queue("voice/death_gurgle", pos, 0.0, 1.0 + 0.06 * _side_sign(f), 0.15, "Voice")
 	crowd.add(0.5)
 	_crowd_play("roar")
+
+
+## A shove, kick or grab by `f` (Fighter.close's event): thuds, slaps and grunts from SfxLogic.close_plan, and the
+## foe marked so that a fall in the next moments draws a gasp.
+func on_close(ev: Dictionary, f: Object = null) -> void:
+	var kind: String = str(ev.get("kind", ""))
+	var landed: bool = bool(ev.get("landed", false))
+	var pos: Vector3 = ev.get("point", Vector3.ZERO)
+	var foe: Object = _fighter_of_side(int(ev.get("target", -1)))
+	for l: Dictionary in SfxLogic.close_plan(kind, landed, bool(ev.get("blocked", false))):
+		match str(l["who"]):
+			"attacker":
+				_queue(str(l["key"]), _head_pos(f) if f != null else pos, float(l["gain_db"]),
+					float(l["pitch"]) * (1.0 + 0.08 * _side_sign(f)), float(l["delay"]), "Voice")
+			"target":
+				_queue(str(l["key"]), _head_pos(foe) if foe != null else pos, float(l["gain_db"]),
+					float(l["pitch"]) * (1.0 + 0.08 * _side_sign(foe)), float(l["delay"]), "Voice")
+			_:
+				_queue_layer(l, pos, "SFX")
+	if landed and (kind == "shove" or kind == "kick"):
+		var t: Dictionary = _track_of(foe)
+		if not t.is_empty():
+			t["close_at"] = _clock
+	crowd.add(CrowdModel.close_impulse(kind, landed))
+
+
+func _fighter_of_side(side: int) -> Object:
+	for t: Dictionary in _tracked:
+		var f: Object = t["f"]
+		if is_instance_valid(f) and f.get("side") != null and int(f.get("side")) == side:
+			return f
+	return null
 
 
 func _crowd_react(ev: Dictionary) -> void:
@@ -335,9 +371,19 @@ func _poll(t: Dictionary, delta: float) -> float:
 			if state == "ko":
 				crowd.add(0.35)
 				_crowd_play("gasp")
+			elif CrowdModel.floored_reaction(_clock - float(t["close_at"])) != "":
+				# Put on the sand by a shove or a kick.
+				crowd.add(0.25)
+				_crowd_play(CrowdModel.floored_reaction(_clock - float(t["close_at"])))
 		elif prev == "down" and state == "getting_up":
 			_queue("move/armor_rattle", Vector3(pelvis.x, 0.0, pelvis.z), -4.0, 0.9, 0.0, "SFX")
 			_queue("voice/grunt", _head_pos_of(parts, pelvis), -2.0, 0.9, 0.05, "Voice")
+	# Fighting a hold: effort grunts every so often.
+	var held: bool = str((fr.get("close", {}) as Dictionary).get("held", "")) != ""
+	t["held_grunt"] = float(t["held_grunt"]) + delta if held else SfxLogic.STRUGGLE_GRUNT_GAP * 0.5
+	if SfxLogic.struggle_grunt_due(held, float(t["held_grunt"])):
+		t["held_grunt"] = 0.0
+		_queue("voice/grunt", _head_pos_of(parts, pelvis), -3.0, 1.05 + 0.08 * (1.0 if side == 0 else -1.0), 0.0, "Voice")
 	_tick_spurts(t, f, delta)
 	_tick_gushes(t, f, delta)
 	return clampf(speed / 14.0, 0.0, 1.0)
@@ -413,9 +459,9 @@ func _add_pending(e: Dictionary) -> void:
 	var prio: float = SfxLogic.priority(str(e["key"]), float(e["gain_db"]), float(e["boost"]))
 	var v: int = SfxLogic.steal_victim(prios, prio)
 	if v < 0:
-		_drop(str(e["key"]), prio)
+		_drop(str(e["key"]), prio, "pending queue full")
 		return
-	_drop(str(_pending[v]["key"]), prios[v])
+	_drop(str(_pending[v]["key"]), prios[v], "bumped from pending queue by %s" % str(e["key"]))
 	_pending[v] = e
 
 
@@ -436,9 +482,14 @@ func _run_pending() -> void:
 
 ## Play a spatial one-shot now. Returns false when the sound is unknown or its file is missing (true when it was
 ## dropped by the voice limits or muted). `boost` raises its priority (SfxLogic.hit_boost_db).
-## Voice limits: low-priority beds yield to a nearly full pool and never steal. Anything else that finds its group at
-## its cap, or the pool full, replaces the lowest-priority playing voice (group or pool) if that one ranks lower,
-## and is dropped otherwise. So the loudest and most important sounds always get a voice.
+## Voice limits: low-priority beds yield to a nearly full pool or a busy one (SOFT_TOTAL_CAP), never exceed their
+## group cap and never steal. Anything else plays freely while its group is under its cap and fewer than
+## SOFT_TOTAL_CAP voices are busy. Past either limit it replaces the lowest-priority voice (in its group, or anywhere
+## past the soft cap) if that one ranks lower and is not itself important. An important sound (SfxLogic.is_important)
+## that would otherwise have to cut another important one, or be dropped, takes one of the reserve voices instead
+## (above the group cap or the soft cap); only a completely full pool makes it steal or drop. So bursts of heavy hits
+## no longer cut each other 30 ms in (the group cap of 9 is for spam, not for nine real blows), and normal play
+## stays under the soft cap.
 func play_key(key: String, pos: Vector3, gain_db: float = 0.0, pitch: float = 1.0, bus: String = "SFX", boost: float = 0.0) -> bool:
 	var stream: AudioStream = _stream_for(key)
 	if stream == null:
@@ -450,32 +501,45 @@ func play_key(key: String, pos: Vector3, gain_db: float = 0.0, pitch: float = 1.
 	if muted or _pool.is_empty():
 		return true
 	var low: bool = SfxLogic.is_low_priority(key)
-	if low and _free_count() <= SfxLogic.POOL_RESERVE:
-		dropped_count += 1
-		_drop(key, prio)
-		return true
-	if low and _total_playing() >= SfxLogic.SOFT_TOTAL_CAP:
-		capped_count += 1
-		_drop(key, prio)
-		return true
 	var group: String = SfxLogic.group_of(key)
-	var slot: int = -1
-	if _group_count(group) >= SfxLogic.group_cap(group):
-		slot = -1 if low else _victim(prio, group)
-		if slot < 0:
+	var total: int = _total_playing()
+	var over_group: bool = _group_count(group) >= SfxLogic.group_cap(group)
+	if low:
+		var why: String = ""
+		if _free_count() <= SfxLogic.POOL_RESERVE:
+			dropped_count += 1
+			why = "pool reserve (low priority)"
+		elif total >= SfxLogic.SOFT_TOTAL_CAP or over_group:
 			capped_count += 1
-			_drop(key, prio)
+			why = "soft total cap (low priority)" if not over_group else "group %s full (low priority)" % group
+		if why != "":
+			_drop(key, prio, why)
 			return true
-	if slot < 0:
+	var slot: int = -1
+	if over_group or total >= SfxLogic.SOFT_TOTAL_CAP:
+		var v: int = _victim(prio, group if over_group else "")
+		var free: int = _free_slot() if SfxLogic.is_important(prio) else -1
+		if v >= 0 and (not SfxLogic.is_important(_decayed(v)) or free < 0):
+			slot = v  # a lesser voice gives way (or the pool is full and only an important one ranks lower)
+		elif free >= 0:
+			slot = free  # an important sound takes a reserve voice rather than cut another or be lost
+		else:
+			if over_group:
+				capped_count += 1
+			else:
+				dropped_count += 1
+			_drop(key, prio, ("group %s" % group if over_group else "soft cap") + " full of louder voices")
+			return true
+	else:
 		slot = _free_slot()
 	if slot < 0:
 		slot = _victim(prio, "")
 		if slot < 0:
 			dropped_count += 1
-			_drop(key, prio)
+			_drop(key, prio, "pool full of louder voices")
 			return true
 	if _pool[slot].playing:
-		_steal(slot, prio)
+		_steal(slot, prio, key)
 	var p: AudioStreamPlayer3D = _pool[slot]
 	p.stop()
 	p.stream = stream
@@ -510,10 +574,10 @@ func play_2d(key: String, gain_db: float = 0.0, pitch: float = 1.0, bus: String 
 		slot = SfxLogic.steal_victim(prios, prio)
 		if slot < 0:
 			dropped_count += 1
-			_drop(key, prio)
+			_drop(key, prio, "2d pool full of louder voices")
 			return true
 		if SfxLogic.is_important(prios[slot]):
-			lost_important[str(_meta_2d[slot].get("key", "?"))] = int(lost_important.get(str(_meta_2d[slot].get("key", "?")), 0)) + 1
+			_note_lost(str(_meta_2d[slot].get("key", "?")), prios[slot], "stolen 2d by %s (%.1f)" % [key, prio])
 		stolen_count += 1
 	var p: AudioStreamPlayer = _pool_2d[slot]
 	p.stop()
@@ -559,25 +623,39 @@ func _victim(prio: float, group: String) -> int:
 	return SfxLogic.steal_victim(prios, prio)
 
 
+## Priority of the playing voice in `slot` now (aged).
+func _decayed(slot: int) -> float:
+	var m: Dictionary = _meta[slot]
+	if m.is_empty():
+		return -1.0e9
+	return SfxLogic.decayed_priority(float(m.get("prio", 0.0)), _real_clock - float(m["start"]))
+
+
 ## Stop the voice in `slot` for a newcomer of priority `prio`, counting what was lost.
-func _steal(slot: int, prio: float) -> void:
+func _steal(slot: int, prio: float, by: String = "?") -> void:
 	var m: Dictionary = _meta[slot]
 	if not m.is_empty():
 		var dp: float = SfxLogic.decayed_priority(float(m.get("prio", 0.0)), _real_clock - float(m["start"]))
 		if dp > prio:
 			inversions += 1
 		if SfxLogic.is_important(dp):
-			var k: String = str(m.get("key", "?"))
-			lost_important[k] = int(lost_important.get(k, 0)) + 1
+			_note_lost(str(m.get("key", "?")), dp, "stolen by %s (%.1f) at age %.2f" % [by, prio, _real_clock - float(m["start"])])
 	_pool[slot].stop()
 	_meta[slot] = {}
 	stolen_count += 1
 
 
-func _drop(key: String, prio: float) -> void:
+func _drop(key: String, prio: float, why: String = "dropped") -> void:
 	dropped_keys[key] = int(dropped_keys.get(key, 0)) + 1
 	if SfxLogic.is_important(prio):
-		lost_important[key] = int(lost_important.get(key, 0)) + 1
+		_note_lost(key, prio, why)
+
+
+func _note_lost(key: String, prio: float, why: String) -> void:
+	lost_important[key] = int(lost_important.get(key, 0)) + 1
+	if lost_log.size() < 16:
+		lost_log.append("%s prio=%.1f tier=%d %s busy=%d use=%s" % [key, prio, SfxLogic.priority_tier(key), why,
+			_total_playing() if not _pool.is_empty() else 0, str(group_use())])
 
 
 ## Fade out and stop sounds that outlive their allowed length, so long tails do not hold voices.

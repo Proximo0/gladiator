@@ -217,11 +217,7 @@ func _build() -> void:
 	_mm_decals.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mm_decals.multimesh = _make_multimesh(dq, false)
 	add_child(_mm_decals)
-	var gut_mat: StandardMaterial3D = StandardMaterial3D.new()
-	gut_mat.vertex_color_use_as_albedo = true
-	gut_mat.vertex_color_is_srgb = true
-	gut_mat.roughness = 0.3
-	gut_mat.metallic_specular = 0.35
+	var gut_mat: BaseMaterial3D = GutArt.material()
 	guts = GutSim.new()
 	for k: int in GutSim.KINDS:
 		var gmi: MultiMeshInstance3D = MultiMeshInstance3D.new()

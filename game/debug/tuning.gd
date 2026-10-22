@@ -165,6 +165,7 @@ const FIELDS: Array = [
 	["kick_push", 80.0, 0.0, 300.0, 5.0, "Close", "Push a landed kick gives the foe on top of the contact, N·s."],
 	["kick_miss_stagger", 0.3, 0.0, 1.0, 0.01, "Close", "Stagger a kick that meets nothing leaves the kicker with (over-extended on one leg)."],
 	["kick_stagger_take", 1.6, 1.0, 3.0, 0.05, "Close", "Multiplier on stagger taken while kicking (standing on one leg)."],
+	["kick_lean_back", 0.35, 0.0, 0.8, 0.01, "Close", "How far the kicker leans the upper body back while the leg is out (counterweight), rad."],
 	["clinch_time", 0.4, 0.1, 1.0, 0.01, "Close", "How long the free hand reaches for the foe's weapon arm or head before it gives up, s."],
 	["clinch_latch", 0.16, 0.05, 0.4, 0.01, "Close", "Hand distance from the grabbed point that closes the grip, m."],
 	["clinch_slack", 0.03, 0.0, 0.15, 0.005, "Close", "How far the held point may move from the holding hand before the grip's joint pulls, m."],
@@ -176,6 +177,13 @@ const FIELDS: Array = [
 	["clinch_pin", 0.35, 0.0, 1.0, 0.05, "Close", "Share of its force a held weapon arm keeps (it cannot swing freely)."],
 	["clinch_head_balance", 0.5, 0.0, 1.0, 0.05, "Close", "Share of its upright torque a fighter held by the head keeps."],
 	["clinch_struggle", 0.55, 0.0, 3.0, 0.05, "Close", "Break-free progress per second at full effort against an equal holder (1 = free)."],
+	["clinch_pull_side", 0.3, 0.0, 0.5, 0.01, "Close", "How far across to the holder's free side a held weapon arm is hauled, m."],
+	["clinch_pull_down", 0.2, 0.0, 0.5, 0.01, "Close", "How far below the chest a held weapon arm is hauled, m."],
+	["clinch_head_down", 0.3, 0.0, 0.6, 0.01, "Close", "How far below the chest a held head is pulled, m."],
+	["clinch_pull_step", 0.22, 0.02, 0.4, 0.01, "Close", "How far ahead of the held point the holding hand leads it each tick, m."],
+	["clinch_pull_force_frac", 0.9, 0.2, 2.0, 0.05, "Close", "Holding hand force cap as a share of arm_force (the pull)."],
+	["clinch_break_min_speed", 3.0, 0.0, 10.0, 0.1, "Close", "Speed the striking body itself needs for a staggering blow on the holding arm to break the hold, m/s."],
+	["clinch_twist", 0.35, 0.0, 0.8, 0.01, "Close", "Torso turn toward the free side while holding, putting the body into the pull, rad."],
 	["pelvis_inertia", 2.0, 1.0, 5.0, 0.1, "Stability", "Pelvis inertia boost for stable PD."],
 	["torso_inertia", 2.5, 1.0, 5.0, 0.1, "Stability", "Torso inertia boost for stable PD."],
 	["balance_inertia", 3.0, 0.5, 8.0, 0.1, "Stability", "Inertia the upright controller gains assume, kg·m²."],
@@ -535,6 +543,7 @@ var kick_mass: float
 var kick_push: float
 var kick_miss_stagger: float
 var kick_stagger_take: float
+var kick_lean_back: float
 var clinch_time: float
 var clinch_latch: float
 var clinch_slack: float
@@ -546,6 +555,13 @@ var clinch_cooldown: float
 var clinch_pin: float
 var clinch_head_balance: float
 var clinch_struggle: float
+var clinch_pull_side: float
+var clinch_pull_down: float
+var clinch_head_down: float
+var clinch_pull_step: float
+var clinch_pull_force_frac: float
+var clinch_twist: float
+var clinch_break_min_speed: float
 var pelvis_inertia: float
 var torso_inertia: float
 var balance_inertia: float

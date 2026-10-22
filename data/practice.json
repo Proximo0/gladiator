@@ -11,5 +11,8 @@
 	"grab_unarmed_s": 0.01,
 	"stuck_after_s": 40.0,
 	"finish_dummy_blood_frac": 0.15,
-	"dummy_reset_delay_s": 1.5
+	"dummy_reset_delay_s": 1.5,
+	"shoves_needed": 2,
+	"kicks_needed": 2,
+	"hold_s": 1.0
 }

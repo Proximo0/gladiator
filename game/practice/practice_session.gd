@@ -18,6 +18,8 @@ var panel: PracticePanel = null
 var free_mode: bool = false
 var hits: int = 0
 var finishers: int = 0
+var shoves: int = 0  ## shoves and kicks the player landed on the dummy (counted across bout resets)
+var kicks: int = 0
 var weapon_index: int = 0
 var resets: int = 0
 
@@ -71,9 +73,12 @@ func _hook_fighters() -> void:
 	for f: Variant in _hooked:
 		if is_instance_valid(f) and (f as Fighter).hit.is_connected(_on_hit):
 			(f as Fighter).hit.disconnect(_on_hit)
+		if is_instance_valid(f) and (f as Fighter).close.is_connected(_on_close):
+			(f as Fighter).close.disconnect(_on_close)
 	_hooked = match_node.fighters.duplicate()
 	for f: Variant in _hooked:
 		(f as Fighter).hit.connect(_on_hit)
+		(f as Fighter).close.connect(_on_close)
 
 
 func _on_hit(ev: Dictionary) -> void:
@@ -84,6 +89,16 @@ func _on_hit(ev: Dictionary) -> void:
 	hits += 1
 	if str(ev.get("finisher", "")) != "":
 		finishers += 1
+
+
+func _on_close(ev: Dictionary) -> void:
+	if int(ev.get("attacker", -1)) != 0 or not bool(ev.get("landed", false)):
+		return
+	match str(ev.get("kind", "")):
+		"shove":
+			shoves += 1
+		"kick":
+			kicks += 1
 
 
 func _on_inputs(_tick: int, inputs: Array) -> void:
@@ -104,7 +119,8 @@ func _on_inputs(_tick: int, inputs: Array) -> void:
 		"pos": Vector2(pel.x, pel.z), "aim": Vector2(float(inp[2]) / 1000.0, float(inp[3]) / 1000.0),
 		"tip_speed": _tip, "min_speed": _min_speed, "swing": (btn & FighterInput.SWING) != 0,
 		"thrust": (btn & FighterInput.THRUST) != 0, "rolling": f0.rolling(), "armed": f0.weapon != null,
-		"hits": hits, "finishers": finishers,
+		"hits": hits, "finishers": finishers, "shoves": shoves, "kicks": kicks,
+		"holding": str((frame.get("close", {}) as Dictionary).get("holding", "")) != "",
 	}
 	if not free_mode:
 		var events: Array = logic.update(obs, delta)

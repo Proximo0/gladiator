@@ -6,6 +6,10 @@ extends "res://tests/sim/sim_base.gd"
 
 const STEP_CAP_S: float = 40.0
 const RESET_SEED: int = 11
+## A player who cannot get back to a lost weapon (it lies under the dummy) presses R: the bout resets, weapon in hand.
+const FETCH_GIVE_UP_TICKS: int = 360
+
+var _fetch_from: int = -1
 
 
 ## A reader whose output the sim sets each tick.
@@ -27,7 +31,14 @@ func _input_for(sess: PracticeSession, m: Match, t: int) -> FighterInput:
 	var id: String = sess.logic.step_id()
 	var near: bool = _dist(m) < 1.4
 	if id != "grab" and id != "move" and id != "aim" and (m.fighters[0] as Fighter).weapon == null:
-		return _fetch(m, t)  # lost it in a fall: walk to it and pick it up
+		if _fetch_from < 0:
+			_fetch_from = t
+		elif t - _fetch_from > FETCH_GIVE_UP_TICKS:
+			_fetch_from = -1
+			sess.reset_bout.call_deferred()  # the R key
+			return i
+		return _fetch(m, t)  # lost it (a fall, a disarm): walk to it and pick it up
+	_fetch_from = -1
 	match id:
 		"move":
 			i.move_y = 1000
@@ -47,6 +58,23 @@ func _input_for(sess: PracticeSession, m: Match, t: int) -> FighterInput:
 			i.buttons = FighterInput.SWING | (FighterInput.THRUST if (t / 40) % 3 == 0 else 0)
 			i.aim_x = 700 if (t / 20) % 2 == 0 else -700
 			i.aim_y = [0, 250, 500, 250][(t / 40) % 4]  # sweep the heights so some blows reach the neck and head
+		"shove":
+			if _dist(m) > 1.0:
+				i.move_y = 1000
+			i.buttons = FighterInput.SHOVE if (t % 60) < 3 and _dist(m) < 1.3 else 0
+		"kick":
+			# A stride off: step in when far, back off when too close, kick inside the band.
+			var d: float = _dist(m)
+			if d > 1.25:
+				i.move_y = 1000
+			elif d < 1.0:
+				i.move_y = -1000
+			elif (t % 100) < 3:
+				i.buttons = FighterInput.KICK
+		"hold":
+			if _dist(m) > 1.05:
+				i.move_y = 1000
+			i.buttons = FighterInput.CLINCH if (t % 150) >= 5 else 0  # let go now and then to grab again
 		"roll":
 			i.move_y = 1000
 			i.buttons = FighterInput.ROLL if (t / 90) % 2 == 0 and (t % 90) < 3 else 0

@@ -12,8 +12,9 @@ extends RefCounted
 const SHOVE_HIT0: float = 0.2  ## share of the shove from which the hand (or shoulder) can land
 const SHOVE_HIT1: float = 0.75  ## share after which a shove that has not landed has missed
 const KICK_CHAMBER: float = 0.3  ## share of the kick spent lifting the knee (foot up under the knee)
-const KICK_EXTEND: float = 0.5  ## share by which the leg is fully out
-const KICK_HOLD: float = 0.65  ## the leg stays out (driving through) until here, then draws back
+const KICK_EXTEND: float = 0.45  ## share by which the leg has snapped fully out
+const KICK_HOLD: float = 0.6  ## the leg stays out (driving through) until here, then snaps back
+const KICK_RECHAMBER: float = 0.8  ## share by which the foot is back under the raised knee; then it comes down
 const KICK_HIT0: float = 0.3  ## share from which the foot can land
 const KICK_HIT1: float = 0.8  ## share after which a kick that has not landed has missed
 
@@ -183,8 +184,9 @@ static func kick_window(u: float) -> bool:
 
 
 ## Kicking foot target in the facing frame at progress `u`, relative to the hip on the ground below it (x right,
-## y up, z forward): from the planted spot `rest` the knee comes up (foot to `chamber` height a little ahead), the
-## leg drives out to `reach` ahead at `height` and stays out a moment, then draws back and the foot comes down on its spot.
+## y up, z forward): from the planted spot `rest` the knee comes up (foot to `chamber` height under it, a little
+## ahead), the leg snaps out to `reach` ahead at `height` and stays out a moment, snaps back under the raised knee
+## (the re-chamber, so the kicker does not fall forward onto the leg) and the foot comes down on its spot.
 static func kick_foot(u: float, rest: Vector3, chamber: float, reach: float, height: float) -> Vector3:
 	var up := Vector3(rest.x, chamber, maxf(rest.z, 0.0) + 0.15)
 	var out := Vector3(rest.x * 0.5, height, reach)
@@ -196,9 +198,36 @@ static func kick_foot(u: float, rest: Vector3, chamber: float, reach: float, hei
 		return up.lerp(out, smoothstep(KICK_CHAMBER, KICK_EXTEND, u))
 	if u < KICK_HOLD:
 		return out
-	var k: float = smoothstep(KICK_HOLD, 1.0, u)
-	var back: Vector3 = out.lerp(up, minf(k * 2.0, 1.0))
-	return back.lerp(rest, maxf(k * 2.0 - 1.0, 0.0))
+	if u < KICK_RECHAMBER:
+		return out.lerp(up, smoothstep(KICK_HOLD, KICK_RECHAMBER, u))
+	return up.lerp(rest, smoothstep(KICK_RECHAMBER, 1.0, u))
+
+
+## 0..1 how far the kicker leans the upper body back to balance the leg (counterweight) at kick progress `u`: in as
+## the knee comes up, full while the leg is out, gone again as the foot comes down.
+static func kick_lean(u: float) -> float:
+	if u <= 0.0 or u >= 1.0:
+		return 0.0
+	if u < KICK_HOLD:
+		return smoothstep(0.1, KICK_CHAMBER, u)
+	return 1.0 - smoothstep(KICK_HOLD, KICK_RECHAMBER + 0.1, u)
+
+
+## Where a holding hand draws the held point to, in the holder's frame (from the chest): a weapon arm is hauled
+## across to the holder's free (left) side and down, which opens the foe's guard and turns them; a head is pulled
+## down in front of the chest. `pull` is how far ahead of the chest, `side` and `down` the arm haul's offsets,
+## `head_down` the head's.
+static func hold_pull_goal(head: bool, chest: Vector3, fwd: Vector3, right: Vector3, up: Vector3, pull: float,
+		side: float, down: float, head_down: float) -> Vector3:
+	if head:
+		return chest + fwd * pull - up * head_down
+	return chest + fwd * pull - right * side - up * down
+
+
+## The holding hand's target this tick: from the held point `held` toward `goal`, at most `step` metres ahead of it
+## (the hand leads the held part; the grip's joint brings the part after it).
+static func hold_pull_target(held: Vector3, goal: Vector3, step: float) -> Vector3:
+	return held + (goal - held).limit_length(maxf(step, 0.0))
 
 
 ## Shove impulse magnitude (N·s): `base` scaled by the shover's strength (0..1) and the pushing arm's limb factor.
@@ -229,6 +258,12 @@ static func struggle_effort(move_y: float, any_button: bool) -> float:
 func add_struggle(rate: float, delta: float) -> bool:
 	struggle = minf(struggle + maxf(rate, 0.0) * delta, 1.0)
 	return struggle >= 1.0
+
+
+## A staggering blow on the holding arm breaks the hold only when the striking body itself moved at `striker_speed`
+## of at least `min_speed` (m/s): the holding arm running into a still fist or blade is not a blow.
+static func blow_breaks_hold(striker_speed: float, min_speed: float) -> bool:
+	return striker_speed >= min_speed
 
 
 ## The hold is lost when the held point has been pulled `dist` away from the hand, past `max_dist`.

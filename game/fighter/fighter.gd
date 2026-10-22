@@ -16,7 +16,8 @@ signal hit(event: Dictionary)
 signal gore(event: Dictionary)
 signal died
 ## A shove, kick or grab: {"kind": "shove"|"kick"|"grab"|"hold"|"break"|"slip", "attacker": side, "target": side,
-## "point": Vector3, "landed": bool}. Kicks that connect also emit `hit` like any blow.
+## "point": Vector3, "landed": bool, "blocked": bool (a kick met a shield or weapon)}. Kicks that connect also emit
+## `hit` like any blow.
 signal close(event: Dictionary)
 
 const LAYER_BODIES: int = 2
@@ -872,6 +873,8 @@ func _control(delta: float) -> void:
 
 	# Fighting-stance lean, more when moving forward (the torso assist holds it, the spine target shapes it).
 	var lean: float = _t("stance_lean") + _t("lean_per_speed") * maxf(hvel.dot(fwd), 0.0) + (0.25 if crouch else 0.0)
+	if _close.kicking():
+		lean -= _t("kick_lean_back") * CloseCombat.kick_lean(CloseCombat.progress(_close.kick_t, _t("kick_time")))
 	lean = lerpf(lean, _t("reach_bend"), rk)
 
 	# Balance: pelvis upright and facing; torso assisted upright.
@@ -918,6 +921,8 @@ func _control(delta: float) -> void:
 	var targets: Dictionary = {}
 	var aim: Vector2 = inp.aim()
 	var twist: float = -aim.x * _t("torso_twist") if active else 0.0
+	if active and _close.holding() and _close.hold_part == "forearm_r":
+		twist += _t("clinch_twist")  # the chest turns to the free side: the body goes into the haul
 	targets["torso"] = Basis(Vector3.UP, twist) * Basis(Vector3.RIGHT, -lean - 0.8 * tk)
 	# The head stays level on the foe over the leaning chest (tucked in a roll).
 	targets["head"] = Basis(Vector3.UP, -twist * 0.8) * Basis(Vector3.RIGHT, lean * 0.8 - 0.5 * tk)
@@ -1240,9 +1245,10 @@ func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active:
 		lt = _grab_point()
 		close_lt = true
 	elif _close.holding() and _hold_point() != Vector3.INF:
-		# The holding hand stays on the held point and draws it a little at a time toward the chest.
-		var hpt: Vector3 = _hold_point()
-		lt = hpt + (chest + fwd * _t("clinch_pull") - right * 0.05 - hpt).limit_length(0.12)
+		# The holding hand stays on the held point and hauls it: a weapon arm across and down, a head down.
+		var goal: Vector3 = CloseCombat.hold_pull_goal(_close.hold_part == "head", chest, fwd, right, up, _t("clinch_pull"),
+			_t("clinch_pull_side"), _t("clinch_pull_down"), _t("clinch_head_down"))
+		lt = CloseCombat.hold_pull_target(_hold_point(), goal, _t("clinch_pull_step"))
 		close_lt = true
 	var on_weapon: bool = (half or bool(main_w.def.get("two_handed", false))) if main_w != null else false
 	on_weapon = on_weapon and not close_lt
@@ -1265,7 +1271,10 @@ func _arms(targets: Dictionary, yb: Basis, fwd: Vector3, right: Vector3, active:
 			cap_r *= _t("half_sword_thrust")
 		used = _hand_force("r", _hand_target, cap_r, shoulder_r)
 		var arm_hp_l: float = minf(_hp("upper_arm_l"), _hp("forearm_l"))
-		var cap_l: float = _t("arm_force") * _t("shove_force_frac" if close_lt and not _close.holding() else "offhand_force_frac") * s * FighterMath.limb_factor(arm_hp_l, _t("limb_floor"))
+		var frac_l: String = "offhand_force_frac"
+		if close_lt:
+			frac_l = "clinch_pull_force_frac" if _close.holding() else "shove_force_frac"
+		var cap_l: float = _t("arm_force") * _t(frac_l) * s * FighterMath.limb_factor(arm_hp_l, _t("limb_floor"))
 		_hand_force("l", lt, cap_l, shoulder_l)
 	for h: String in ["r", "l"]:
 		var shoulder: Vector3 = shoulder_r if h == "r" else shoulder_l
@@ -1751,7 +1760,7 @@ func _kick_contacts() -> void:
 			var ow: Weapon = obj as Weapon
 			if ow.holder != null and ow.holder != self:
 				_close.kick_landed = true  # blocked: no miss, no blow
-				_emit_close("kick", st.get_contact_local_position(i), false)
+				_emit_close("kick", st.get_contact_local_position(i), false, true)
 				return
 			continue
 		if not obj is RigidBody3D or not (obj as Node).has_meta("fighter"):
@@ -1801,9 +1810,9 @@ func _kick_shin() -> String:
 	return "shin_l" if KICK_LEG == 0 else "shin_r"
 
 
-func _emit_close(kind: String, p: Vector3, landed: bool) -> void:
+func _emit_close(kind: String, p: Vector3, landed: bool, blocked: bool = false) -> void:
 	close.emit({"kind": kind, "attacker": side, "target": opponent.side if opponent != null else 1 - side, "point": p,
-		"landed": landed})
+		"landed": landed, "blocked": blocked})
 
 
 # --- contacts and damage ----------------------------------------------------------------------------------------
@@ -2030,7 +2039,11 @@ func _take_hit(ev: Dictionary, body: RigidBody3D, w: Weapon, attacker: Fighter) 
 		return
 	_stagger = minf(_stagger + float(ev.get("stagger", 0.0)) * (_t("kick_stagger_take") if _close.kicking() else 1.0), 1.5)
 	if _close.holding() and (part == "forearm_l" or part == "upper_arm_l") and float(ev.get("stagger", 0.0)) > 0.2:
-		_close_release(true)
+		# Only a real blow breaks the grip: the striker's own speed, not the holding arm running into a still fist.
+		var own: Vector3 = pre_step_velocity(body.name, body, p)
+		var striker: Vector3 = (ev.get("rel_vel", Vector3.ZERO) as Vector3) + own
+		if CloseCombat.blow_breaks_hold(striker.length(), _t("clinch_break_min_speed")):
+			_close_release(true)
 	if bool(ev.get("dislodge", false)):
 		_dislodge(str(ev.get("dislodged_id", "")), part, kb)
 	var gore_events: Array = health.apply(ev, part) if health != null else []

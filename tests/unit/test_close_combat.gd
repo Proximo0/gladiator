@@ -155,6 +155,50 @@ func test_kick_foot_path() -> void:
 	assert_false(CloseCombat.kick_window(0.1))
 
 
+func test_kick_snaps_out_and_rechambers() -> void:
+	var rest := Vector3(-0.1, 0.0, 0.1)
+	var chamber: Vector3 = CloseCombat.kick_foot(CloseCombat.KICK_CHAMBER, rest, 0.42, 0.85, 0.62)
+	var back: Vector3 = CloseCombat.kick_foot(CloseCombat.KICK_RECHAMBER, rest, 0.42, 0.85, 0.62)
+	assert_true(back.distance_to(chamber) < 0.001, "the foot comes back under the knee before it goes down")
+	# The snap out is faster than the chamber: the most the foot target moves in 1% of the kick.
+	var chamber_step: float = 0.0
+	var snap_step: float = 0.0
+	for k: int in range(1, 100):
+		var a: Vector3 = CloseCombat.kick_foot((k - 1) / 100.0, rest, 0.42, 0.85, 0.62)
+		var b: Vector3 = CloseCombat.kick_foot(k / 100.0, rest, 0.42, 0.85, 0.62)
+		if k <= 30:
+			chamber_step = maxf(chamber_step, a.distance_to(b))
+		elif k <= 45:
+			snap_step = maxf(snap_step, a.distance_to(b))
+	assert_true(snap_step > chamber_step * 2.0, "snap %.3f vs chamber %.3f" % [snap_step, chamber_step])
+
+
+func test_kick_lean_back() -> void:
+	assert_near(CloseCombat.kick_lean(0.0), 0.0, 0.0001)
+	assert_near(CloseCombat.kick_lean(0.05), 0.0, 0.0001, "not before the knee comes up")
+	assert_near(CloseCombat.kick_lean(CloseCombat.KICK_EXTEND), 1.0, 0.0001, "full while the leg is out")
+	assert_near(CloseCombat.kick_lean(0.95), 0.0, 0.0001, "upright again as the foot lands")
+	assert_near(CloseCombat.kick_lean(1.0), 0.0, 0.0001)
+
+
+func test_hold_pull_hauls_the_arm_across_and_down() -> void:
+	var chest := Vector3(0.0, 1.3, 0.0)
+	var fwd := Vector3(0.0, 0.0, -1.0)
+	var right := Vector3(1.0, 0.0, 0.0)
+	var arm: Vector3 = CloseCombat.hold_pull_goal(false, chest, fwd, right, Vector3.UP, 0.3, 0.22, 0.2, 0.3)
+	assert_true(arm.x < -0.2, "across to the free (left) side")
+	assert_true(arm.y < chest.y - 0.15, "down")
+	assert_near(arm.z, -0.3, 0.0001, "in front of the chest")
+	var head: Vector3 = CloseCombat.hold_pull_goal(true, chest, fwd, right, Vector3.UP, 0.3, 0.22, 0.2, 0.3)
+	assert_near(head.x, 0.0, 0.0001, "a head is pulled straight down")
+	assert_near(head.y, 1.0, 0.0001)
+	var held := Vector3(0.5, 1.4, -0.6)
+	var t: Vector3 = CloseCombat.hold_pull_target(held, arm, 0.16)
+	assert_near(t.distance_to(held), 0.16, 0.0001, "leads the held point by at most one step")
+	assert_true(t.distance_to(arm) < held.distance_to(arm), "toward the goal")
+	assert_eq(CloseCombat.hold_pull_target(arm, arm, 0.16), arm)
+
+
 func test_hold_slips() -> void:
 	assert_false(CloseCombat.hold_slips(0.2, 0.3))
 	assert_true(CloseCombat.hold_slips(0.31, 0.3))
@@ -174,3 +218,8 @@ func test_round_trip() -> void:
 	d.from_array([])
 	assert_false(d.kicking())
 	assert_false(d.holding())
+
+
+func test_only_a_moving_striker_breaks_a_hold() -> void:
+	assert_false(CloseCombat.blow_breaks_hold(0.4, 3.0), "the holder ran into a still fist")
+	assert_true(CloseCombat.blow_breaks_hold(5.0, 3.0))

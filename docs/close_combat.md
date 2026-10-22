@@ -59,6 +59,42 @@ takes a staggering blow, when the held foe shoves, or when the held foe's strugg
 `Fighter.snapshot()` / `restore()` drop a hold (the joint ties two fighters' bodies together and is not part of the
 re-normalised engine state); replays run from tick 0, so they are unaffected.
 
+## Poses (close-combat polish)
+
+The kick's foot path (`CloseCombat.kick_foot`) has four phases: chamber (0-30%: knee up, foot under it), snap
+(30-45%: the leg drives out, about 1.3x the old extension rate), hold (to 60%), re-chamber (to 80%: the foot snaps back
+under the raised knee) and down. `CloseCombat.kick_lean` leans the upper body back by up to `kick_lean_back` while the
+leg is out, as a counterweight (sim: torso tipped back 0.23 rad; before it leaned in 0.04).
+
+A hold no longer just draws the held point toward the chest. `CloseCombat.hold_pull_goal` hauls a weapon arm across to
+the holder's free side and down (`clinch_pull_side`, `clinch_pull_down`) and a head straight down (`clinch_head_down`);
+the hand leads the held point by `clinch_pull_step` with its own force share (`clinch_pull_force_frac`), and the
+holder's chest turns toward the free side (`clinch_twist`) to put the body into it. Sim `close_hold_hauls_arm`: in the
+second after the latch the held wrist moves 0.29 m (in 0.28, across 0.07) and the foe's chest turns 0.17 rad (before:
+0.06 m and 0.07 rad). In the full suite (after other sims) the same row gave in 0.23, across 0.03, turn 0.18 rad.
+
+## Sound and crowd
+
+`SfxDirector.on_close` plays `SfxLogic.close_plan`: a landed shove is a body thud, a palm slap, the shover's effort
+grunt and the foe's grunt; a kick is an effort grunt, plus a slow whoosh on a whiff or a thump when a shield or weapon
+blocks it (`Fighter.close` events carry `blocked`); a hold is a grip slap and both fighters' grunts; a break is the
+freed fighter's grunt. A landed kick's blow goes through the normal hit path (`impact_plan`) with its own "kick"
+material: a body thud and a heavy thump instead of a fist punch. A held fighter grunts every 0.9 s
+(`SfxLogic.STRUGGLE_GRUNT_GAP`). The crowd gets a small lift from each move (`CrowdModel.close_impulse`) and gasps when a
+fighter goes down within 1.5 s of a landed shove or kick on them (`CrowdModel.floored_reaction`). Every key already
+has files in `assets/audio`.
+
+## Practice and hints
+
+Practice mode teaches the moves after "strike": "shove" (two landed shoves), "kick" (two landed kicks) and "hold" (one
+unbroken 1 s hold; "grab" stays the weapon pick-up step). Counts come from `Fighter.close` and survive bout resets.
+`sim_practice` drives all eleven steps by state. The in-fight hint (`ControlsText.compact_lines`) lists the moves for
+keyboard (second line: F shove, V kick, hold G), pad (D-pad shove/kick/hold) and touch (SHOVE, KICK, HOLD, the CROUCH
+toggle and hold-GRAB pickup).
+
+Render: `docs/renders/close-polish/kick_before_after.png` (top before, bottom after; kick at 25%, 45% and 70%:
+chamber, out, re-chamber), from `tests/render/close_capture.tscn -- --move=kick --at=U`.
+
 ## CPU use (sparingly)
 
 `FighterBrain._maybe_close` runs after the roll check, on its own random stream (`_close_rng`), so the rest of the
@@ -103,12 +139,31 @@ foe (pulling away and swinging) breaks free.
 Renders (1280x720, cropped): `docs/renders/shove-kick/kick.png`, `shove.png`, `grab.png`
 (`tests/render/close_capture.tscn`, keyed on distance and the move's own state).
 
+### After the polish (poses, sound, practice)
+
+Same seeds, base = the merged lead lines before this work, `tools/bot_match.sh` (60 s limit).
+
+| | Before, seeds 3000-3031 | After | Before, seeds 4000-4063 | After |
+| --- | --- | --- | --- | --- |
+| Mean fight length | 23.2 s | 24.3 s | 25.3 s | 25.1 s |
+| Hits per minute | 81.5 | 82.1 | 76.7 | 76.5 |
+| Knockdowns | 52 | 51 | 62 | 64 |
+| KOs | 10 | 11 | 12 | 14 |
+| Shoves (landed) | 26 (11, 42%) | 24 (9, 38%) | 56 (30, 54%) | 61 (31, 51%) |
+| Kicks (landed) | 6 (2) | 8 (4) | 11 (6, 55%) | 11 (6, 55%) |
+| Grabs (held, broken free) | 7 (5, 2) | 6 (4, 3) | 14 (12, 9) | 14 (13, 7) |
+| Explosions, stuck | 0, 0 s | 0, 0 s | 0, 0 s | 0, 0 s (1 getup fail) |
+
+Fight length and land rates are unchanged within noise (96 fights; the CPU kicks about once every six fights, so kick
+rates need a forced-kick run to say more). A landed kick in `sim_close_combat` does 26.5 points (was 16.4) at a lower
+peak foot speed (5.3 m/s, was 5.8): the snap brings the foot in on a straighter line at contact.
+
 ## Known issues and next steps
 
-1. The fighter draws no special pose for a hold or a shove beyond the hand target: a hand-on-chest palm and a
-   wrapped grip would read better. The kick has no hip turn-over or lean back yet, so it reads as a knee-up push.
-2. Presentation does not listen to `Fighter.close` yet: no shove grunt, kick thud on a block, or crowd reaction to a
-   floor-by-shove. SfxDirector and the HUD can key on it (`kind`, `landed`).
-3. The CPU never kicks a downed foe or grabs the head, and does not stab on purpose while holding (its weapon logic
-   just keeps running). Practice mode has no step for the new moves.
+1. The shove still has no special palm pose beyond the hand target, and the kick no hip turn-over.
+2. The CPU never kicks a downed foe or grabs the head, and does not stab on purpose while holding (its weapon logic
+   just keeps running).
+3. A reaching hand that runs into the foe's fist or blade is "hit" at the reach's own speed (contacts resolve on
+   relative velocity), and a stagger over 0.2 on the holding arm breaks the hold: in one sim run a passive foe's left
+   fist broke a fresh hold this way (5.1 m/s, stagger 0.29).
 Also: flight recordings masked buttons to 8 bits, so ROLL (256) never made it into a recording; fixed here (16 bits).

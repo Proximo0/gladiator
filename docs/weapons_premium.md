@@ -31,6 +31,9 @@ Outfit-bundled weapons. Owning the outfit unlocks its weapon (no separate purcha
   Laser on metal/armor throws cyan sparks.
 
 ## Balance (tools/bot_match.sh --shards=1 --w0=<id> --w1=longsword and swapped, seeds 2000-2005 and 2100-2105)
+
+**Superseded 2026-10-22:** the full weapon round-robin in docs/balance_matrix.md retuned these numbers (premium blades no
+longer beat the best unlockables; data/weapons.json has the current values). The notes below are the history.
 Target 65-75% wins vs longsword. Measured 24 matches each:
 
 | Weapon | Wins / 24 | Rate |
