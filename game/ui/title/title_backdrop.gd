@@ -44,6 +44,7 @@ func _ready() -> void:
 	_add_motes()
 	if _with_fighters:
 		_add_fighters()
+		arena.stock_racks(LOADOUTS)  # the racks hold the pair's spares
 	cam.current = true
 	_frame_now = frame_x
 	_place_camera()

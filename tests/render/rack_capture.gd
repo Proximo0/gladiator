@@ -52,7 +52,8 @@ func _process(_d: float) -> void:
 		var ready: bool = _empty or _arena.racks == null or _arena.racks.is_ready()
 		if ready or _frame > FALLBACK_FRAMES:
 			_start = _frame
-			print("RACKCAP %s ready=%s copies=%d frame=%d" % [_name, ready, _arena.racks.copies() if _arena.racks != null else 0, _frame])
+			print("RACKCAP %s ready=%s copies=%d frame=%d rebuild_ms=%.1f" % [_name, ready, _arena.racks.copies() if _arena.racks != null else 0,
+					_frame, _arena.racks.rebuild_ms if _arena.racks != null else 0.0])
 		return
 	var i: int = (_frame - _start) / SETTLE_FRAMES
 	if i >= _shots.size():

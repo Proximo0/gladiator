@@ -15,6 +15,7 @@ var _requested: Dictionary = {}  ## art path -> true when a threaded load was re
 var _key: String = ""
 var _stocked: bool = false
 var _waiting: bool = false
+var rebuild_ms: float = 0.0  ## main-thread cost of the last copy rebuild (profiling)
 var _art_cache: Dictionary = {}  ## weapon id -> Array of [Mesh, Transform3D] (opaque copies, frame of the weapon)
 
 
@@ -102,6 +103,7 @@ func _process(_delta: float) -> void:
 
 
 func _rebuild() -> void:
+	var t0: int = Time.get_ticks_usec()
 	for c: Node in get_children():
 		remove_child(c)
 		c.queue_free()
@@ -119,6 +121,7 @@ func _rebuild() -> void:
 	for m: Mesh in groups:
 		ArenaDressing.add_instances(self, "Rack%d" % k, m, groups[m] as Array[Transform3D], false)
 		k += 1
+	rebuild_ms = float(Time.get_ticks_usec() - t0) / 1000.0
 
 
 ## Opaque mesh copies of a weapon's art with their transforms in the weapon frame (cached per id).
