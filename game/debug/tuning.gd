@@ -321,6 +321,7 @@ const FIELDS: Array = [
 	["fountain_drift", 1.0, 0.0, 3.0, 0.1, "Blood", "Beheading fountain: spray drift and wobble of the jets and the scatter of single drops."],
 	["fountain_fine_mist", 14.0, 0.0, 60.0, 1.0, "Blood", "Beheading fountain: fine mist puffs per second per jet at full flow."],
 	["fountain_headroom", 0.35, 0.05, 1.0, 0.05, "Blood", "Beheading fountain: the jets taper off as free droplet slots drop below this share of the pool."],
+	["gore_spawn_frames", 3.0, 1.0, 6.0, 1.0, "Blood", "Gore moments: frames a burst or ground splash of droplets is spread over (same total, smoother frame time)."],
 	["gut_ropes", 4.0, 0.0, 8.0, 1.0, "Blood", "Gut spill: intestine strings that slide out of a gutting or run-through at normal quality."],
 	["gut_segs", 9.0, 4.0, 14.0, 1.0, "Blood", "Gut spill: points per intestine string at normal quality (low uses a third fewer)."],
 	["gut_seg_len", 0.15, 0.03, 0.4, 0.005, "Blood", "Gut spill: length of one intestine link when fully paid out, m."],
@@ -709,6 +710,7 @@ var fountain_size_var: float
 var fountain_gout: float
 var fountain_drift: float
 var fountain_fine_mist: float
+var gore_spawn_frames: float
 var gut_ropes: float
 var gut_segs: float
 var gut_seg_len: float
