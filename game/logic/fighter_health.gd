@@ -9,6 +9,13 @@ const DEFAULTS: Dictionary = {
 	"health_stagger_ko": 0.05,
 	"health_clot": 0.02,
 	"health_consc_recover": 0.03,
+	"health_concuss_gain": 0.12,
+	"health_concuss_hit_max": 0.25,
+	"health_concuss_decay": 0.004,
+	"health_concuss_cap": 0.8,
+	"health_concuss_stun": 0.3,
+	"health_concuss_amp": 3.0,
+	"health_nose_bleed": 0.0006,
 	"health_stamina_recover": 0.2,
 	"health_stamina_drain": 0.3,
 }
@@ -18,6 +25,7 @@ var parts: Dictionary = {}
 var blood: float = START_BLOOD
 var bleed_rate: float = 0.0
 var consciousness: float = 1.0
+var concussion: float = 0.0  ## 0..1 build-up of head blunt trauma: caps consciousness, amplifies head drain, fades slowly
 var stamina: float = 1.0
 var severed: PackedStringArray = PackedStringArray()
 var dead: bool = false
@@ -65,6 +73,11 @@ func is_severed(part: String) -> bool:
 	return severed.has(part)
 
 
+## Concussed past the stun line: wobbly and weak (consciousness is capped, so strength drops), one more good head blow knocks out.
+func stunned() -> bool:
+	return not dead and concussion >= _tv("health_concuss_stun")
+
+
 func knocked_out() -> bool:
 	return not dead and consciousness < 0.2
 
@@ -81,7 +94,15 @@ func apply(result: Dictionary, part: String) -> Array:
 	bleed_rate += float(result.get("bleed", 0.0))
 	var drain: float = float(result.get("stagger", 0.0)) * _tv("health_stagger_ko")
 	if part == "head":
-		drain += float(result.get("blunt", 0.0)) * _tv("health_head_ko")
+		var hb: float = float(result.get("blunt", 0.0))
+		drain += hb * _tv("health_head_ko") * (1.0 + _tv("health_concuss_amp") * concussion)
+		if hb > 0.0:
+			concussion = clampf(concussion + minf(hb * _tv("health_concuss_gain"), _tv("health_concuss_hit_max")), 0.0, 1.0)
+			# A split lip or bloody nose: a slow trickle, so fists move the blood meter a little.
+			var nose: float = hb * _tv("health_nose_bleed")
+			bleed_rate += nose
+			if nose > 0.0 and float(result.get("bleed", 0.0)) <= 0.0:
+				events.append({"kind": "bleed", "part": part, "amount": nose})
 	consciousness = clampf(consciousness - drain, 0.0, 1.0)
 
 	var cut: float = float(result.get("cut", 0.0))
@@ -139,13 +160,15 @@ func tick(delta: float, exertion: float) -> void:
 	var death: float = _tv("blood_death")
 	var faint: float = maxf(_tv("blood_faint"), death + 0.01)
 	var cap: float = clampf((blood - death) / (faint - death), 0.0, 1.0)
+	concussion = maxf(concussion - _tv("health_concuss_decay") * delta, 0.0)
+	cap = minf(cap, 1.0 - _tv("health_concuss_cap") * concussion)
 	consciousness = minf(clampf(consciousness + _tv("health_consc_recover") * delta, 0.0, 1.0), cap)
 	_check_death()
 
 
 func to_dict() -> Dictionary:
 	return {
-		"parts": parts.duplicate(), "blood": blood, "bleed_rate": bleed_rate, "consciousness": consciousness,
+		"parts": parts.duplicate(), "blood": blood, "bleed_rate": bleed_rate, "consciousness": consciousness, "concussion": concussion,
 		"stamina": stamina, "severed": Array(severed), "dead": dead, "gutted": gutted,
 	}
 
@@ -157,6 +180,7 @@ func from_dict(d: Dictionary) -> void:
 	blood = float(d.get("blood", START_BLOOD))
 	bleed_rate = float(d.get("bleed_rate", 0.0))
 	consciousness = float(d.get("consciousness", 1.0))
+	concussion = float(d.get("concussion", 0.0))
 	stamina = float(d.get("stamina", 1.0))
 	severed = PackedStringArray()
 	for s: Variant in d.get("severed", []):

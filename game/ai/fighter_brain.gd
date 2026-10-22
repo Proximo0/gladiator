@@ -67,6 +67,8 @@ const ROLL_RANGE: float = 2.6  ## pelvis distance inside which a roll is an esca
 const ROLL_THREAT_CHANCE: float = 0.012  ## per tick while a fast blow is coming in
 const ROLL_ESCAPE_CHANCE: float = 0.003  ## per tick while breaking off
 const ROLL_COOLDOWN_TICKS: int = 240
+const BRAWLER_LEN_RATIO: float = 2.0  ## foe weapon length over fist length that sends a fist fighter rushing in
+const FIST_HEAD_BIAS: float = 2.5  ## extra on top of the blunt bias for bare fists: brawlers go for the jaw (concussion, bloody nose)
 const BLUNT_HEAD_BIAS: float = 4.0  ## blunt weapons do not bleed: they win by knocking the head (consciousness)
 
 const ST_APPROACH: int = 0
@@ -518,11 +520,22 @@ func _props(me: Dictionary, obs: Dictionary) -> Array:
 
 # ---------------------------------------------------------------- states
 
+## True for a fist fighter facing a foe whose weapon outreaches fists by a wide margin.
+func _brawler_rush(me: Dictionary, obs: Dictionary) -> bool:
+	var mine: Dictionary = CombatData.weapon(str(me.get("weapon_id", "fists")))
+	if str(mine.get("shape", "fist")) != "fist":
+		return false
+	var foe_len: float = float(CombatData.weapon(str(obs.get("weapon_id", "fists"))).get("length", 0.3))
+	return foe_len > float(mine.get("length", 0.3)) * BRAWLER_LEN_RATIO
+
+
 func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var finishing: bool = _state == ST_FINISH
 	var hold: float = _reach * _pf("range_frac")
 	_idle_ticks += 1
 	var committed: bool = _idle_ticks > int(_pf("commit_ticks")) or _desperation() > 0.0 or _burst_t > 0
+	if _brawler_rush(me, obs):
+		committed = true  # bare fists against a longer weapon: waiting outside its reach only gets cut, so close in
 	if committed:
 		hold = minf(hold, _reach * 0.85)  # waited long enough: step into striking range
 	if finishing:
@@ -988,7 +1001,7 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 		if can_half and avg_armor >= 0.5 and pointy:
 			kind = "thrust"
 			half = true
-		part = _pick_part(obs, armor, kind, blunt)
+		part = _pick_part(obs, armor, kind, blunt, shape == "fist")
 		if kind != "thrust" and kind != "low" and _rng.randf() < _pf("disarm_aim") * DISARM_SCALE:
 			part = "forearm_r"  # knock the weapon out of the hand: strike the holding forearm
 			if kind == "overhead":
@@ -1037,7 +1050,7 @@ func _kind_weights(def: Dictionary) -> Dictionary:
 	return w
 
 
-func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool) -> String:
+func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool, fist: bool = false) -> String:
 	var parts: Dictionary = obs.get("parts", {})
 	var w: Dictionary = {}
 	var skill: float = float(_d["target_skill"])
@@ -1065,7 +1078,7 @@ func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool) -
 		if leg:
 			wt *= 1.0 + _pf("cripple") * 2.5
 		if blunt and n == "head":
-			wt *= BLUNT_HEAD_BIAS
+			wt *= BLUNT_HEAD_BIAS * (FIST_HEAD_BIAS if fist else 1.0)
 		var sc: float = _armor_score(armor, n, blunt)
 		var armor_w: float = 1.3 if sc <= 0.0 else (1.0 - 0.85 * sc)
 		wt *= armor_w if skill == 1.0 else pow(armor_w, skill)

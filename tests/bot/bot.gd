@@ -139,6 +139,9 @@ func _on_hitlog(ev: Dictionary) -> void:
 	d["emass"] = float(d["emass"]) + float(ev.get("effective_mass", 0.0))
 	if str(ev.get("contact", "")) == "point":
 		d["point"] = int(d["point"]) + 1
+	if str(ev.get("part", "")) == "head":
+		d["head_n"] = int(d.get("head_n", 0)) + 1
+		d["head_blunt"] = float(d.get("head_blunt", 0.0)) + float(ev.get("blunt", 0.0))
 	_hitlog[k] = d
 
 

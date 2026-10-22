@@ -203,3 +203,71 @@ func test_hp_total_frac() -> void:
 	assert_near(h.hp_total_frac(), 1.0)
 	h.parts["torso"] = 0.0
 	assert_true(h.hp_total_frac() < 1.0 and h.hp_total_frac() > 0.8)
+
+
+func _punch(h: FighterHealth, part: String) -> void:
+	h.apply(DamageModel.resolve(_hit(part, "fists", "blunt", 6.0, 2.0), Tuning.new()), part)
+
+
+func test_head_punches_build_concussion_and_stun() -> void:
+	var h := _new()
+	assert_false(h.stunned())
+	_punch(h, "head")
+	assert_true(h.concussion > 0.0)
+	for i: int in 3:
+		_punch(h, "head")
+	assert_true(h.stunned())
+
+
+func test_body_punch_gives_no_concussion() -> void:
+	var h := _new()
+	for i: int in 6:
+		_punch(h, "torso")
+	assert_near(h.concussion, 0.0)
+
+
+func test_repeated_head_punches_knock_out() -> void:
+	var h := _new()
+	var n: int = 0
+	while not h.knocked_out() and n < 30:
+		_punch(h, "head")
+		n += 1
+	assert_true(h.knocked_out())
+	assert_true(n <= 12)
+	assert_false(h.dead)
+
+
+func test_concussion_caps_recovery_and_fades() -> void:
+	var h := _new()
+	h.concussion = 1.0
+	h.consciousness = 0.0
+	h.tick(10.0, 0.0)
+	assert_true(h.consciousness <= 0.3)
+	h.tick(300.0, 0.0)
+	assert_true(h.concussion < 0.1)
+	assert_true(h.consciousness > 0.9)
+
+
+func test_helmet_reduces_concussion() -> void:
+	var bare := _new()
+	var helm := _new()
+	bare.apply(DamageModel.resolve(_hit("head", "fists", "blunt", 3.5, 1.5), Tuning.new()), "head")
+	helm.apply(DamageModel.resolve(_hit("head", "fists", "blunt", 3.5, 1.5, ["helm_iron"]), Tuning.new()), "head")
+	assert_true(helm.concussion < bare.concussion)
+
+
+func test_head_punch_bleeds_a_little() -> void:
+	var h := _new()
+	_punch(h, "head")
+	assert_true(h.bleed_rate > 0.0 and h.bleed_rate < 0.01)
+	var torso := _new()
+	_punch(torso, "torso")
+	assert_near(torso.bleed_rate, 0.0)
+
+
+func test_concussion_roundtrips() -> void:
+	var h := _new()
+	h.concussion = 0.4
+	var g := _new()
+	g.from_dict(h.to_dict())
+	assert_near(g.concussion, 0.4)
