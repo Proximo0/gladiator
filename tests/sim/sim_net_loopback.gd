@@ -7,7 +7,6 @@ extends "res://tests/sim/sim_base.gd"
 ## directions stay in the byte budget, both sides end with the same result, the client's last snapshot matches the
 ## host's state at that tick within quantisation, and every hit/gore event arrives.
 
-const PORT: int = 17931
 const SEED: int = 4711
 const TIME_LIMIT_S: float = 10.0
 const LAG_TICKS: int = 3
@@ -29,7 +28,7 @@ var _sent_inputs: int = 0
 var present: bool = false  ## build both matches with presentation (arena, blood, sound, HUD, camera)
 var prefix: String = "net"
 var time_limit_s: float = TIME_LIMIT_S
-var port: int = PORT
+var port: int = net_port(0)
 var lag_ticks: int = LAG_TICKS
 var jitter_ticks: int = JITTER_TICKS
 var loss: float = LOSS

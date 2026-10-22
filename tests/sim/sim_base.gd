@@ -7,6 +7,13 @@ extends RefCounted
 const DT: float = 1.0 / 60.0
 
 var host: Node
+
+
+## A port for a sim that opens sockets: a per-process block of 64 ports (20000..45600, from the OS process id)
+## plus a slot offset, so two suites running at once on one machine never listen on the same port. Slots in use:
+## loopback 0/1/20, soak 22+, drop 40/41, menu 45, feel 46, quick 47 (game) 48 (stub), discovery 52..59.
+static func net_port(slot: int) -> int:
+	return 20000 + (OS.get_process_id() % 400) * 64 + slot
 var world: Node3D
 
 
