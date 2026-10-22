@@ -3,7 +3,7 @@
 
 Usage:
   tools/balance_matrix.py run [--fights=N] [--jobs=K] [--seed=S] [--only=a,b,...] [--vs=a,b,...] [--shard=i --nshards=n] [--out=FILE]
-  tools/balance_matrix.py report FILE [FILE ...] [--md=docs/balance_matrix.md] [--csv=docs/balance_matrix.csv]
+  tools/balance_matrix.py report FILE [FILE ...] [--before=FILE] [--md=FILE] [--csv=docs/balance_matrix.csv]
 
 run: every unordered weapon pair from data/weapons.json fights N times with each weapon on side 0 and N times on
 side 1 (2N per cell). Both orientations of a pair reuse the same seeds, so the seed-rolled armor and personalities
@@ -154,6 +154,19 @@ def load_records(files):
     return [r for rs in by_pair.values() for r in rs]
 
 
+def overall(recs, offhand):
+    """weapon -> (score, fights) against main weapons."""
+    t = defaultdict(lambda: [0.0, 0])
+    for r in recs:
+        w = [r["w0"], r["w1"]]
+        for s in (0, 1):
+            if w[1 - s] in offhand:
+                continue
+            t[w[s]][0] += 1.0 if r["winner"] == s else (0.5 if r["winner"] == -1 else 0.0)
+            t[w[s]][1] += 1
+    return t
+
+
 def cmd_report(opts, files):
     table = weapon_table()
     ids = [w["id"] for w in table]
@@ -194,6 +207,8 @@ def cmd_report(opts, files):
             if r["winner"] == s:
                 t["fin"][kind] += 1
 
+    before = overall(load_records([opts["before"]]), offhand) if opts.get("before") else {}
+
     def pct(c):
         return 100.0 * c["w"] / c["n"] if c["n"] else float("nan")
 
@@ -213,14 +228,16 @@ def cmd_report(opts, files):
 
     order = sorted([i for i in ids if tot[i]["n"]], key=lambda x: (tier[x], x))
     lines = []
-    lines.append("| weapon | tier | win % (no shield) | fights | mean len s | hits/fight | hits taken | dmg/hit | wins by |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
+    lines.append("| weapon | tier | win %% | %sfights | mean len s | hits/fight | hits taken | dmg/hit | wins by |" % ("before | " if before else ""))
+    lines.append("|---" * (10 if before else 9) + "|")
     for a in sorted(ids, key=lambda x: -pct(tot[x])):
         t = tot[a]
         if not t["n"]:
             continue
         top = ", ".join("%s %d" % kv for kv in t["fin"].most_common(4))
-        lines.append("| %s | %d | %.0f | %d | %.1f | %.1f | %.1f | %.1f | %s |" % (a, tier[a], pct(t), t["n"],
+        b = before.get(a)
+        was = ("%.0f | " % (100.0 * b[0] / b[1]) if b and b[1] else "- | ") if before else ""
+        lines.append("| %s | %d | %.0f | %s%d | %.1f | %.1f | %.1f | %.1f | %s |" % (a, tier[a], pct(t), was, t["n"],
             t["ticks"] / 60.0 / t["n"], t["hits"] / t["n"], t["hits_taken"] / t["n"], t["dmg"] / max(t["hits"], 1), top))
     summary = "\n".join(lines)
     short = {i: i.replace("shield_round", "shield").replace("sledgehammer", "sledge").replace("dai_katana", "dai")
