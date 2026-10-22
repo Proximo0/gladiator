@@ -93,11 +93,13 @@ static func _canon(r: Dictionary) -> String:
 
 ## HMAC-SHA256 (hex) of a report under the per-match key the service handed both players.
 static func sign_report(key: String, r: Dictionary) -> String:
+	if key == "":
+		return ""
 	return Crypto.new().hmac_digest(HashingContext.HASH_SHA256, key.to_utf8_buffer(), _canon(r).to_utf8_buffer()).hex_encode()
 
 
 static func verify_report(key: String, r: Dictionary, signature: String) -> bool:
-	return signature != "" and sign_report(key, r) == signature
+	return key != "" and signature != "" and sign_report(key, r) == signature  # (an empty HMAC key is an engine error)
 
 
 ## One verdict from the two players' reports (`a_rep` / `b_rep`, or {} when that player sent none).

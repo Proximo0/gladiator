@@ -280,7 +280,7 @@ static func decode_report(raw: String, key: String, player_id: String, match_id:
 	if not (v is Dictionary) or not ((v as Dictionary).get("r") is Dictionary):
 		return {}
 	var rep: Dictionary = (v as Dictionary)["r"]
-	rep["ticks"] = int(rep.get("ticks", 0))  # JSON numbers come back as floats
+	rep["ticks"] = NetLobby.int_of(rep.get("ticks"), 0)  # JSON numbers come back as floats; anything else is 0
 	if str(rep.get("player", "")) != player_id or str(rep.get("match_id", "")) != match_id:
 		return {}
 	if not Rating.verify_report(key, rep, str((v as Dictionary).get("s", ""))):

@@ -25,8 +25,8 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 			NetConfig.MSG_LOADOUT].has(t):
 		return {}
 	var v: Variant = bytes_to_var(bytes.slice(1))
-	if not (v is Dictionary):
-		return {}
+	if not (v is Dictionary) or (v as Dictionary).is_typed():
+		return {}  # ours are plain dictionaries; a typed one (garbled or crafted) would refuse the "_type" key
 	var d: Dictionary = (v as Dictionary).duplicate(true)
 	d["_type"] = t
 	return d

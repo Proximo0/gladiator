@@ -190,5 +190,8 @@ static func _read_str(buf: StreamPeerBuffer) -> Variant:
 		return null
 	if size == 0:
 		return ""
-	var r: Array = buf.get_data(size)
-	return (r[1] as PackedByteArray).get_string_from_utf8()
+	var b: PackedByteArray = (buf.get_data(size)[1] as PackedByteArray)
+	for c: int in b:
+		if c < 0x20 or c > 0x7e:
+			return null  # ids and kinds are plain ASCII; decoding garbage as UTF-8 would print an engine error per string
+	return b.get_string_from_ascii()
