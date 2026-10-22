@@ -84,8 +84,8 @@ const BRAWLER_LEN_RATIO: float = 2.0  ## foe weapon length over fist length that
 const FIST_HEAD_BIAS: float = 2.5  ## extra on top of the blunt bias for bare fists: brawlers go for the jaw (concussion, bloody nose)
 const BLUNT_HEAD_BIAS: float = 4.0  ## blunt weapons do not bleed: they win by knocking the head (consciousness)
 const GAP_THRUST_CHANCE: float = 0.65  ## a point weapon aimed at plate goes for a gap instead (ArmorRead), x difficulty armor_read
-const KITE_MAX_TICKS: int = 420  ## longest kiting stint before going in anyway (no stalemates)
-const KITE_COOLDOWN_TICKS: int = 360  ## after a stint: fight a while before kiting again
+const KITE_MAX_TICKS: int = 150  ## longest kiting stint before going in anyway (no stalemates)
+const KITE_COOLDOWN_TICKS: int = 150  ## after a stint: a committed burst, then fighting before kiting again
 const KITE_KEEP: float = 0.9  ## kiting stands this far outside the foe's reach (m)
 
 const ST_APPROACH: int = 0
