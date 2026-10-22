@@ -601,7 +601,20 @@ func _on_match_over(result: Dictionary, token: int) -> void:
 	if current_match == null or bool(current_match.config.get("loop", false)):
 		return
 	var t: SceneTreeTimer = get_tree().create_timer(RESULT_DELAY_S, true, false, true)
-	t.timeout.connect(_show_result.bind(result, token))
+	t.timeout.connect(_play_killcam.bind(result, token))
+
+
+## The instant replay of the finishing blow (KillCam), then the result panel; straight to the panel when there is none.
+func _play_killcam(result: Dictionary, token: int) -> void:
+	if token != _fight_token or screen != Screen.FIGHT or current_match == null:
+		return
+	var kc: KillCam = current_match.presenter.killcam if current_match.presenter != null else null
+	if kc != null and kc.play(result):
+		_hint.hide_now()
+		_pause_btn.visible = false
+		kc.finished.connect(_show_result.bind(result, token), CONNECT_ONE_SHOT)
+		return
+	_show_result(result, token)
 
 
 func _show_result(result: Dictionary, token: int) -> void:
