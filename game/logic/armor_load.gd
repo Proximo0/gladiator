@@ -9,13 +9,13 @@ extends RefCounted
 const DEFAULTS: Dictionary = {
 	"armor_load_ref": 19.0,
 	"armor_load_max": 1.5,
-	"armor_speed_loss": 0.18,
+	"armor_speed_loss": 0.2,
 	"armor_accel_loss": 0.25,
-	"armor_step_stamina": 0.012,
-	"armor_swing_stamina": 0.05,
+	"armor_step_stamina": 0.03,
+	"armor_swing_stamina": 0.06,
 	"armor_getup_slow": 0.6,
 	"armor_arm_ref": 2.0,
-	"armor_arm_force_loss": 0.12,
+	"armor_arm_force_loss": 0.15,
 }
 const ARM_PARTS: Dictionary = {"r": ["upper_arm_r", "forearm_r"], "l": ["upper_arm_l", "forearm_l"]}
 

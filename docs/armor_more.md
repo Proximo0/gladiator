@@ -51,8 +51,8 @@ the thraex is the most blade-proof and the weakest to blunt, the secutor's smoot
 let points in. Side-grade rule (tested): no piece is at once no heavier, covering at least as much and at least as
 good in every resistance, durability and strap as another piece of its slot.
 
-Armor mass is shown and used by the random loadouts, but the fighter's physics ignores it (only knocked-off props
-weigh it), so today armor has no movement cost; see "Next" below.
+Armor mass now costs mobility and stamina (`ArmorLoad`), and plate has gaps at the joints (`ArmorGaps`); see
+"Weight and plate gaps" below. The ragdoll's body masses still ignore it (knocked-off props weigh it).
 
 ## Unlocks and the loadout
 `WeaponUnlocks` gates armor the same way as weapons and shields: weapon and armor ids share one id space, an armor def
@@ -111,8 +111,55 @@ side out of 24 (iron set vs itself: 11/24, mean 35.9 s).
 Every piece lands within 29-67% and the fights stay 34-42 s (iron set 36 s); the same piece moves by 4-8 wins
 between rounds, so these are noise-level differences, not tiers.
 
+## Weight and plate gaps
+**Weight** (`game/logic/armor_load.gd`, Tuning group "Armor"). Load = worn armor mass / `armor_load_ref` (19 kg;
+the iron set is 19.3 kg, so about 1), capped at 1.5. Pieces knocked off drop out at once. At a full load:
+
+| Cost | Tuning row | Full load |
+| --- | --- | --- |
+| Walk and sprint speed | `armor_speed_loss` | -20% |
+| Walking acceleration cap (starts, stops, turns) | `armor_accel_loss` | -25% |
+| Stamina per step | `armor_step_stamina` | 0.03 |
+| Stamina per swing or thrust started | `armor_swing_stamina` | 0.06 |
+| Get-up time | `armor_getup_slow` | +60% (1.4 s to 2.2 s) |
+| Hand force cap, per arm, from that arm's armor (`armor_arm_ref` 2 kg = full) | `armor_arm_force_loss` | -15% |
+
+Body masses, physics and the net snapshot are unchanged: only the drives (speed, acceleration, hand cap, get-up)
+and stamina read the load. Measured by `tests/sim/sim_armor_weight.gd` (gladius, flat floor, 4 s from standing):
+
+| | Naked | Iron set | Before (both) |
+| --- | --- | --- | --- |
+| Walk | 2.39 m/s | 1.89 m/s | 2.39 m/s |
+| Sprint | 4.32 m/s | 3.44 m/s | 4.32 m/s |
+| 10 m dash from standing | 2.63 s | 3.25 s | 2.63 s |
+| Stamina after a 4 s sprint | 0.48 | 0.07 | 0.48 |
+
+**Plate gaps** (`game/logic/armor_gaps.gd`). Weight alone could not balance plate: a gladius cut passes 8% of
+iron plate, every cut on bare skin bleeds, so the naked side lost on blood even when it landed more hits. Now a cut
+or thrust that lands within `armor_gap_len` (7 cm) of a limb's end (elbow, wrist, knee, ankle, shoulder, hip), in
+the top band of the torso (neck, armpits) or in a helmet's face opening skips `armor_gap_pass` (80%) of a plate
+piece's cut and pierce resistance. Plate faces still glance; blunt force, mail and leather are unchanged.
+
+**Iron set v naked, gladius v gladius** (`tools/bot_match.sh --w0=gladius --w1=gladius --a0=<iron set> --a1=` and
+swapped, 60 s limit). Wins of the iron side:
+
+| Version | Seeds 2000-2023 (48) | Seeds 3000-3023 (48) | Mean length |
+| --- | --- | --- | --- |
+| Before (seeds 2000-2011, 24) | 22 of 24 (92%) | - | 17.5 s |
+| Weight only, first values | 42 (88%) | - | 26.4 s |
+| Weight only, harsh (speed -30%, step 0.08, swing 0.2, hand -50%) | 43 (90%) | - | 30.4 s |
+| Gaps only (weight off) | 36 (75%) | - | 22.1 s |
+| **Final: weight + gaps** | **29 (60%)** | **31 (65%)** | 30.1 s |
+
+Final over 96 fights: 60 (62.5%), inside the 35-65% band. The same settings move by about 3 wins of 48 between
+seed sets, so differences under that are noise. Weight is worth about 12 points on top of the gaps.
+
 ## Next
-- Armor mass has no physical cost (only knocked-off props use it); a movement or stamina cost would make light
-  pieces a real choice.
+- The bots do not use a naked fighter's speed (no kiting, no running from an exhausted plate fighter) and do not
+  aim for gaps; a brain that did would push plate further down, so re-measure after any brain change.
+- The shield and per-piece armor tables above were measured before weight and gaps; light pieces should now
+  gain on heavy ones, so re-run them.
+- Gaps are bands on the part's own axis, not per-piece art: a piece that covers only the middle of a limb (or the
+  galerus set's one arm) has the same gaps as full plate.
 - The small shields (buckler, parma) sit near 30% against the longsword; the bots do not use a small shield's speed.
 - Covers text says "both arms" for the galerus set (left arm and right forearm).

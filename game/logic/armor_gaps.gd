@@ -6,7 +6,7 @@ extends RefCounted
 ## mail and leather are unaffected. Pure: the fighter passes the hit point in the struck part's own frame.
 
 const DEFAULTS: Dictionary = {
-	"armor_gap_len": 0.05,
+	"armor_gap_len": 0.07,
 	"armor_gap_pass": 0.8,
 }
 ## Limb half lengths along the part's Y axis (FighterRig capsule heights / 2).

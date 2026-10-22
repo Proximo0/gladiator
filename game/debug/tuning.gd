@@ -315,7 +315,7 @@ const FIELDS: Array = [
 	["armor_getup_slow", 0.6, 0.0, 2.0, 0.05, "Armor", "Get-up time grows by this share at a full armor load."],
 	["armor_arm_ref", 2.0, 0.5, 6.0, 0.1, "Armor", "Armor mass on one arm (kg) that counts as a full arm load."],
 	["armor_arm_force_loss", 0.15, 0.0, 0.5, 0.01, "Armor", "Share of a hand's force cap lost at a full arm load."],
-	["armor_gap_len", 0.05, 0.0, 0.15, 0.005, "Armor", "Plate gaps: band at each limb end (joints) and the top of the torso (neck, armpits), m."],
+	["armor_gap_len", 0.07, 0.0, 0.15, 0.005, "Armor", "Plate gaps: band at each limb end (joints) and the top of the torso (neck, armpits), m."],
 	["armor_gap_pass", 0.8, 0.0, 1.0, 0.05, "Armor", "Share of plate cut and pierce resistance that a hit in a gap (or a helmet's face opening) skips."],
 	["fountain_streams", 5.0, 1.0, 8.0, 1.0, "Blood", "Beheading fountain: jets from the neck at normal quality (low quality uses half, high a quarter more)."],
 	["fountain_dur", 6.5, 1.0, 15.0, 0.1, "Blood", "Beheading fountain: seconds until the jets stop."],
