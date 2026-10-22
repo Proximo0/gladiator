@@ -59,3 +59,16 @@ jobs:
           name: ${{ matrix.name }}
           path: out.log
           if-no-files-found: ignore
+
+  # One status for branch protection: require "gate" alone, so adding, renaming or splitting matrix rows never needs
+  # a settings change. It fails when any row failed or was cancelled (a skipped or cancelled matrix must not pass).
+  gate:
+    needs: check
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: All rows passed
+        run: |
+          echo "check rows: ${{ needs.check.result }}"
+          test "${{ needs.check.result }}" = "success"

@@ -1,0 +1,2 @@
+What happened: A task said main "soon has" close combat; it was only on two lead integration branches that had split (one had close combat, the other the touch crouch the task also needed), so a branch from main had neither
+Rule: Before branching, find where the code a task builds on lives (`git ls-remote`, check each candidate for the file); merge the lines you need first and tell the lead how you resolved their conflicts

@@ -1,0 +1,2 @@
+What happened: The flight recorder took everything from the Match once, at tick 0, so `fight_start_tick` (set later by the offline intro skip, between two physics ticks) never reached the file: a replay ran the time limit from tick 0 and ended 78 ticks early (sim_replay_clock). MatchStats durations also counted the held intro ticks
+Rule: A value the Match can change after tick 0 is read on every tick and at match_over, not with the header; anything counted "per fight" takes the fight clock (`Match.fight_clock_running()`), never the match tick
