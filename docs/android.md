@@ -53,15 +53,20 @@ on an emulator on a GitHub-hosted runner (never the self-hosted gpu runner):
    `custom_features="android_ci"`. `tools/export_android.sh` generates the debug keystore in the job. No EOS
    credentials exist on the runner, so online falls back to the LAN stub.
 4. reactivecircus/android-emulator-runner boots API 30 `google_apis` x86_64 (KVM via a udev rule, SwiftShader GPU),
-   then `tools/android_ci_run.sh` installs, launches, screenshots and judges.
+   then `tools/android_ci_run.sh` installs, launches, screenshots and judges. The emulator GPU is
+   `swangle_indirect` (ANGLE on SwiftShader Vulkan), see Findings.
 
 Game side: `OS.has_feature("android_ci")` makes `Flags` add `--mode=bot_vs_bot --android_ci --scripted`, so
 `main.gd` starts one presented bot fight and attaches `AndroidCi` (`game/debug/android_ci.gd`). It logs (logcat tag
-`godot`) `ANDROID_CI start`, `ANDROID_CI shot` at tick 600 (the runner takes `fight.png` then), progress every 10 s,
+`godot`) `ANDROID_CI start`, `ANDROID_CI shot` at tick 600 (the game saves a 640 px frame to `user://android_ci_fight.png`, pulled with
+`run-as` as `fight.png`; `screen.png` is the emulator screencap at the same moment), up to 20 `hitch` lines (frames over 250 ms), progress every 10 s,
 and one `ANDROID_CI PASS|FAIL ... fps= frame_ms_avg/p50/p95/p99/max= ticks_per_s= why=` line, then quits.
 FAIL when `match_over` never fires (time limit + 600 ticks, or 900 wall seconds), no hits, or physics explosions.
-The job fails on a FAIL line, a missing result line, any `SCRIPT ERROR`, or the app exiting early.
-Artifact `android-emulator`: `logcat.txt`, `progress.txt`, `result.txt`, `install.txt`, `fight.png`, `end.png`.
+The job fails on a FAIL line, a missing result line, any `SCRIPT ERROR` / `Parse Error` / `Program linking failed`
+(a shader that does not link draws nothing), or the app exiting early.
+Artifact `android-emulator`: `logcat.txt`, `godot.txt` (tag godot only), `progress.txt`, `result.txt`, `install.txt`,
+`fight.png`, `screen.png`, `end.png`. The job log also prints the Godot log, the link-failure count and a 320 px
+base64 JPEG of `fight.png` between `FIGHT_JPG_BEGIN`/`END` (artifact downloads can be blocked where the log is read).
 
 Run the same judge against a real device: export with the patched preset, plug in, then
 `tools/android_ci_run.sh build/Sandblood-android.apk out/android`. On desktop the hook is reachable with
@@ -70,3 +75,18 @@ Run the same judge against a real device: export with the patched preset, plug i
 Emulator frame times are NOT phone numbers: rendering is software (SwiftShader on the runner's CPU) and physics runs
 on x86_64 cores under KVM, so the GPU side is far slower and the CPU side far faster than a mid-range ARM phone.
 Use the numbers only as a regression signal between runs (same runner type), never as a performance budget.
+
+### Findings (2026-10-22)
+- The bot fight is bit-identical on the x86_64 emulator and on desktop Linux: seed 1, `winner=1 reason=skull_crush
+  ticks=794 hits=31` on both, so physics determinism holds across Android/desktop builds of the same engine.
+- With `-gpu swiftshader_indirect` (the emulator's old GLES translator over SwiftShader) every lit scene shader failed
+  to link: `SceneShaderGLES3: Program linking failed: Fragment shader active uniforms exceed
+  GL_MAX_FRAGMENT_UNIFORM_VECTORS (261)` (186 failures in one fight; those meshes draw nothing). Capping
+  `rendering/limits/opengl/max_renderable_lights` at 4 did not help (still 186). With `-gpu swangle_indirect`
+  (ANGLE, GLES 3.1) there are 0 failures, so this is the translator, not the game. Real phones have not been tested
+  yet; GLES 3.0 only guarantees 224 fragment uniform vectors, so keep an eye on low-end Mali/Adreno logs.
+- Frame times (GitHub ubuntu-latest, 4 vCPU, software GPU, 2160x1080): first frame 15-39 s (every shader variant
+  compiles on the CPU; "Failed to load cached shader, recompiling" is normal on a fresh install), then about 1 fps
+  with ANGLE (0.8-1.5 s per frame) and 4-17 fps with the broken translator (it skips most draws). Physics keeps
+  up only partly (15-44 ticks per wall second), so a 13 s fight takes 20-110 s. None of this says anything about a
+  phone; it is only a regression signal (boots, renders without link errors, fight completes, no script errors).
