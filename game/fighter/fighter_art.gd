@@ -9,7 +9,20 @@ const DIR: String = "res://assets/body/"
 const OUTFIT_DIR: String = "res://assets/outfits/"
 const ART_NAME: String = "Art"
 ## Distance the cap's origin sits inside the cut plane along its normal (the disc is 0.0165 thick, top at +0.0045).
-const CAP_SINK: float = 0.004
+const CAP_SINK: float = -0.004
+## Procedural gore face on a cut (the glb cap's flat disc was sunk into the stump's skin and read as a thin ring): stacked
+## flat discs, dark wet rim, fat band, red flesh, bone and a dark marrow eye, widened past the limb's skin. Radii are
+## shares of the glb cap's half width; each disc is DISC_STEP taller than the one below so none z-fights.
+const CAP_WIDEN: float = 1.2
+const CAP_DISCS: Array = [
+	["rim", 1.08, "flesh", 0.32],
+	["fat", 1.0, "fat", 0.6],
+	["flesh", 0.92, "flesh", 0.82],
+	["bone", 0.27, "bone", 0.9],
+	["marrow", 0.12, "flesh", 0.3],
+]
+const DISC_H: float = 0.006
+const DISC_STEP: float = 0.0035
 ## How far from the pivot to the art's end the cut face sits (0 = at the pivot, 1 = at the tip).
 const CUT_REACH: float = 0.5
 
@@ -254,10 +267,44 @@ func _add_cap(b: Node3D, key: String, asset: String, at: Vector3, normal: Vector
 		cap.free()
 		return
 	var basis := Basis(Quaternion(Vector3.UP, normal.normalized()))
+	var half_w: float = 0.0
+	for mi: Node in cap.find_children("*", "MeshInstance3D", true, false):
+		var bb: AABB = (mi as MeshInstance3D).get_aabb()
+		half_w = maxf(half_w, maxf(bb.size.x, bb.size.z) * 0.5)
+		(mi as MeshInstance3D).visible = false
+	half_w = half_w if half_w > 0.0 else 0.058
+	_cap_face(cap, half_w * CAP_WIDEN)
 	cap.transform = Transform3D(basis, at - normal.normalized() * CAP_SINK)
 	look.add_child(cap)
 	apply_shadow(cap, str(b.name))
 	_caps[key] = cap
+
+
+## The stacked gore discs of one cut face, coloured from the fighter's blood palette (ichor for the alien).
+func _cap_face(cap: Node3D, radius: float) -> void:
+	for i: int in CAP_DISCS.size():
+		var d: Array = CAP_DISCS[i]
+		var cm: CylinderMesh = CylinderMesh.new()
+		cm.top_radius = radius * float(d[1])
+		cm.bottom_radius = cm.top_radius
+		cm.height = DISC_H
+		cm.radial_segments = 24
+		cm.rings = 1
+		var mat: StandardMaterial3D = StandardMaterial3D.new()
+		var base: Color = _blood.inner(str(d[2]))
+		var k: float = float(d[3])
+		mat.albedo_color = Color(base.r * k, base.g * k, base.b * k, 1.0)
+		mat.roughness = 0.3 if str(d[2]) == "flesh" else 0.6
+		if _blood.emission > 0.0 and str(d[2]) != "bone":
+			mat.emission_enabled = true
+			mat.emission = mat.albedo_color * _blood.emission * 0.4
+		var mi: MeshInstance3D = MeshInstance3D.new()
+		mi.name = "Disc_" + str(d[0])
+		mi.mesh = cm
+		mi.material_override = mat
+		mi.position = Vector3(0.0, float(i) * DISC_STEP - DISC_H * 0.5, 0.0)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		cap.add_child(mi)
 
 
 ## Part `n` was cut from its parent: a cap on the stump (parent side, facing the piece) and one on the piece.

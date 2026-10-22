@@ -13,7 +13,8 @@ uniform vec3 blood_bright1 : source_color = vec3(0.98, 0.015, 0.034);
 uniform vec3 blood_dark1 : source_color = vec3(0.52, 0.008, 0.018);
 uniform float blood_glow1 = 0.0;
 uniform float stretch_time = 0.006;
-uniform float tail_cap = 7.0;
+uniform float tail_cap = 3.0;  // longest tail as a multiple of the drop radius: short motion trail, never a hatch line
+uniform float min_px = 2.2;  // smallest drop radius on screen in pixels: far drops stay round dots instead of sub-pixel slivers
 
 varying float v_thick;
 varying float v_shade;
@@ -21,7 +22,9 @@ varying float v_pal;
 
 void vertex() {
 	vec3 vel = INSTANCE_CUSTOM.xyz;
-	float r = max(INSTANCE_CUSTOM.w, 0.0005);
+	float r0 = max(INSTANCE_CUSTOM.w, 0.0005);
+	float dist = max(length((MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz), 0.1);
+	float r = max(r0, dist * min_px / (0.5 * VIEWPORT_SIZE.y * PROJECTION_MATRIX[1][1]));
 	float sp = length(vel);
 	vec3 d = sp > 0.05 ? vel / sp : vec3(0.0, -1.0, 0.0);
 	vec3 up = abs(d.y) > 0.95 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);

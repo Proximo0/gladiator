@@ -109,3 +109,21 @@ func _mesh_with(names: Array) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = am
 	return mi
+
+
+func test_cap_face_discs_use_palette() -> void:
+	var red := FighterArt.new(0, 5)
+	var holder := Node3D.new()
+	red._cap_face(holder, 0.06)
+	assert_eq(holder.get_child_count(), FighterArt.CAP_DISCS.size())
+	var flesh: MeshInstance3D = holder.get_node("Disc_flesh") as MeshInstance3D
+	var m: StandardMaterial3D = flesh.material_override as StandardMaterial3D
+	assert_true(m.albedo_color.r > m.albedo_color.g * 3.0, "red flesh")
+	assert_false(m.emission_enabled)
+	holder.free()
+	var alien := FighterArt.new(1, 9, "alien")
+	var h2 := Node3D.new()
+	alien._cap_face(h2, 0.06)
+	var am: StandardMaterial3D = (h2.get_node("Disc_flesh") as MeshInstance3D).material_override as StandardMaterial3D
+	assert_true(am.albedo_color != m.albedo_color, "ichor tint differs from red")
+	h2.free()
