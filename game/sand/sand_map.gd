@@ -4,8 +4,8 @@ extends RefCounted
 ## Heights are metres, stored row-major in a PackedFloat32Array of n * n (index = y * n + x). The map covers the
 ## square [-extent, extent] on X and Z. Texel i covers [i, i + 1) in texel space, its centre is i + 0.5.
 
-const H_MIN: float = -0.14
-const H_MAX: float = 0.10
+const H_MIN: float = -0.30  ## deepest a hollow can go (a fall crater), metres
+const H_MAX: float = 0.25  ## highest a berm can pile
 const RIM_START: float = 0.85  ## q (normalised distance) where the rim ring begins
 const RIM_WIDTH: float = 0.8  ## ring width in q units
 const MAP_MARGIN: float = 0.6  ## map extends this far beyond the arena radius
@@ -49,11 +49,25 @@ static func sample_height(h: PackedFloat32Array, n: int, extent: float, x: float
 	return lerpf(a, b, fy)
 
 
+## Visual depth (m) for a requested stamp depth: scaled, with the part beyond `deep_from` (falls, bodies) gaining
+## `deep_gain` extra, then capped at `cap`. Presentation only: the collider stays flat.
+static func deepen(depth: float, scale: float, deep_from: float, deep_gain: float, cap: float) -> float:
+	var d: float = maxf(depth, 0.0) * scale
+	d += maxf(depth - deep_from, 0.0) * deep_gain
+	return minf(d, minf(cap, -H_MIN))
+
+
+## Height (m) the visual sand surface sits above the flat collider at (x, z): `lift` inside the arena, fading to 0 under
+## the wall (the shader uses the same smoothstep).
+static func lift_at(x: float, z: float, arena_radius: float, lift: float) -> float:
+	return lift * (1.0 - smoothstep(arena_radius - 0.7, arena_radius + 0.2, sqrt(x * x + z * z)))
+
+
 ## Depression depth fraction (0..1) at normalised distance q from the stamp centre: flat bottom, sloped wall.
 static func bowl_profile(q: float) -> float:
 	if q >= 1.0:
 		return 0.0
-	return 1.0 - smoothstep(0.5, 1.0, q)
+	return 1.0 - smoothstep(0.35, 1.0, q)
 
 
 ## Raised rim weight (not yet normalised) at normalised distance q.
@@ -115,6 +129,67 @@ static func apply_stamp(h: PackedFloat32Array, n: int, c: Vector2, rx: float, rz
 				if push_len > 0.001:
 					var dl: float = maxf(sqrt(dx * dx + dz * dz), 0.001)
 					rw *= push_factor((dx * push_dir.x + dz * push_dir.y) / dl, push_len)
+				rim_w[k] = rw
+				wsum += rw
+	if wsum > 0.0 and removed > 0.0:
+		var scale: float = removed * rim_gain / wsum
+		for y in range(y0, y1 + 1):
+			for x in range(x0, x1 + 1):
+				var rw2: float = rim_w[(y - y0) * w + (x - x0)]
+				if rw2 > 0.0:
+					var i2: int = y * n + x
+					h[i2] = minf(h[i2] + rw2 * scale, H_MAX)
+	return Rect2i(x0, y0, w, y1 - y0 + 1)
+
+
+## Distance from point p to segment a-b.
+static func segment_distance(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab: Vector2 = b - a
+	var l2: float = ab.length_squared()
+	if l2 < 0.000001:
+		return p.distance_to(a)
+	var t: float = clampf((p - a).dot(ab) / l2, 0.0, 1.0)
+	return p.distance_to(a + ab * t)
+
+
+## Presses a capsule (a segment a->b in texel coords, radius r texels) into `h` in one pass: a body-shaped hollow with
+## the displaced sand piled on a rim all round it (a per-point stamp would bury its own rim in the next bowl).
+## Same bowl and rim profiles as apply_stamp. Returns the touched rect.
+static func apply_capsule(h: PackedFloat32Array, n: int, a: Vector2, b: Vector2, r: float, depth: float,
+		push: Vector2, rim_gain: float) -> Rect2i:
+	r = maxf(r, 0.5)
+	var ext: float = r * (RIM_START + RIM_WIDTH) + 1.5
+	var x0: int = maxi(0, int(floor(minf(a.x, b.x) - ext)))
+	var x1: int = mini(n - 1, int(ceil(maxf(a.x, b.x) + ext)))
+	var y0: int = maxi(0, int(floor(minf(a.y, b.y) - ext)))
+	var y1: int = mini(n - 1, int(ceil(maxf(a.y, b.y) + ext)))
+	if x1 < x0 or y1 < y0:
+		return Rect2i()
+	var w: int = x1 - x0 + 1
+	var mid: Vector2 = (a + b) * 0.5
+	var push_len: float = push.length()
+	var push_dir: Vector2 = push / push_len if push_len > 0.001 else Vector2.ZERO
+	var rim_w: PackedFloat32Array = PackedFloat32Array()
+	rim_w.resize(w * (y1 - y0 + 1))
+	var removed: float = 0.0
+	var wsum: float = 0.0
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var p: Vector2 = Vector2(float(x) + 0.5, float(y) + 0.5)
+			var q: float = segment_distance(p, a, b) / r
+			var k: int = (y - y0) * w + (x - x0)
+			var prof: float = bowl_profile(q)
+			if prof > 0.0:
+				var i: int = y * n + x
+				var cur: float = h[i]
+				var nh: float = maxf(minf(cur, lerpf(cur, -depth, prof)), H_MIN)
+				removed += cur - nh
+				h[i] = nh
+			var rw: float = rim_profile(q)
+			if rw > 0.0:
+				if push_len > 0.001:
+					var d: Vector2 = p - mid
+					rw *= push_factor(d.dot(push_dir) / maxf(d.length(), 0.001), push_len)
 				rim_w[k] = rw
 				wsum += rw
 	if wsum > 0.0 and removed > 0.0:

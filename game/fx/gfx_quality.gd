@@ -32,7 +32,10 @@ const MSAA: Array[int] = [0, 2, 2]  ## Viewport.MSAA_DISABLED / MSAA_2X
 ## (0 cheap, 1 most, 2 full: pebbles, rake lines, sparkle).
 const SAND_TEXELS_PER_M: Array[float] = [26.0, 32.0, 40.0]
 const SAND_MESH_CELL: Array[float] = [0.22, 0.15, 0.1]
-const SAND_GRAINS: Array[int] = [200, 360, 520]
+const SAND_GRAINS: Array[int] = [450, 900, 1800]
+## Fine lingering dust sprites (one MultiMesh quad each) and the share of the per-event spray counts kept.
+const SAND_DUST: Array[int] = [110, 260, 560]
+const SAND_FX_MULT: Array[float] = [0.45, 0.75, 1.0]
 const SAND_PUFFS: Array[int] = [4, 7, 10]
 const SAND_PUFF_AMOUNT: Array[int] = [5, 7, 9]
 const SAND_DETAIL: Array[int] = [0, 1, 2]

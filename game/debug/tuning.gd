@@ -199,6 +199,24 @@ const FIELDS: Array = [
 	["gut_exit_depth", 0.3, 0.1, 0.6, 0.02, "Blood", "Run-through: how far behind the entry wound the exit wound is, m."],
 	["gut_exit_streams", 3.0, 0.0, 8.0, 1.0, "Blood", "Run-through: jets from the exit wound at normal quality."],
 	["gut_exit_v_scale", 1.3, 0.2, 3.0, 0.05, "Blood", "Run-through: exit-wound gush speed relative to the entry gush."],
+	["sand_depth_scale", 2.2, 0.5, 6.0, 0.1, "Sand", "Visual sand: multiplier on every footprint, furrow and body press depth (the collider stays flat)."],
+	["sand_deep_from", 0.03, 0.0, 0.2, 0.005, "Sand", "Requested depth (m) beyond which a press counts as a fall and gains sand_deep_gain extra."],
+	["sand_deep_gain", 1.0, 0.0, 4.0, 0.1, "Sand", "Extra depth multiplier on the part of a press beyond sand_deep_from (fall craters)."],
+	["sand_max_depth", 0.2, 0.05, 0.3, 0.01, "Sand", "Deepest visual hollow, m."],
+	["sand_lift", 0.03, 0.0, 0.08, 0.005, "Sand", "Visual sand surface sits this far above the flat collider, so feet stand in the sand and prints reach the floor."],
+	["sand_rim_gain", 1.3, 0.5, 2.5, 0.05, "Sand", "Berm height: share of the displaced sand piled on the rim (1 conserves volume)."],
+	["sand_hollow_dark", 0.55, 0.0, 1.0, 0.05, "Sand", "Shader: how much darker and damper the sand in hollows reads."],
+	["sand_rim_light", 0.3, 0.0, 0.8, 0.05, "Sand", "Shader: how much lighter and drier the berm crests read."],
+	["sand_step_grains", 7.0, 0.0, 40.0, 1.0, "Sand", "Grains kicked up by every footstep (high quality)."],
+	["sand_step_dust", 2.0, 0.0, 12.0, 1.0, "Sand", "Dust sprites per footstep (high quality)."],
+	["sand_slide_grains", 1.0, 0.0, 4.0, 0.1, "Sand", "Multiplier on grains thrown by sliding feet, rolls, dodges and dragged weapons."],
+	["sand_slide_dust", 1.0, 0.0, 4.0, 0.1, "Sand", "Multiplier on dust trailing sliding feet, rolls, dodges and dragged weapons."],
+	["sand_fall_grains", 130.0, 0.0, 400.0, 5.0, "Sand", "Grains thrown by a hard body fall (full impact, high quality)."],
+	["sand_fall_dust", 16.0, 0.0, 80.0, 1.0, "Sand", "Dust sprites thrown by a hard body fall (full impact, high quality)."],
+	["sand_strike_grains", 36.0, 0.0, 200.0, 2.0, "Sand", "Grains sprayed by a weapon strike or stab into the sand (full amount, high quality)."],
+	["sand_dust_life", 3.5, 0.5, 10.0, 0.1, "Sand", "Seconds fine dust lingers."],
+	["sand_dust_alpha", 0.28, 0.02, 0.6, 0.01, "Sand", "Peak opacity of one dust sprite."],
+	["sand_dust_size", 0.4, 0.1, 1.5, 0.05, "Sand", "Final width (m) of a footstep dust sprite; bigger events scale up."],
 ]
 
 static var _shared: Tuning = null
@@ -328,6 +346,24 @@ var feel_zoom_deg: float
 var feel_zoom_hit_deg: float
 var feel_zoom_decay: float
 var feel_flash_s: float
+var sand_depth_scale: float
+var sand_deep_from: float
+var sand_deep_gain: float
+var sand_max_depth: float
+var sand_lift: float
+var sand_rim_gain: float
+var sand_hollow_dark: float
+var sand_rim_light: float
+var sand_step_grains: float
+var sand_step_dust: float
+var sand_slide_grains: float
+var sand_slide_dust: float
+var sand_fall_grains: float
+var sand_fall_dust: float
+var sand_strike_grains: float
+var sand_dust_life: float
+var sand_dust_alpha: float
+var sand_dust_size: float
 var feel_flash_min: float
 var feel_spark_max: float
 var feel_spark_min: float

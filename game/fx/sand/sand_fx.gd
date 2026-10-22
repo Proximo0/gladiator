@@ -8,8 +8,8 @@ extends RefCounted
 const FLOATS_PER_GRAIN: int = 16  ## 3x4 transform (row major) + RGBA colour, the MultiMesh buffer layout
 const GRAVITY: float = 9.8
 const AIR_DRAG: float = 0.9  ## 1/s velocity loss, grains are light
-const MIN_SIZE: float = 0.009  ## grain cube edge, metres
-const MAX_SIZE: float = 0.022
+const MIN_SIZE: float = 0.006  ## grain cube edge, metres
+const MAX_SIZE: float = 0.017
 const LAND_BOUNCE: float = 0.22
 const REST_MIN: float = 0.5  ## seconds a landed grain lies there before shrinking, min and max
 const REST_MAX: float = 1.4

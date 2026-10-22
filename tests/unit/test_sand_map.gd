@@ -201,3 +201,19 @@ func test_apply_blood_palette_slots_coexist() -> void:
 	assert_eq(pal[32 * n + 20], 0)
 	# No pal array: unchanged behaviour.
 	SandMap.apply_blood(b, w, d, n, Vector2(32.0, 10.0), 4.0, 0.8, 1.0, true)
+
+
+func test_capsule_is_body_shaped_and_conserves_mass() -> void:
+	var n: int = 120
+	var h: PackedFloat32Array = PackedFloat32Array()
+	h.resize(n * n)
+	h.fill(0.0)
+	SandMap.apply_capsule(h, n, Vector2(40, 60), Vector2(80, 60), 8.0, 0.15, Vector2.ZERO, 1.0)
+	assert_near(h[60 * n + 60], -0.15, 0.001, "flat deep middle")
+	assert_near(h[60 * n + 42], -0.15, 0.001, "deep along the whole body")
+	assert_true(h[30 * n + 60] == 0.0, "far side untouched")
+	assert_near(SandMap.total_height(h), 0.0, 0.05, "volume conserved")
+	var berm: float = 0.0
+	for y in range(40, 80):
+		berm = maxf(berm, h[y * n + 60])
+	assert_true(berm > 0.02, "berm %f" % berm)

@@ -35,6 +35,12 @@ uniform float arena_radius = 11.0;
 uniform vec3 sand_ambient = vec3(0.52, 0.43, 0.38);
 // Quality: 0 cheap (no fine grain slopes or rake lines either), 1 no pebbles, speckle or glints, 2 full.
 uniform int detail = 2;
+// Depth: the whole surface sits `lift` above the flat collider (fading out under the wall), hollows read darker and damper,
+// berm crests lighter and drier.
+uniform float lift = 0.03;
+uniform float vtx_cell = 0.1;  // mesh vertex spacing: the vertex height is box-filtered over it so hollows do not alias into saw teeth
+uniform float hollow_dark = 0.55;
+uniform float rim_light = 0.3;
 
 varying vec3 lpos;
 varying float v_sparkle;
@@ -63,8 +69,12 @@ float base_h(vec2 p) {
 
 void vertex() {
 	vec2 uv = (VERTEX.xz + vec2(extent)) / (2.0 * extent);
-	float h = textureLod(height_tex, uv, 0.0).r + textureLod(base_tex, uv, 0.0).r;
-	VERTEX.y += h;
+	vec2 o = vec2(vtx_cell * 0.5 / (2.0 * extent));
+	float hd = textureLod(height_tex, uv, 0.0).r * 0.4
+			+ (textureLod(height_tex, uv + vec2(o.x, o.y), 0.0).r + textureLod(height_tex, uv + vec2(-o.x, o.y), 0.0).r
+			+ textureLod(height_tex, uv + vec2(o.x, -o.y), 0.0).r + textureLod(height_tex, uv + vec2(-o.x, -o.y), 0.0).r) * 0.15;
+	float h = hd + textureLod(base_tex, uv, 0.0).r;
+	VERTEX.y += h + lift * (1.0 - smoothstep(arena_radius - 0.7, arena_radius + 0.2, length(VERTEX.xz)));
 	lpos = VERTEX;
 }
 
@@ -178,6 +188,11 @@ void fragment() {
 	float compact = clamp(-hc * 9.0, 0.0, 0.3);
 	sand *= ao * (1.0 - compact * 0.5);
 	sand *= 1.0 + clamp(hc * 3.0, 0.0, 0.12);
+	// Depth read: hollows darker and damper (rim of the hollow falls off with the wall slope), crests lit and dry.
+	float hollow = smoothstep(0.006, 0.09, -hc);
+	sand = mix(sand, sand * vec3(0.66, 0.54, 0.43), hollow * hollow_dark);
+	float crest = smoothstep(0.008, 0.06, hc);
+	sand = mix(sand, sand_buff * (0.95 + 0.2 * n1.r), crest * rim_light * 0.25) * (1.0 + crest * rim_light * 0.12);
 	sand *= 1.0 + rake * 0.04 + pile * (0.07 + 0.05 * cos(rph)) - pring * 0.16;
 	sand *= 1.0 + clamp(hb * 2.5, 0.0, 0.5) * 0.35;
 	// Contact shade where the sand meets the wall.
