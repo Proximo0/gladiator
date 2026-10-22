@@ -412,6 +412,28 @@
       "two_handed": false,
       "half_sword": true,
       "color": "#3a3f48"
+    },
+    {
+      "id": "scutum",
+      "name": "Scutum",
+      "tier": 3,
+      "mass": 6.0,
+      "length": 1.08,
+      "width": 0.68,
+      "grip_offset": 0.0,
+      "balance_point": 0.0,
+      "shape": "shield",
+      "look": "scutum",
+      "art": "res://assets/armor/scutum.glb",
+      "unlock": {"stat": "wins", "count": 2},
+      "edge_len": 0.0,
+      "point": false,
+      "blunt_factor": 0.7,
+      "cut_factor": 0.0,
+      "pierce_factor": 0.0,
+      "two_handed": false,
+      "half_sword": false,
+      "color": "#801010"
     }
   ]
 }

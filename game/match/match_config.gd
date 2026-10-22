@@ -27,7 +27,8 @@ static func random_loadout(rng: RandomNumberGenerator) -> Dictionary:
 	sorted_ids.sort()
 	for wid: String in sorted_ids:
 		if str(CombatData.weapon(wid).get("shape", "")) == "shield":
-			shields.append(wid)
+			if not WeaponUnlocks.is_unlockable(wid):  # earned shields stay out, so a seed's loadouts never change
+				shields.append(wid)
 		else:
 			weapons.append(wid)
 	var weapon: String = _weighted(weapons, rng.randf())

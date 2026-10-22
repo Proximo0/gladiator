@@ -128,6 +128,8 @@ static func sanitize(loadout: Dictionary, owned: Variant = null) -> Dictionary:
 	var off: String = str(loadout.get("offhand", ""))
 	if off != "" and (not is_shield(off) or offhand_blocked(weapon)):
 		off = ""
+	elif off != "" and not weapon_unlocked(off, owned):
+		off = DEFAULT_OFFHAND  # a shield not yet earned (the scutum)
 	var armor: Dictionary = {}
 	var given: Dictionary = loadout.get("armor") as Dictionary if loadout.get("armor") is Dictionary else {}  # a network loadout may hold anything
 	for slot: String in slot_names():
