@@ -126,7 +126,7 @@ All three schemes (mouse, stick, touch) produce the same FighterInput, so nothin
 | arena | Sonnet | `game/arena/*`, `game/camera/*`, `tests/unit/test_arena.gd` |
 | tuning-panel | Haiku | `game/debug/tuning_panel.gd`, `tests/unit/test_tuning_panel.gd` |
 Lead: `game/main.gd`, `game/main.tscn`, `project.godot`, `game/debug/tuning.gd`, `tests/sim/sim_suite.gd`, docs, git.
-Report lines for lead-owned files (for example a sim name for `SIM_FILES`) in your final message.
+Report lines for lead-owned files (for example a new `Tuning` field) in your final message.
 
 ## Sand and blood (the title is Sandblood: these are headline features)
 Both are presentation: never part of `snapshot()` or the state hash, and they never change fight outcomes.

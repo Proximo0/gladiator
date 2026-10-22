@@ -3,7 +3,8 @@ extends "res://tests/sim/sim_base.gd"
 ## space and must replay bit for bit whatever ran before it: a fighter walks up to a foe and swings, then bodies and
 ## fighters are built, stepped and freed in the shared space (as earlier sims leave behind), then the same scenario
 ## runs again. The same pair in the shared space is INFO only: a Jolt space's results depend on the bodies it created
-## and freed before. Last in SIM_FILES, so its churn of the shared space cannot move a later sim.
+## and freed before. Runs last (marker below), so its churn of the shared space cannot move a later sim.
+## suite: last
 
 const TICKS: int = 90
 
