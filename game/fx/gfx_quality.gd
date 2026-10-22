@@ -45,6 +45,9 @@ const SAND_FX_MULT: Array[float] = [0.45, 0.75, 1.0]
 const SAND_PUFFS: Array[int] = [4, 7, 10]
 const SAND_PUFF_AMOUNT: Array[int] = [5, 7, 9]
 const SAND_DETAIL: Array[int] = [0, 1, 2]
+## Contact shadows under the feet: 1 takes them off the sun light only (the sun shadow map is fine enough to ground
+## the feet itself, so a blob there would stack on it), 0 darkens the sand under them outright (one coarse split).
+const CONTACT_SUN_FADE: Array[float] = [0.0, 0.0, 1.0]
 ## Seconds between blood pool spreading steps on the sand (each step repaints the pool's texels).
 ## Seconds between uploads of the dirty sand tiles to the GPU.
 const SAND_UPLOAD_S: Array[float] = [1.0 / 15.0, 1.0 / 20.0, 1.0 / 30.0]

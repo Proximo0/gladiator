@@ -1,5 +1,5 @@
 class_name Tuning
-extends "res://game/debug/tuning/tuning_sand.gd"
+extends "res://game/debug/tuning/tuning_wounds.gd"
 ## Template for live-tunable gameplay numbers (pattern from the skate project's PhysicsTuning).
 ## Game code reads `Tuning.shared().<field>` every tick instead of hard-coding numbers, so a tuning panel,
 ## replays, sims and presets can change the feel without touching code.
@@ -29,6 +29,7 @@ const FIELDS: Array = (
 	+ ROWS_ARMOR
 	+ ROWS_BLOOD
 	+ ROWS_SAND
+	+ ROWS_WOUNDS
 )
 
 static var _shared: Tuning = null

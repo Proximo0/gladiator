@@ -74,7 +74,7 @@ void fragment() {
 		}
 		vec3 d = p - blots[i].xyz;
 		float r = length(d) / max(blots[i].w, 0.005);
-		r *= 0.8 + 0.4 * hn(p * 60.0 + float(i) * 3.0);
+		r *= 0.9 + 0.2 * hn(p * 24.0 + float(i) * 3.0);  // a soft, lumpy blot (fine noise read as a star on a fist)
 		cov = max(cov, 1.0 - smoothstep(0.75, 1.0, r));
 		// A run from the blot toward the grip.
 		float lat = length(d.xz);

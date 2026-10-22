@@ -153,6 +153,9 @@ func setup(arena_radius: float = 11.0, tpm: float = -1.0, mesh_cell: float = -1.
 	_material.set_shader_parameter("vtx_cell", mesh_cell)
 	_material.set_shader_parameter("hollow_dark", tun.sand_hollow_dark)
 	_material.set_shader_parameter("rim_light", tun.sand_rim_light)
+	_material.set_shader_parameter("contact_sun_fade", GfxQuality.pick_f(GfxQuality.CONTACT_SUN_FADE))
+	_material.set_shader_parameter("contact_sun_ambient", tun.sand_contact_sun_ambient)
+	_material.set_shader_parameter("contact_sun_gain", tun.sand_contact_sun_gain)
 	_mesh_node = MeshInstance3D.new()
 	_mesh_node.name = "SandMesh"
 	_mesh_node.mesh = build_disc_mesh(radius + DISC_MARGIN, mesh_cell)
@@ -253,16 +256,20 @@ func set_blood_palette(slot: int, fresh: Color, dried: Color, glow: float) -> vo
 	_material.set_shader_parameter("blood_glow" + sfx, glow)
 
 
-## Contact-shadow blobs under the fighters (ContactShadow.pack: MAX_BLOBS long, live ones first). An empty array
-## clears them.
-func set_contacts(blobs: PackedVector4Array) -> void:
+## Contact-shadow blobs under the fighters (ContactShadow.pack: MAX_BLOBS long, live ones first) and their axes
+## (ContactShadow.pack_axes; none: all round). An empty array clears them.
+func set_contacts(blobs: PackedVector4Array, axes: PackedVector4Array = PackedVector4Array()) -> void:
 	if _material == null:
 		return
 	if blobs.size() != ContactShadow.MAX_BLOBS:
 		blobs.resize(ContactShadow.MAX_BLOBS)
 		blobs.fill(Vector4.ZERO)
+	if axes.size() != ContactShadow.MAX_BLOBS:
+		axes.resize(ContactShadow.MAX_BLOBS)
+		axes.fill(Vector4.ZERO)
 	_material.set_shader_parameter("contact", blobs)
-	_material.set_shader_parameter("contact_bound", ContactShadow.bound(blobs))
+	_material.set_shader_parameter("contact_axis", axes)
+	_material.set_shader_parameter("contact_bound", ContactShadow.bound(blobs, axes))
 
 
 ## Soaks blood in: pools spread a little, small amounts leave dark clumps. `slot` is the bleeding fighter's blood

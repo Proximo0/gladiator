@@ -192,9 +192,12 @@ func test_a_beheading_puts_a_blood_collar_on_both_cut_ends() -> void:
 	assert_eq(wm.count("torso"), 1, "the neck stump")
 	assert_eq(wm.count("head"), 1, "the head's cut face")
 	var neck: WoundMarks.Mark = wm.marks["torso"][0]
-	assert_true(neck.nrm.y > 0.7, "the stump's mark faces up out of the torso")
+	assert_eq(neck.kind, WoundMarks.Kind.RING, "a sever ring, all round the neck")
+	assert_true(neck.nrm.y > 0.7, "the stump's ring runs up out of the torso")
+	assert_near(neck.size, WoundFx.RING_NECK_R)
+	assert_near(neck.width, Tuning.shared().wound_ring_band)
 	var under: WoundMarks.Mark = wm.marks["head"][0]
-	assert_true(under.nrm.y < -0.7, "the head's faces down")
+	assert_true(under.nrm.y < -0.7, "the head's runs down")
 	a.gore.emit({"kind": "gut", "part": "torso"})
 	assert_eq(wm.count(""), 2, "only cuts that sever mark stumps")
 	fx.clear()
@@ -209,5 +212,7 @@ func test_stump_ends_are_the_joint_in_both_frames() -> void:
 	assert_true(((ends[0][1] as Vector3) - Vector3(0, -0.14, 0)).length() < 0.001, "the elbow, below the upper arm")
 	assert_true(((ends[1][1] as Vector3) - Vector3(0, 0.17, 0)).length() < 0.001, "the elbow, atop the forearm")
 	assert_true(WoundFx.stump_ends("pelvis").is_empty())
+	assert_true(WoundFx.ring_radius("forearm_r") > 0.06 and WoundFx.ring_radius("forearm_r") < 0.12,
+			"round the forearm, not the whole upper arm: %f" % WoundFx.ring_radius("forearm_r"))
 	assert_true(WoundFx.drop_stretch(Vector3.ZERO) == 1.0)
 	assert_true(WoundFx.drop_stretch(Vector3(0, 100, 0)) == WoundMarks.STRETCH_MAX)
