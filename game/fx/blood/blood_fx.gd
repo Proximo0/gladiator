@@ -901,7 +901,7 @@ func _organs_for(amount: float, fixed: int) -> int:
 	if amount < tn.gut_organ_points:
 		return 0
 	var n: float = float(fixed) if fixed > 0 else tn.gut_organs * BloodMath.gut_mult(quality)
-	return maxi(roundi(n), 0)
+	return clampi(roundi(n), 0, 2)  ## one liver and one stomach at most (the heart only comes out of the back)
 
 
 func _spill_guts(anchor: Node3D, point: Vector3, nrm: Vector3, slot: int, rope_share: float, organs: int = 0,
@@ -931,8 +931,9 @@ func _spill_guts(anchor: Node3D, point: Vector3, nrm: Vector3, slot: int, rope_s
 		guts.add_blob(point + _jit(0.04), v, tn.gut_blob_radius * rng.randf_range(0.7, 1.3), rng.randf() * TAU, slot, rng.randf())
 	# A big wound lets whole organs fall out; they slide on the sand.
 	for j: int in organs:
-		var kind: int = GutSim.ORGAN_KINDS[(first_organ + j) % GutSim.ORGAN_KINDS.size()]
-		var v2: Vector3 = (nrm * rng.randf_range(0.8, 1.2) + side * rng.randf_range(-0.5, 0.5)) * tn.gut_organ_eject \
+		var kind: int = GutSim.ORGAN_KINDS[mini(first_organ + j, GutSim.ORGAN_KINDS.size() - 1)]
+		var fan: float = (float(j) - 0.5 * float(organs - 1)) * 0.9  ## organs fan out left and right of each other
+		var v2: Vector3 = (nrm * rng.randf_range(0.8, 1.2) + side * (fan + rng.randf_range(-0.3, 0.3))) * tn.gut_organ_eject \
 				+ Vector3(0, rng.randf_range(0.3, 1.2), 0)
 		guts.add_blob(point + _jit(0.03), v2, GutArt.authored_size(kind) * rng.randf_range(0.9, 1.1), rng.randf() * TAU,
 				slot, rng.randf(), kind)
