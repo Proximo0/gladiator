@@ -54,6 +54,7 @@ var _torch_positions: PackedVector3Array = PackedVector3Array()
 var _dressing: ArenaDressing = ArenaDressing.new()
 var build_ms: Dictionary = {}  ## step name -> ms of the last build (see build_profile)
 var _sand_load_ms: float = 0.0
+var racks: RackDressing = null  ## the racked weapon copies (null when the rack art is missing)
 ## Flame height above the wall cap: a Houdini brazier's bowl, or the code torch's bowl.
 var _flame_y: float = 1.8
 
@@ -114,6 +115,12 @@ func build_profile() -> Dictionary:
 		for k: String in (sand.get("setup_ms") as Dictionary):
 			out["sand." + k] = sand.get("setup_ms")[k]
 	return out
+
+
+## Stocks the weapon racks with these fighters' spares (loadouts in side order). No-op without rack art.
+func stock_racks(loadouts: Array) -> void:
+	if racks != null:
+		racks.stock(loadouts)
 
 
 func spawn_point(side: int) -> Transform3D:
@@ -721,6 +728,11 @@ func _build_dressing() -> void:
 		wall_banners.append(Transform3D(fb.scaled(Vector3.ONE * WALL_BANNER_SCALE), ring_point(radius, a, 0.0, WALL_SIDES) + fb.z * WALL_BANNER_OUT))
 	ArenaDressing.add_instances(self, "WallBanners", _art("banner"), wall_banners, false)
 	ArenaDressing.add_instances(self, "WeaponRacks", _art("weapon_rack"), DecorLayout.transforms(radius, "weapon_rack"), false)
+	if _art("weapon_rack") != null:
+		racks = RackDressing.new()
+		racks.name = "RackWeapons"
+		racks.rack_xforms = DecorLayout.transforms(radius, "weapon_rack")
+		add_child(racks)
 	if low:
 		return  # phones: the statues and the trophy are a few pixels up on the wall cap; save their draw calls
 	# The big statue stands on the stands behind the imperial box (its tier's seats there stay empty).

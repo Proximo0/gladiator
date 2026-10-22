@@ -185,6 +185,10 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 	_tip_valid = [false, false]
 	_drags = 0
 	killcam.track(fighters)  # first, so it reads each event before the blood effects use their RNG
+	var rack_loadouts: Array = [{}, {}]
+	for f: Fighter in fighters:
+		rack_loadouts[clampi(f.side, 0, 1)] = f.loadout
+	arena.stock_racks(rack_loadouts)  # the weapon racks hold each fighter's spares
 	for f: Fighter in fighters:
 		# Blood colour follows the outfit in the fighter's loadout (online it is the loadout both sides already have).
 		blood.set_palette(f.side, OutfitRules.blood_palette_of(f.loadout))
