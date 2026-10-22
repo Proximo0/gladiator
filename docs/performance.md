@@ -4,7 +4,7 @@ Target: 60 fps on a mid PC and on mid Android phones (Compatibility / GLES3). Me
 
 ## tools/perf.sh
 
-`tools/perf.sh [--quality=0|1|2|all] [--seed=S] [--measure=FRAMES] [--hide=crowd,hud,shadow,sand,blood,fighters,stands]`
+`tools/perf.sh [--quality=0|1|2|all] [--seed=S] [--measure=FRAMES] [--heavy] [--hide=crowd,hud,shadow,sand,blood,fighters,stands]`
 
 Runs `tests/perf/perf.tscn`: one presented bot-vs-bot match (full arena, crowd, blood, sand FX, HUD) in a real window
 (xvfb on Linux, 320x180, software GL). It fast-forwards (8x time scale) until the first state it sees from
@@ -18,6 +18,10 @@ Runs `tests/perf/perf.tscn`: one presented bot-vs-bot match (full arena, crowd, 
 | calls | draw calls per frame (includes shadow passes and the HUD) |
 | prims | Godot's primitive counter. **It counts a MultiMesh's mesh once per draw, not once per instance**, so it ignores the crowd and the grains; use `tris_drawn` below for the crowd |
 | decals, drops, grains, mist | peak counts over the run (ground decals, blood droplets, sand grains, blood mist) |
+
+`--heavy` is the worst-case scenario: when the measured window starts, both fighters get a beheading (fountain), a gut
+spill (rope sim), a severed forearm and a thigh wound at once (`BloodFx.on_gore`). Extra line `live_drops` and `mm_tris`
+count MultiMesh triangles per group (instances shown x mesh triangles, peak over the window).
 
 Extra lines: per-section fx milliseconds, crowd seats / triangles in buffers / triangles drawn / MultiMesh calls,
 and the heaviest geometry groups ("draw suspects"). `--hide=` switches parts off during the measured window; the
@@ -44,11 +48,12 @@ is the matching `BloodFx.set_quality` value.
 | MSAA 3D | off | 2x | 2x |
 | forearms / shins (art, caps, armor on them) cast shadow | no | yes | yes |
 | sand texels per metre / floor mesh cell | 26 / 0.22 m | 32 / 0.15 m | 40 / 0.10 m |
-| sand grains / dust puffs | 200 / 4 | 360 / 7 | 520 / 10 |
+| sand grains / dust sprites / puffs | 450 / 110 / 4 | 900 / 260 / 7 | 1800 / 560 / 10 |
 | sand shader detail | 0 | 1 | 2 |
 | sand pool step / GPU upload | 12 Hz / 15 Hz | 20 Hz / 20 Hz | 30 Hz / 30 Hz |
 | blood droplets / mist / ground decals | 600 / 90 / 160 | 2400 / 240 / 420 | 5000 / 480 / 900 |
-| blood splats turned into sand stains per frame | 12 | 24 | 48 |
+| blood splats turned into sand stains per frame (calls / area in 5 cm splats) | 12 / 8 | 24 / 18 | 48 / 36 |
+| droplet mesh triangles (sides x rings) | 84 (6x8) | 160 (8x11) | 336 (12x15) |
 
 Sand shader detail: 0 drops the fine grain slopes and the rake lines, 1 also keeps them but drops pebbles, speckle
 and glints (2 is the full look).
@@ -117,6 +122,56 @@ trims on forearms and shins still cast.
 
 Draw calls on a mid phone are cheap to a point (a few hundred is fine) and the crowd and sand triangle cuts are
 the GPU-side win; the CPU-side wins are the sand pools, uploads and splat caps (fx_ms 4.34 -> 1.69).
+
+## Worst case after beheading, gut spill, dust, teardrops (2026-10-22)
+
+`tools/perf.sh --quality=all --heavy` (seed 1002, injected gore on both fighters at tick 542, 300 frames at 1x, software
+GL, 320x180). Before = tree at the start of this pass; after = with the three fixes below. CPU ms are noisy under
+llvmpipe (it shares the cores): read the ratios. `drops` is the peak live droplets.
+
+| | low before | low after | med before | med after | high before | high after |
+| --- | --- | --- | --- | --- | --- | --- |
+| fx_ms (blood + sand script) | 8.84 | 7.54 | 18.93 | 14.16 | 67.54 | 33.73 |
+| sand pools | 1.64 | 0.81 | 2.17 | 0.34 | 25.26 | 1.86 |
+| splats (sand stamping) | 2.43 | 1.55 | 7.94 | 4.00 | 25.08 | 12.43 |
+| emit (fountain, wounds, guts) | 2.23 | 2.21 | 4.20 | 4.07 | 6.21 | 7.01 |
+| flush (sand GPU upload) | 0.80 | 0.83 | 1.29 | 1.62 | 5.96 | 5.28 |
+| physics ms | 7.28 | 6.20 | 4.71 | 4.94 | 4.43 | 4.80 |
+| draw calls | 220 | 216 | 276 | 287 | 328 | 339 |
+| peak droplets | 525 | 524 | 2029 | 1930 | 3223 | 3898 |
+| droplet triangles at peak (drops x mesh) | 176k (est.) | 38k | 682k (est.) | 157k | 1.08M (est.) | 1.25M |
+| MultiMesh triangles, all groups (crowd incl.) | | 77k | | 275k | | 1.52M |
+| of which guts / dust / grains / decals | | 6k / 0.2k / 4k / 0.3k | | 15k / 0.5k / 2k / 0.8k | | 23k / 1k / 15k / 1.2k |
+| VRAM MB | 19.6 | 19.6 | 23.1 | 23.1 | 25.6 | 25.6 |
+| nodes | 2474 | 2466 | 2540 | 2576 | 2650 | 2690 |
+
+("est." = peak droplets x 336, the old single mesh. The primitive counter ignores all of these; `mm_tris` is ours.)
+
+Budgets (low must stay Android-safe; numbers from this table, software GL, so treat CPU ms as 3-5x a desktop):
+
+| budget | low | medium | high | status |
+| --- | --- | --- | --- | --- |
+| worst-case fx_ms (script, per frame) | <= 8 | <= 15 | <= 35 (desktop) | met |
+| draw calls, whole scene | <= 250 | <= 320 | <= 400 | met |
+| MultiMesh triangles incl. crowd | <= 100k | <= 300k | <= 1.6M | met |
+| droplet triangles at peak | <= 50k | <= 200k | <= 1.5M | met (new) |
+| VRAM | <= 32 MB | <= 48 MB | <= 64 MB | met (new) |
+
+Fixes, each at the traced mechanism:
+
+1. **Sand pools repainted unchanged texels (25 ms -> 1.9 ms at high).** A spreading pool re-ran `apply_blood` every
+   step (up to 8 pools, 30 Hz) although its radius grows only a few texels in 2.5 s and a max-blend repaint of the
+   same radius changes nothing. Now it repaints only after the edge grew `POOL_MIN_GROW` (0.6 texel).
+2. **`apply_blood` per-texel cost (splats 25 -> 12 ms high, 7.9 -> 4.0 medium).** Each texel called `blood_edge` (three
+   `sin`) and two `smoothstep`. Now one 256-entry edge table per call (`SandMap.EDGE_BINS`), inlined smoothsteps and
+   an early skip beyond `EDGE_MAX * 1.6 * r`. Plus `BloodMath.SPLAT_AREA`: a per-frame budget in splat area, so a few
+   large pool splats no longer take the whole frame (the rest merge into their cell and wait).
+3. **Droplet mesh (336 triangles, 12 sides) at every quality.** `BloodMesh.for_quality` swaps the MultiMesh mesh in
+   `BloodFx.set_quality`: 84 triangles on low, 160 on medium, 336 (unchanged) on high. Peak droplet triangles on
+   low drop from about 176k to 38k, on medium from about 680k to 157k.
+
+Not changed: high still draws 1.25M droplet triangles at the peak of a double gore (fine on a desktop GPU, the thing to
+watch on a weak iGPU).
 
 ## Options menu
 

@@ -23,6 +23,8 @@ const DECAL_BUDGETS: Array[int] = [160, 420, 900]
 const STAIN_BUDGETS: Array[int] = [14, 30, 48]
 ## Most ground splats per frame that are turned into decals and sand stains (each repaints sand texels).
 const SPLAT_CALLS: Array[int] = [12, 24, 48]
+## Sand-stamping area per frame, in units of a 5 cm splat (radius^2): the real cost of a splat is its texel count.
+const SPLAT_AREA: Array[float] = [8.0, 18.0, 36.0]
 ## Presentation multiplier: pools on the ground read as this many times the blood that really left the fighter.
 const POOL_VISUAL_MULT: float = 2.5
 ## Seconds for fresh arterial red to dry to dark brown.
@@ -51,6 +53,10 @@ static func decal_budget(level: int) -> int:
 
 static func splat_calls(level: int) -> int:
 	return SPLAT_CALLS[clampi(level, 0, 2)]
+
+
+static func splat_area(level: int) -> float:
+	return SPLAT_AREA[clampi(level, 0, 2)]
 
 
 static func stain_budget(level: int) -> int:

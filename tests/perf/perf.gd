@@ -20,6 +20,9 @@ var _driven: bool = false
 var _fx_us: int = 0
 var _blood_us: int = 0
 var _min_tick: int = 600
+var _heavy: bool = false
+var _mm_peak: Dictionary = {}
+var _drops_live_peak: int = 0
 
 
 func _ready() -> void:
@@ -27,6 +30,7 @@ func _ready() -> void:
 	_bloody = int(Flags.get_arg("bloody", "60"))
 	_max_ticks = int(Flags.get_arg("max_ticks", "5400"))
 	_min_tick = int(Flags.get_arg("late_tick", "600"))
+	_heavy = Flags.args.has("heavy")
 	if Flags.args.has("quality"):
 		GfxQuality.set_level(int(Flags.get_arg("quality", "2")))
 	_match = Match.new()
@@ -92,11 +96,18 @@ func _process(delta: float) -> void:
 			Engine.time_scale = 1.0
 			_frames = 0
 			_hide_parts()
+			if _heavy:
+				_inject_gore()
 			_match.presenter.blood.set("prof", {})
 			_match.presenter.sand.set("prof", {})
 		return
 	if _frames < 5:
 		return
+	_drops_live_peak = maxi(_drops_live_peak, p.blood.live_droplets())
+	if _frames % 20 == 0:
+		var mt: Dictionary = _mm_tris()
+		if int(mt.get("_total", 0)) >= int(_mm_peak.get("_total", 0)):
+			_mm_peak = mt
 	_samples.append({
 		"proc": Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
 		"phys": Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
@@ -141,7 +152,7 @@ func _report(tick: int) -> void:
 		"seed": int(Flags.get_arg("seed", "1002")), "quality": GfxQuality.level,
 		"reached": _reached, "tick": tick, "frames": _samples.size(),
 		"process_ms": _stat("proc"), "physics_ms": _stat("phys"), "fx_ms": _stat("fx"), "blood_ms": _stat("blood"), "census": _census(), "crowd": _crowd(), "sections_ms": _prof(), "draw_calls": _stat("calls"),
-		"primitives": _stat("prims"), "objects": _stat("objs"), "peak": _peak,
+		"mm_tris": _mm_peak, "live_drops": _drops_live_peak, "primitives": _stat("prims"), "objects": _stat("objs"), "peak": _peak,
 		"nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
 		"video_mem_mb": snappedf(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, 0.1),
 		"wall_s": snappedf(float(Time.get_ticks_msec() - _t_start) / 1000.0, 0.1),
@@ -215,3 +226,55 @@ func _hide_parts() -> void:
 				for c: Node in p.arena.get_children():
 					if c is MeshInstance3D:
 						(c as MeshInstance3D).visible = false
+
+
+## --heavy: worst case. At the start of the measured window both fighters get a beheading, a gut spill and severed
+## arms (the fountains, rope sims, stump wounds and drips all running at once).
+func _inject_gore() -> void:
+	var b: BloodFx = _match.presenter.blood
+	for i: int in _match.fighters.size():
+		var f: Node3D = _match.fighters[i]
+		var parts: Variant = f.get("parts")
+		if not (parts is Dictionary):
+			continue
+		var d: Dictionary = parts
+		var other: Vector3 = Vector3.FORWARD
+		if _match.fighters.size() > 1:
+			other = ((_match.fighters[1 - i] as Node3D).global_position - f.global_position).normalized()
+		var ev: Dictionary = {"kind": "behead" if i == 0 else "gut", "amount": 1.5, "normal": other}
+		for kind: String in ["behead", "gut", "sever", "bleed"]:
+			var part: String = {"behead": "head", "gut": "torso", "sever": "forearm_l", "bleed": "thigh_l"}[kind]
+			if not d.has(part):
+				continue
+			var n: Node3D = d[part]
+			b.on_gore({"kind": kind, "part": part, "point": n.global_position, "amount": 1.5, "normal": other}, f)
+
+
+## MultiMesh triangles drawn per group (instances shown x mesh faces), the counter Godot's primitives skip.
+func _mm_tris() -> Dictionary:
+	var out: Dictionary = {}
+	var total: int = 0
+	var stack: Array[Node] = [self]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c: Node in n.get_children():
+			stack.append(c)
+		if not (n is MultiMeshInstance3D) or not (n as Node3D).is_visible_in_tree():
+			continue
+		var mm: MultiMesh = (n as MultiMeshInstance3D).multimesh
+		if mm == null or mm.mesh == null:
+			continue
+		var inst: int = mm.instance_count if mm.visible_instance_count < 0 else mm.visible_instance_count
+		var tris: int = 0
+		for si: int in mm.mesh.get_surface_count():
+			var arr: Array = mm.mesh.surface_get_arrays(si)
+			var idx: Variant = arr[Mesh.ARRAY_INDEX]
+			if idx != null and (idx as PackedInt32Array).size() > 0:
+				tris += (idx as PackedInt32Array).size() / 3
+			else:
+				tris += (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 3
+		var t: int = inst * tris
+		out[String(n.name)] = [inst, tris, t]
+		total += t
+	out["_total"] = total
+	return out

@@ -258,3 +258,17 @@ func test_gut_droplets_and_guts_carry_the_victims_slot() -> void:
 		assert_eq(r.slot, 1)
 	(pair[1] as Node).free()
 	fx.free()
+
+
+func test_droplet_mesh_detail_drops_with_quality() -> void:
+	var tris: Array[int] = []
+	for q: int in 3:
+		var m: ArrayMesh = BloodMesh.for_quality(q)
+		tris.append((m.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3)
+	assert_eq(tris[2], 336)
+	assert_true(tris[0] < tris[1] and tris[1] < tris[2])
+	assert_true(tris[0] <= 100)
+
+
+func test_splat_area_budget_follows_quality() -> void:
+	assert_true(BloodMath.splat_area(0) < BloodMath.splat_area(1) and BloodMath.splat_area(1) < BloodMath.splat_area(2))

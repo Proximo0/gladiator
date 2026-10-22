@@ -6,15 +6,23 @@ extends RefCounted
 
 const TAIL_RINGS: int = 6
 const HEAD_RINGS: int = 8  ## rings from the head's equator to its tip: round silhouette, no visible facets
+## Droplet mesh detail per blood quality (low, medium, high): sides, tail rings, head rings. High is 336 triangles,
+## medium 160, low 84 (droplets are a few pixels wide on a phone, and thousands of them draw at once).
+const DETAIL: Array = [[6, 3, 4], [8, 4, 6], [12, 6, 8]]
 
 
-static func teardrop(radial: int = 12) -> ArrayMesh:
+static func for_quality(level: int) -> ArrayMesh:
+	var d: Array = DETAIL[clampi(level, 0, 2)]
+	return teardrop(int(d[0]), int(d[1]), int(d[2]))
+
+
+static func teardrop(radial: int = 12, tail_rings: int = TAIL_RINGS, head_rings: int = HEAD_RINGS) -> ArrayMesh:
 	var prof: Array[Vector2] = []  # (radius, z) from tail tip to head tip
-	for i: int in TAIL_RINGS:  # rounded elliptical tail (no needle tip): reads as a liquid streak when stretched
-		var th0: float = float(i) / float(TAIL_RINGS) * PI * 0.5
+	for i: int in tail_rings:  # rounded elliptical tail (no needle tip): reads as a liquid streak when stretched
+		var th0: float = float(i) / float(tail_rings) * PI * 0.5
 		prof.append(Vector2(sin(th0), -cos(th0)))
-	for j: int in HEAD_RINGS + 1:
-		var th: float = float(j) / float(HEAD_RINGS) * PI * 0.5
+	for j: int in head_rings + 1:
+		var th: float = float(j) / float(head_rings) * PI * 0.5
 		prof.append(Vector2(cos(th), sin(th)))
 	var verts: PackedVector3Array = PackedVector3Array()
 	var norms: PackedVector3Array = PackedVector3Array()

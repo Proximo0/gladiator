@@ -267,6 +267,10 @@ static func drag_points(a: Vector2, b: Vector2, spacing: float, max_n: int) -> P
 	return out
 
 
+const EDGE_BINS: int = 256  ## ragged blood edge lookup resolution
+const EDGE_MAX: float = 1.3  ## largest value blood_edge can reach (1 + 0.16 + 0.09 + 0.05, rounded up)
+
+
 ## Pool outline wobble: radius multiplier around 1.0 for a pool at angle `a` (radians) with a per-pool seed.
 static func blood_edge(a: float, seed_v: float) -> float:
 	return 1.0 + 0.16 * sin(3.0 * a + seed_v) + 0.09 * sin(5.0 * a + 2.3 * seed_v) + 0.05 * sin(9.0 * a + 4.1 * seed_v)
@@ -302,17 +306,31 @@ static func apply_blood(blood: PackedFloat32Array, wet: PackedFloat32Array, dry:
 	if x1 < x0 or y1 < y0:
 		return Rect2i()
 	var has_pal: bool = pal.size() == blood.size()
+	# One ragged-edge lookup table per call instead of three sines per texel; the loop is inlined (no native calls but
+	# sqrt and atan2). The wet halo ends at q = 1.6, and edge <= EDGE_MAX, so beyond that distance a texel is untouched.
+	var lut: PackedFloat32Array = PackedFloat32Array()
+	lut.resize(EDGE_BINS)
+	for b: int in EDGE_BINS:
+		lut[b] = blood_edge(float(b) / float(EDGE_BINS) * TAU - PI, seed_v)
+	var bin_scale: float = float(EDGE_BINS) / TAU
+	var far2: float = r_texel * EDGE_MAX * 1.6
+	far2 *= far2
 	for y in range(y0, y1 + 1):
 		var dz: float = float(y) + 0.5 - c.y
 		for x in range(x0, x1 + 1):
 			var dx: float = float(x) + 0.5 - c.x
-			var d: float = sqrt(dx * dx + dz * dz)
-			var edge: float = blood_edge(atan2(dz, dx), seed_v)
+			var d2: float = dx * dx + dz * dz
+			if d2 >= far2:
+				continue
+			var d: float = sqrt(d2)
+			var edge: float = lut[mini(int((atan2(dz, dx) + PI) * bin_scale), EDGE_BINS - 1)]
 			var q: float = d / (r_texel * edge)
 			var val: float = 0.0
 			if q < 1.0:
-				val = strength * (1.0 - smoothstep(0.4, 1.0, q))
-			var wv: float = strength * (1.0 - smoothstep(0.5, 1.6, q)) * 1.2
+				var tv: float = clampf((q - 0.4) / 0.6, 0.0, 1.0)
+				val = strength * (1.0 - tv * tv * (3.0 - 2.0 * tv))
+			var tw: float = clampf((q - 0.5) / 1.1, 0.0, 1.0)
+			var wv: float = strength * (1.0 - tw * tw * (3.0 - 2.0 * tw)) * 1.2
 			if val <= 0.0 and wv <= 0.0:
 				continue
 			var i: int = y * n + x

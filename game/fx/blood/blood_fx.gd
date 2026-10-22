@@ -179,7 +179,7 @@ func _build() -> void:
 	_mm_drops.name = "Droplets"
 	_mm_drops.material_override = drop_mat
 	_mm_drops.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_mm_drops.multimesh = _make_multimesh(BloodMesh.teardrop(12), true)
+	_mm_drops.multimesh = _make_multimesh(BloodMesh.for_quality(quality), true)
 	add_child(_mm_drops)
 	_mm_mist = MultiMeshInstance3D.new()
 	_mm_mist.name = "Mist"
@@ -347,6 +347,8 @@ func set_quality(level: int) -> void:
 	quality = clampi(level, 0, 2)
 	if sim != null:
 		_apply_sizes()
+	if _mm_drops != null:
+		_mm_drops.multimesh.mesh = BloodMesh.for_quality(quality)
 
 
 ## Default source of remaining blood (litres) for spurts that have no fighter of their own.
@@ -686,10 +688,13 @@ func step(dt_in: float) -> void:
 	_process_impacts()
 	var t3: int = _mark(t2, "rays")
 	sim.compact()
+	var ta: int = _mark(t3, "compact")
 	mist.step(dt)
+	var tb: int = _mark(ta, "mist")
 	_flush_splats()
+	var tc: int = _mark(tb, "flush_splats")
 	decals.step(dt)
-	var t4: int = _mark(t3, "splats")
+	var t4: int = _mark(tc, "decals")
 	_clock += dt
 	_sweep_stains()
 	stat_emitted = maxi(sim.count - before, 0)
@@ -1249,8 +1254,9 @@ func _flush_splats() -> void:
 		return
 	var has_sand: bool = sand != null and sand.has_method("add_blood")
 	var max_calls: int = BloodMath.splat_calls(quality)
+	var area_left: float = BloodMath.splat_area(quality)  ## big splats cost texels^2: the rest wait a frame (cells merge)
 	for cell: Vector3i in _splat.keys():
-		if stat_splat_calls >= max_calls:
+		if stat_splat_calls >= max_calls or area_left <= 0.0:
 			break
 		var a: Vector4 = _splat[cell]
 		_splat.erase(cell)
@@ -1259,7 +1265,9 @@ func _flush_splats() -> void:
 		var at: Vector3 = Vector3(a.x / a.w, a.y / a.w, a.z / a.w)
 		decals.add(at + Vector3(0, 0.006, 0), a.w, rng.randf(), cell.z)
 		if has_sand:
-			sand.call("add_blood", at, BloodMath.splat_radius(a.w), a.w, cell.z)
+			var sr: float = BloodMath.splat_radius(a.w)
+			sand.call("add_blood", at, sr, a.w, cell.z)
+			area_left -= maxf(sr, 0.05) * maxf(sr, 0.05) / 0.0025
 		stat_splat_calls += 1
 	if _splat.size() > 4 * max_calls:
 		_splat.clear()

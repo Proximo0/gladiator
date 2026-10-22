@@ -250,3 +250,21 @@ func test_repeated_body_contacts_stay_smooth() -> void:
 	var many: Array[float] = _corpse_pile(1.3, 3)
 	assert_true(many[0] < 0.065, "berm height %f" % many[0])
 	assert_true(many[1] < 0.03 and many[1] < one[1] * 1.15, "texel step %f" % many[1])
+
+
+func test_apply_blood_matches_exact_edge_and_stays_in_rect() -> void:
+	var n: int = 64
+	var b: PackedFloat32Array = PackedFloat32Array()
+	b.resize(n * n)
+	var w: PackedFloat32Array = b.duplicate()
+	var d: PackedFloat32Array = b.duplicate()
+	var r: Rect2i = SandMap.apply_blood(b, w, d, n, Vector2(32.0, 32.0), 7.0, 0.9, 2.0, true)
+	var wet_edge: float = 7.0 * SandMap.EDGE_MAX * 1.6
+	for y: int in n:
+		for x: int in n:
+			var dist: float = Vector2(float(x) + 0.5, float(y) + 0.5).distance_to(Vector2(32.0, 32.0))
+			if dist >= wet_edge:
+				assert_eq(w[y * n + x], 0.0)
+			elif w[y * n + x] > 0.0:
+				assert_true(r.has_point(Vector2i(x, y)))
+	assert_near(b[32 * n + 32], 0.9, 0.05)

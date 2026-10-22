@@ -12,7 +12,7 @@ for a in "$@"; do
   case "$a" in
     --quality=*) q="${a#*=}" ;;
     --seed=*) seed="${a#*=}" ;;
-    --measure=*|--bloody=*|--max_ticks=*|--late_tick=*|--hide=*|--ff=*) extra+=("$a") ;;
+    --measure=*|--bloody=*|--max_ticks=*|--late_tick=*|--hide=*|--ff=*|--heavy) extra+=("$a") ;;
     *) echo "unknown argument $a"; exit 2 ;;
   esac
 done
@@ -35,6 +35,7 @@ print("%-4s %-16s %7.2f %7.2f %7.2f %7.2f %6.0f %9.0f %7d %7d %7d %7d" % (d["qua
 print("     fx sections ms: " + " ".join("%s=%.2f" % kv for kv in d["sections_ms"].items()))
 print("     objects %.0f  nodes %d  vram %.1f MB  tick %d  wall %.1fs" % (d["objects"]["mean"], d["nodes"], d["video_mem_mb"], d["tick"], d["wall_s"]))
 print("     crowd seats %d tris_in_buffers %d tris_drawn %d mm_calls %d" % (d["crowd"]["seats"], d["crowd"]["tris"], d["crowd"]["shown_tris"], d["crowd"]["calls"]))
+print("     live_drops %d  mm_tris total %d: %s" % (d["live_drops"], d["mm_tris"].get("_total", 0), " ".join("%s=%d/%dx%d" % (k, v[2], v[0], v[1]) for k, v in d["mm_tris"].items() if k != "_total")))
 print("     draw suspects: " + "; ".join(d["census"]))'
 done
 echo "PERF done runs=${#levels[@]} failed=$rc"

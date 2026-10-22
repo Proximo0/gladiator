@@ -56,6 +56,7 @@ var _h_upload_pending: bool = false
 var _b_upload_pending: bool = false
 var _since_upload: float = 0.0
 var _time: float = 0.0
+const POOL_MIN_GROW: float = 0.6  ## texels a spreading pool's edge must grow before it is repainted
 var _pools: Array[Dictionary] = []
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _puffs: Array[CPUParticles3D] = []
@@ -243,7 +244,7 @@ func add_blood(pos: Vector3, radius_m: float, litres: float, slot: int = 0) -> v
 	_mark_b(rect)
 	if r > 0.05 and _pools.size() < 8:
 		_pools.append({"c": c, "r0": r * texels_per_m, "r1": r * texels_per_m * 1.3, "t": 0.0, "dur": 2.5,
-				"s": strength * 0.8, "seed": seed_v, "slot": slot})
+				"s": strength * 0.8, "seed": seed_v, "slot": slot, "rp": r * texels_per_m})
 
 
 ## Kicks up a dust puff and a burst of grains. vel = initial direction and speed (m/s), amount 0..1.
@@ -570,8 +571,11 @@ func _spread_pools(delta: float) -> void:
 		p["t"] = t
 		var k: float = clampf(t / float(p["dur"]), 0.0, 1.0)
 		var r: float = lerpf(float(p["r0"]), float(p["r1"]), 1.0 - (1.0 - k) * (1.0 - k))
-		var rect: Rect2i = SandMap.apply_blood(_blood, _wet, _dry, n, p["c"], r, float(p["s"]), float(p["seed"]), false, _pal, int(p["slot"]))
-		_mark_b(rect)
+		# Repainting at the same radius changes nothing (max-blend): only repaint once the edge moved POOL_MIN_GROW texels.
+		if k >= 1.0 or r - float(p["rp"]) >= POOL_MIN_GROW:
+			p["rp"] = r
+			var rect: Rect2i = SandMap.apply_blood(_blood, _wet, _dry, n, p["c"], r, float(p["s"]), float(p["seed"]), false, _pal, int(p["slot"]))
+			_mark_b(rect)
 		if k >= 1.0:
 			_pools.remove_at(i)
 		i -= 1
