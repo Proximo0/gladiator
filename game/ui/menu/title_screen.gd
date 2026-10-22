@@ -326,8 +326,10 @@ func _draw() -> void:
 	var clear: Color = Color(0.03, 0.016, 0.01, 0.0)
 	var mid: Color = Color(0.03, 0.016, 0.01, 0.5)
 	if _portrait:
-		var top_h: float = _sub_en.position.y + _sub_en.size.y + 60.0
-		_band(0.0, top_h, Color(0.03, 0.016, 0.01, 0.62), clear)
+		var top_h: float = _sub_en.position.y + _sub_en.size.y + 150.0
+		var head: float = _sub_en.position.y + _sub_en.size.y + 20.0
+		_band(0.0, head, Color(0.03, 0.016, 0.01, 0.72), Color(0.03, 0.016, 0.01, 0.6))  # the motto reads over bright stands
+		_band(head, top_h, Color(0.03, 0.016, 0.01, 0.6), clear)
 		var menu_top: float = _items[0].position.y - 90.0 if not _items.is_empty() else size.y * 0.5
 		_band(menu_top, size.y, clear, dark)
 	else:

@@ -15,7 +15,8 @@ const CAM_DIST: float = 4.7
 const CAM_DIST_SOLO: float = 3.9
 const CAM_HEIGHT: float = 1.2
 const LOOK_Y: float = 0.9
-const PREVIEW_HFOV: float = 42.0  ## horizontal field of view, degrees
+const PREVIEW_HFOV: float = 42.0  ## horizontal field of view, degrees (a frame taller than wide)
+const PREVIEW_VFOV: float = 34.0  ## vertical field of view in a frame wider than tall (a phone's preview strip)
 const SPACING: float = 0.75
 const REBUILD_DELAY_S: float = 0.12
 const DRAG_RATE: float = 0.011  ## rad per layout unit dragged
@@ -205,7 +206,7 @@ func _fit_showcase() -> void:
 	if not _show_pivot.visible:
 		return
 	var d: float = 2.6
-	var half_w: float = d * tan(deg_to_rad(PREVIEW_HFOV) * 0.5)
+	var half_w: float = d * _half_tan()
 	# h_offset moves the whole view, the close-up with it: add it back so the weapon keeps its place.
 	_show_pivot.position = Vector3(half_w * SHOWCASE_X + _cam.h_offset, 0.05, -d)
 
@@ -224,7 +225,25 @@ func _solo() -> bool:
 	return n == 1
 
 
+## tan of half the horizontal view angle for the frame's current shape.
+func _half_tan() -> float:
+	if _cam.keep_aspect == Camera3D.KEEP_HEIGHT:
+		return tan(deg_to_rad(PREVIEW_VFOV) * 0.5) * size.x / maxf(size.y, 1.0)
+	return tan(deg_to_rad(PREVIEW_HFOV) * 0.5)
+
+
+## A wide, short frame keeps the fighter's full height in view (fixed vertical angle); a tall one keeps its width.
+func _fit_lens() -> void:
+	var wide: bool = size.x > size.y * 1.05
+	var mode: Camera3D.KeepAspect = Camera3D.KEEP_HEIGHT if wide else Camera3D.KEEP_WIDTH
+	if mode != _cam.keep_aspect:
+		_cam.keep_aspect = mode
+		_cam.fov = PREVIEW_VFOV if wide else PREVIEW_HFOV
+		_fit_showcase()
+
+
 func _process(delta: float) -> void:
+	_fit_lens()
 	_drag_hold = maxf(0.0, _drag_hold - delta)
 	var solo: bool = _solo()
 	if solo:

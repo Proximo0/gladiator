@@ -73,7 +73,7 @@ func lock_visible() -> bool:
 
 func _fit_banner() -> void:
 	var w: float = minf(size.x - 24.0, 620.0)
-	_banner.size = Vector2(w, 0.0)
+	_lock_why.custom_minimum_size.x = maxf(w - 90.0, 60.0)  # wrap at the banner's width, not one word per line
 	_banner.reset_size()
 	_banner.size.x = w
 	_banner.position = Vector2((size.x - w) * 0.5, size.y - _banner.get_combined_minimum_size().y - 12.0)

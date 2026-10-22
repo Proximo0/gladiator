@@ -40,6 +40,7 @@ func _init(p_state: MenuState) -> void:
 	root.add_child(_title)
 	var sub := MenuTheme.label("Outfits change how you look. Samurai and Alien each include a weapon.", MenuTheme.FONT_SMALL, MenuTheme.DIM_TEXT)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # one long line made the screen wider than a phone
 	root.add_child(sub)
 	_scroll = ScrollContainer.new()
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
