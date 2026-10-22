@@ -17,11 +17,23 @@ const PATHS: Dictionary = {
 	"column_stump": "res://assets/decor/column_stump.glb",
 	"barrier": "res://assets/dressing/barrier.glb",
 }
+## Assets that load their textured copy (TexturedArt). The other dressing keeps the flat files: its stone takes the
+## arena's travertine tint, which would multiply the stone maps.
+const TEXTURED: PackedStringArray = ["weapon_rack"]
 ## Material names (as Houdini exports them) and what they become here.
 const STONE_MATERIAL: String = "stone"
 const EMBER_MATERIAL: String = "ember"
 const EMBER_EMISSION: Color = Color(1.0, 0.45, 0.12)
 const EMBER_ENERGY: float = 2.2
+## Wrought iron (rack cups, brazier bowls, portcullis bars): at Houdini's metallic 1 and roughness 0.55 every face
+## pointing up mirrored the sky's deep-blue top, so the rack's cups read blue. Half metal and matte reflects a grey
+## blur of the sky and keeps the warm ambient; the shade darkens the now-diffuse albedo back to iron. Roughness is the effective value; over an ORM map (mean green ~0.885,
+## the textured copies) the factor is divided by that mean so both copies land on it.
+const IRON_MATERIAL: String = "iron"
+const IRON_METALLIC: float = 0.5
+const IRON_ROUGHNESS: float = 0.8
+const IRON_SHADE: float = 0.6
+const ORM_METAL_G_MEAN: float = 0.885
 
 var _cache: Dictionary = {}
 var stone_tint: Color = Color(0.84, 0.74, 0.56)
@@ -33,6 +45,8 @@ func mesh(id: String) -> Mesh:
 		return _cache[id] as Mesh
 	var found: Mesh = null
 	var path: String = String(PATHS.get(id, ""))
+	if id in TEXTURED:
+		path = TexturedArt.path(path)
 	if path != "" and ResourceLoader.exists(path):
 		found = _named_mesh(load(path) as PackedScene, id)
 		if found != null:
@@ -57,6 +71,10 @@ static func opaque_material(m: Material, stone: Color) -> Material:
 	if o.resource_name == STONE_MATERIAL:
 		o.albedo_color = stone
 		o.roughness = 0.95
+	elif o.resource_name == IRON_MATERIAL:
+		o.metallic = IRON_METALLIC
+		o.albedo_color = Color(o.albedo_color * IRON_SHADE, 1.0)
+		o.roughness = minf(1.0, IRON_ROUGHNESS / (ORM_METAL_G_MEAN if o.roughness_texture != null else 1.0))
 	elif o.resource_name == EMBER_MATERIAL:
 		o.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		o.albedo_color = EMBER_EMISSION

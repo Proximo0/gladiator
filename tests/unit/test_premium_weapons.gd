@@ -129,26 +129,27 @@ func test_art_materials_are_opaque() -> void:
 
 
 ## Two weapons of one id must not share a mesh resource (a shared mesh made headless teardown log
-## `Parameter "material" is null` twice per identical-weapon match).
+## `Parameter "material" is null` twice per identical-weapon match). The meshes are compared by instance id: a Mesh
+## reference held past its MeshInstance3D's free makes the headless (dummy) renderer log that same error.
 func test_art_meshes_not_shared_between_weapons() -> void:
 	var a := Weapon.new()
 	a.build(CombatData.weapon("longsword"))
 	var b := Weapon.new()
 	b.build(CombatData.weapon("longsword"))
-	var ma: Array[Mesh] = []
-	var mb: Array[Mesh] = []
+	var ma: Array[int] = []
+	var mb: Array[int] = []
 	_art_meshes(a.get_node("Art"), ma)
 	_art_meshes(b.get_node("Art"), mb)
 	assert_true(ma.size() > 0, "art has meshes")
-	for m: Mesh in ma:
+	for m: int in ma:
 		assert_false(mb.has(m), "art mesh is per weapon")
 	a.free()
 	b.free()
 
 
-func _art_meshes(n: Node, out: Array[Mesh]) -> void:
+func _art_meshes(n: Node, out: Array[int]) -> void:
 	if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
-		out.append((n as MeshInstance3D).mesh)
+		out.append((n as MeshInstance3D).mesh.get_instance_id())
 	for c: Node in n.get_children():
 		_art_meshes(c, out)
 
