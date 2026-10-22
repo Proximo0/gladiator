@@ -29,7 +29,6 @@ const SPRAY_HEIGHT: float = 0.6
 const MAX_DRAGS_PER_TICK: int = 4
 const FOLLOW_MODE: String = "follow"
 const WIDE_MODE: String = "wide"
-const RUMBLE_GAP_S: float = 0.05  ## min game seconds between rumble pulses (a flurry does not re-trigger every tick)
 const WIDE_FOV: float = 55.0  ## tighter than the default so two fighters fill more of the frame
 
 var arena: Arena = null
@@ -43,6 +42,7 @@ var _finale_done: Array[bool] = [false, false]
 var _finale_fighter: Fighter = null  ## the finale's victim, to see when its head comes off
 var panel: TuningPanel = null
 var hit_fx: HitFx = null
+var feel: FeelDirector = null  ## hit-stop, screen punch, bass, finisher cinematic, rumble patterns
 
 var _fighters: Array = []
 var _foot_down: Dictionary = {}
@@ -54,7 +54,6 @@ var _spray_clock: float = 0.0
 var _last_spray: float = -10.0
 var _drags: int = 0
 var _player_side: int = 0
-var _last_rumble: float = -10.0
 
 
 func build(camera_mode: String) -> void:
@@ -88,6 +87,10 @@ func build(camera_mode: String) -> void:
 	camera.fov = WIDE_FOV if camera_mode == WIDE_MODE else camera.fov
 	add_child(camera)
 	camera.current = true
+	feel = FeelDirector.new()
+	feel.name = "FeelDirector"
+	add_child(feel)
+	feel.setup(camera, sfx)
 	panel = TuningPanel.new()
 	panel.name = "TuningPanel"
 	add_child(panel)
@@ -112,6 +115,7 @@ func begin(fighters: Array, names: Array, player_side: int) -> void:
 	hud.track((fighters[human] as Fighter).health, (fighters[1 - human] as Fighter).health,
 			str(names[human]), str(names[1 - human]))
 	aim.bind(fighters[human] as Fighter, camera)
+	feel.begin(fighters, human)
 	camera.target = (fighters[human] as Fighter).parts["pelvis"]
 	camera.look_at_node = (fighters[1 - human] as Fighter).parts["pelvis"]
 	# Prime after the ragdolls have had a physics tick to settle, not on the freshly placed pose.
@@ -126,6 +130,7 @@ func end_match() -> void:
 		if is_instance_valid(f):
 			blood.untrack(f as Node)
 	_fighters = []
+	feel.end_match()
 	blood.clear()
 	if sand != null and sand.has_method("clear"):
 		sand.call("clear")
@@ -151,7 +156,7 @@ func on_hit(ev: Dictionary) -> void:
 
 
 ## Combat feel for one hit, all scaled by the hit's impact: camera kick, shake and finisher zoom, the flash on the
-## struck part, sparks for metal, pad rumble and phone vibration. Presentation only.
+## struck part, sparks for metal, then FeelDirector (hit-stop, screen punch, bass, rumble). Presentation only.
 func _feel(ev: Dictionary) -> void:
 	var tun: Tuning = Tuning.shared()
 	var imp: float = FeelLogic.impact(ev, tun)
@@ -165,7 +170,8 @@ func _feel(ev: Dictionary) -> void:
 		camera.hit_impact(FeelLogic.blow_dir(ev), strength, fin, FeelOptions.motion_scale(tun))
 		if fin or (victim != null and (victim as Fighter).health != null and (victim as Fighter).health.dead):
 			_finale(tgt, ev.get("point", Vector3.ZERO))
-	_rumble(ev, imp, tun)
+	if feel != null:
+		feel.on_hit(ev, victim, imp)
 
 
 func _on_fighter_died(side: int) -> void:
@@ -185,35 +191,6 @@ func _finale(tgt: int, hit: Vector3) -> void:
 	camera.start_finale((other.parts["pelvis"] as Node3D).global_position, victim.parts["pelvis"] as Node3D, hit,
 			FeelOptions.motion_scale(Tuning.shared()), victim.parts.get("head") as Node3D)
 	_finale_fighter = victim
-
-
-## Gamepad rumble for the fighter who landed the blow and the one who took it, and phone vibration for the human side.
-func _rumble(ev: Dictionary, imp: float, tun: Tuning) -> void:
-	if Flags.is_scripted_run() or _spray_clock - _last_rumble < RUMBLE_GAP_S:
-		return
-	var scale: float = FeelOptions.rumble_scale(tun)
-	var pads: Array[int] = []
-	for d: int in Input.get_connected_joypads():
-		pads.append(d)
-	var atk: int = int(ev.get("attacker", -1))
-	var tgt: int = int(ev.get("target", -1))
-	var any: bool = false
-	for side: int in [atk, tgt]:
-		var taken: bool = side == tgt
-		var r: Dictionary = FeelLogic.rumble(imp, taken, tun, scale)
-		if float(r["dur"]) <= 0.0:
-			continue
-		var dev: int = FeelLogic.pad_for_side(side, _player_side, pads)
-		if dev >= 0:
-			Input.start_joy_vibration(dev, float(r["weak"]), float(r["strong"]), float(r["dur"]))
-			any = true
-		if side == _player_side and (OS.has_feature("android") or OS.has_feature("ios")):
-			var v: Dictionary = FeelLogic.vibrate(imp, taken, tun, scale)
-			if int(v["ms"]) > 0:
-				Input.vibrate_handheld(int(v["ms"]), float(v["amp"]))
-				any = true
-	if any:
-		_last_rumble = _spray_clock
 
 
 func _spray(pos: Vector3, vel: Vector3, amount: float) -> void:

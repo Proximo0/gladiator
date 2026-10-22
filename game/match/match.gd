@@ -18,8 +18,6 @@ const WALL_SIDES: int = 48
 const WALL_DEPTH: float = 1.0
 const WALL_HEIGHT: float = 3.0
 const DEFAULT_PAUSE_S: float = 4.0
-const DEFAULT_SLOWMO_SCALE: float = 0.4
-const DEFAULT_SLOWMO_S: float = 1.0
 const VICTORY_DELAY_S: float = 1.4
 const PLAYER_DEVICE: String = "kbm"
 const PLAYER2_DEVICE: String = "pad1"
@@ -45,6 +43,8 @@ var _pause_ticks: int = 0
 var _victory_at: int = -1
 var _start_msec: int = 0
 var _slowmo_until: int = -1
+var _slowmo_from: int = -1  ## tick the end slow motion started; its curve is FinisherCine's
+var _slowmo_kind: String = ""
 var _finisher_seen: String = ""
 
 
@@ -306,8 +306,10 @@ func _finish(verdict: Dictionary, frames: Array) -> void:
 	if presenter != null:
 		var slow: bool = _finisher_seen != "" or str(verdict["reason"]) == "ko"
 		if slow:
-			_slowmo_until = tick + roundi(_t("match_slowmo_s", DEFAULT_SLOWMO_S) / delta)
-			Engine.time_scale = _t("match_slowmo_scale", DEFAULT_SLOWMO_SCALE)
+			_slowmo_kind = _finisher_seen
+			_slowmo_from = tick
+			_slowmo_until = tick + roundi(FinisherCine.length_s(_slowmo_kind, Tuning.shared()) / delta)
+			Engine.time_scale = FinisherCine.time_scale_at(_slowmo_kind, 0.0, Tuning.shared())
 		if str(verdict["reason"]) == "ko":
 			presenter.announce("SOPITVS / Knocked out")
 		_victory_at = tick + roundi(VICTORY_DELAY_S / delta)
@@ -323,6 +325,9 @@ func _tick_after() -> void:
 	if _slowmo_until >= 0 and tick >= _slowmo_until:
 		_slowmo_until = -1
 		Engine.time_scale = 1.0
+	elif _slowmo_until >= 0:
+		# Ticks are real time (the physics step shrinks, the tick rate does not).
+		Engine.time_scale = FinisherCine.time_scale_at(_slowmo_kind, float(tick - _slowmo_from) / float(Engine.physics_ticks_per_second), Tuning.shared())
 	if _victory_at >= 0 and tick >= _victory_at:
 		_victory_at = -1
 		presenter.announce(MatchJudge.result_banner(result, names))

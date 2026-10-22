@@ -12,6 +12,7 @@ const SIM_FILES: Array = [
 	"sim_camera_degenerate",
 	"sim_camera_finale",
 	"sim_audio_bot",
+	"sim_hit_feel",
 	"sim_net_loopback",
 	"sim_net_presented",
 	"sim_net_menu",
