@@ -4,13 +4,17 @@ extends RefCounted
 ## The droplet shader scales head and tail separately and orients the mesh along the velocity.
 
 
-static func teardrop(radial: int = 8) -> ArrayMesh:
+const TAIL_RINGS: int = 6
+const HEAD_RINGS: int = 8  ## rings from the head's equator to its tip: round silhouette, no visible facets
+
+
+static func teardrop(radial: int = 12) -> ArrayMesh:
 	var prof: Array[Vector2] = []  # (radius, z) from tail tip to head tip
-	for i: int in 6:  # rounded elliptical tail (no needle tip): reads as a liquid streak when stretched
-		var th0: float = float(i) / 6.0 * PI * 0.5
+	for i: int in TAIL_RINGS:  # rounded elliptical tail (no needle tip): reads as a liquid streak when stretched
+		var th0: float = float(i) / float(TAIL_RINGS) * PI * 0.5
 		prof.append(Vector2(sin(th0), -cos(th0)))
-	for j: int in 5:
-		var th: float = float(j) / 4.0 * PI * 0.5
+	for j: int in HEAD_RINGS + 1:
+		var th: float = float(j) / float(HEAD_RINGS) * PI * 0.5
 		prof.append(Vector2(cos(th), sin(th)))
 	var verts: PackedVector3Array = PackedVector3Array()
 	var norms: PackedVector3Array = PackedVector3Array()

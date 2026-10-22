@@ -36,3 +36,16 @@ func test_same_seed_same_mesh() -> void:
 	var c: PackedVector3Array = CapMesh.build(0.07, 0.058, _pal(), 12).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	assert_true(a == b)
 	assert_true(a != c)
+
+
+func test_tendrils_sag_along_gravity() -> void:
+	var down: PackedVector3Array = CapMesh.build(0.07, 0.058, _pal(), 11, Vector3.DOWN).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var up: PackedVector3Array = CapMesh.build(0.07, 0.058, _pal(), 11, Vector3.UP).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	assert_eq(down.size(), up.size())
+	# The collar reaches below the strands, so compare the highest point: strands given UP rise, given DOWN hang.
+	var hi_down: float = -1.0
+	var hi_up: float = -1.0
+	for i: int in down.size():
+		hi_down = maxf(hi_down, down[i].y)
+		hi_up = maxf(hi_up, up[i].y)
+	assert_true(hi_up > hi_down + 0.02, "strands hang along the given down")

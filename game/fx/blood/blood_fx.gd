@@ -179,7 +179,7 @@ func _build() -> void:
 	_mm_drops.name = "Droplets"
 	_mm_drops.material_override = drop_mat
 	_mm_drops.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_mm_drops.multimesh = _make_multimesh(BloodMesh.teardrop(7), true)
+	_mm_drops.multimesh = _make_multimesh(BloodMesh.teardrop(12), true)
 	add_child(_mm_drops)
 	_mm_mist = MultiMeshInstance3D.new()
 	_mm_mist.name = "Mist"

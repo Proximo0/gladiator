@@ -13,6 +13,10 @@ const CAP_SINK: float = -0.004
 ## Procedural gore face on a cut (the glb cap's flat disc was sunk into the stump's skin and read as a thin ring): stacked
 ## flat discs, dark wet rim, fat band, red flesh, bone and a dark marrow eye, widened past the limb's skin. Radii are
 ## shares of the glb cap's half width; each disc is DISC_STEP taller than the one below so none z-fights.
+const SKIN_ROUGH: float = 0.78  ## skin is matte: a low roughness mirrored the blue sky as a pale sheen
+const SKIN_SPEC: float = 0.12  ## Godot's metallic_specular (default 0.5)
+const SKIN_TAN_SAT: float = 1.1
+const SKIN_TAN_VAL: float = 0.9
 const CAP_WIDEN: float = 1.2
 const CAP_DISCS: Array = [
 	["rim", 1.08, "flesh", 0.32],
@@ -30,7 +34,8 @@ const CUT_REACH: float = 0.5
 ## `GfxQuality.small_part_shadows()` is false (low). The torso, pelvis, head, thighs and upper arms keep their shadow.
 ## Alien art overrides, set here and not in the glb: the Houdini preview reads dark and drab at fight distance.
 const ALIEN_SKIN_COLOR: Color = Color(0.42, 0.58, 0.47)  ## brighter and more green-grey saturated than the glb's 0.51/0.58/0.51
-const ALIEN_SKIN_ROUGH: float = 0.42
+const ALIEN_SKIN_ROUGH: float = 0.6
+const ALIEN_SKIN_SPEC: float = 0.2
 const ALIEN_EYE_ROUGH: float = 0.02
 const ALIEN_EYE_SPEC: float = 1.0
 
@@ -54,7 +59,7 @@ var _alien_mats: Dictionary = {}  ## glb material name -> override (see ALIEN_SK
 func _init(side: int, match_seed: int, outfit_id: String = OutfitRules.DEFAULT_ID) -> void:
 	_outfit = OutfitRules.clean_id(outfit_id)
 	var pal: Dictionary = OutfitRules.palette(_outfit)
-	var skin_col: Color = BodyLook.skin_color(match_seed, side)
+	var skin_col: Color = tanned(BodyLook.skin_color(match_seed, side))  # an outfit's own skin colour is used as authored
 	var cloth_col: Color = BodyLook.cloth_color(side)
 	if _outfit != OutfitRules.DEFAULT_ID:
 		skin_col = OutfitRules.color(pal, "skin", skin_col)
@@ -74,8 +79,16 @@ func _tinted(kind: String, col: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.resource_name = kind
 	m.albedo_color = col
-	m.roughness = 0.55 if kind == "skin" else 0.9
+	m.roughness = SKIN_ROUGH if kind == "skin" else 0.9
+	if kind == "skin":
+		m.metallic_specular = SKIN_SPEC
 	return m
+
+
+## Skin tone as it should read in strong warm sun: the sun tint (1, 0.8, 0.55) bleaches a pale albedo to cream, so skin
+## is a little more saturated and darker than the table value.
+static func tanned(c: Color) -> Color:
+	return Color.from_hsv(c.h, minf(c.s * SKIN_TAN_SAT, 1.0), c.v * SKIN_TAN_VAL)
 
 
 ## `asset` is a base body asset ("torso", "cap_neck") or "outfits/<id>/<name>" (an outfit's own cap, see BodyLook.cap_for).
@@ -197,6 +210,7 @@ func _alien_material(mn: String, src: Material) -> Material:
 	if mn == "alien_skin":
 		m.albedo_color = ALIEN_SKIN_COLOR
 		m.roughness = ALIEN_SKIN_ROUGH
+		m.metallic_specular = ALIEN_SKIN_SPEC
 	else:
 		m.albedo_color = Color(0.0, 0.0, 0.0)
 		m.roughness = ALIEN_EYE_ROUGH
@@ -273,16 +287,23 @@ func _add_cap(b: Node3D, key: String, asset: String, at: Vector3, normal: Vector
 		half_w = maxf(half_w, maxf(bb.size.x, bb.size.z) * 0.5)
 		(mi as MeshInstance3D).visible = false
 	half_w = half_w if half_w > 0.0 else 0.058
-	_cap_face(cap, half_w * CAP_WIDEN, key)
+	_cap_face(cap, half_w * CAP_WIDEN, key, _local_down(b, basis))
 	cap.transform = Transform3D(basis, at - normal.normalized() * CAP_SINK)
 	look.add_child(cap)
 	apply_shadow(cap, str(b.name))
 	_caps[key] = cap
 
 
+## World down in the frame of a cap that sits on body `b` with orientation `cap_basis` (so loose strands can hang).
+static func _local_down(b: Node3D, cap_basis: Basis) -> Vector3:
+	if not b.is_inside_tree():
+		return Vector3.DOWN
+	return (b.global_transform.basis * cap_basis).inverse() * Vector3.DOWN
+
+
 ## The gore face of one cut (`CapMesh`: torn edge, dome, fibres, flared collar, tendrils), built once per sever and
 ## coloured from the fighter's blood palette (ichor for the alien).
-func _cap_face(cap: Node3D, radius: float, key: String) -> void:
+func _cap_face(cap: Node3D, radius: float, key: String, down: Vector3 = Vector3.DOWN) -> void:
 	var pal: Dictionary = {}
 	for d: Array in CAP_DISCS:
 		var base: Color = _blood.inner(str(d[2]))
@@ -291,15 +312,15 @@ func _cap_face(cap: Node3D, radius: float, key: String) -> void:
 	pal["skin"] = _skin.albedo_color if _skin != null else Color(0.8, 0.6, 0.5)
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.75
-	mat.metallic_specular = 0.15
+	mat.roughness = 0.62
+	mat.metallic_specular = 0.06
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	if _blood.emission > 0.0:
 		mat.emission_enabled = true
 		mat.emission = (pal["flesh"] as Color) * _blood.emission * 0.4
 	var mi: MeshInstance3D = MeshInstance3D.new()
 	mi.name = "Face"
-	mi.mesh = CapMesh.build(radius, radius / CAP_WIDEN, pal, key.hash())
+	mi.mesh = CapMesh.build(radius, radius / CAP_WIDEN, pal, key.hash(), down)
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	cap.add_child(mi)

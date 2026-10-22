@@ -13,7 +13,7 @@ func test_palette_fallback_materials() -> void:
 	assert_eq(a._armor.albedo_color, Color.html("#8a1c14"))
 	assert_eq(a._cloth.albedo_color, Color.html("#1c2a55"))
 	# Skin tone is still the seed's on an outfit that sets no skin.
-	assert_eq(a._skin.albedo_color, BodyLook.skin_color(5, 0))
+	assert_eq(a._skin.albedo_color, FighterArt.tanned(BodyLook.skin_color(5, 0)))
 
 
 func test_alien_skin_override() -> void:
@@ -53,7 +53,7 @@ func test_own_art_skin_and_team_cloth() -> void:
 	var m := _mesh_with(["skin", "cloth", "lacquer_red"])
 	a._tint(m, true, true)
 	assert_true(m.get_surface_override_material(0) == a._skin, "samurai skin surface takes the skin tone")
-	assert_eq(a._skin.albedo_color, BodyLook.skin_color(5, 0))
+	assert_eq(a._skin.albedo_color, FighterArt.tanned(BodyLook.skin_color(5, 0)))
 	assert_true(m.get_surface_override_material(1) == a._team, "cloth takes the team colour")
 	assert_eq(a._team.albedo_color, BodyLook.cloth_color(0))
 	assert_true(m.get_surface_override_material(2) == null, "other surfaces keep the glb material")

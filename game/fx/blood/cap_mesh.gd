@@ -15,15 +15,18 @@ const BONE_R1: float = 0.28
 const BONE_LIFT: float = 0.008  ## the bone ring stands this far proud of the flesh
 const COLLAR_DROP: float = 0.05  ## how far the collar reaches back down the limb (m)
 const COLLAR_RINGS: int = 3
-const TENDRILS: int = 3
-const TENDRIL_SEGS: int = 4
-const TENDRIL_SIDES: int = 5
-const TENDRIL_LEN: float = 0.07
+const TENDRILS: int = 3  ## two or three thin ones
+const TENDRIL_SEGS: int = 6
+const TENDRIL_SIDES: int = 6
+const TENDRIL_LEN: float = 0.065
+const TENDRIL_SAG: float = 1.0  ## droop: the tip hangs this many lengths below the rise
+const TENDRIL_R0: float = 0.011  ## strand radius at the root and at the tip (m)
+const TENDRIL_R1: float = 0.0035
 
 
 ## Mesh for a face of `radius` (m) on a limb whose skin is `skin_radius` wide. `pal` holds Colors: flesh, fat, bone,
-## marrow, skin. `seed_value` fixes the noise.
-static func build(radius: float, skin_radius: float, pal: Dictionary, seed_value: int) -> ArrayMesh:
+## marrow, skin. `seed_value` fixes the noise. `gravity` is world down in the cap's frame (the strands sag along it).
+static func build(radius: float, skin_radius: float, pal: Dictionary, seed_value: int, gravity: Vector3 = Vector3.DOWN) -> ArrayMesh:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
 	var ph: Array[float] = []
@@ -84,27 +87,30 @@ static func build(radius: float, skin_radius: float, pal: Dictionary, seed_value
 			var b0: int = base + c * SEGS
 			idx.append_array([a0 + s, a0 + s2, b0 + s])
 			idx.append_array([a0 + s2, b0 + s2, b0 + s])
-	# Tendrils: a short bent tube each, thick and red at the root, thin and pale at the tip.
+	# Tendrils: thin, soft strands. Each leaves the face, bows out a little and then sags over the collar under its own
+	# weight (quadratic droop), tapering to a hair-thin wet tip. Flesh coloured, darker toward the tip; no pale one.
+	var gdir: Vector3 = gravity.normalized() if gravity.length_squared() > 0.01 else Vector3.DOWN
 	for k: int in TENDRILS:
 		var a: float = ph[k] + float(k) * TAU / float(TENDRILS)
-		var t0: float = rng.randf_range(0.45, 0.8)
+		var t0: float = rng.randf_range(0.35, 0.65)
 		var root: Vector3 = Vector3(cos(a), 0.0, sin(a)) * radius * t0
 		root.y = face_height(t0, a, ph)
 		var out: Vector3 = Vector3(cos(a), 0.0, sin(a))
-		var len: float = TENDRIL_LEN * rng.randf_range(0.7, 1.3)
-		var white: bool = k == 1
+		var side: Vector3 = out.cross(Vector3.UP).normalized()
+		var len: float = TENDRIL_LEN * rng.randf_range(0.8, 1.25)
+		var wob: float = rng.randf_range(-0.012, 0.012)
 		var tb: int = pos.size()
 		for sg: int in TENDRIL_SEGS + 1:
 			var f: float = float(sg) / float(TENDRIL_SEGS)
-			# up out of the wound, then arching outward and down
-			var c: Vector3 = root + Vector3(0.0, len * 0.3 * sin(f * PI * 0.85), 0.0) + out * (len * 0.85 * f)
-			c.y -= len * 0.7 * f * f
-			var tr: float = lerpf(0.011, 0.005, f)
-			var tcol: Color = (bone.lerp(flesh, 0.25) if white else flesh).lerp(fat if white else marrow, f * 0.6)
-			var side: Vector3 = out.cross(Vector3.UP).normalized()
+			var c: Vector3 = root + out * (len * 0.5 * f) + side * (wob * sin(f * PI))
+			c.y += len * 0.3 * sin(minf(f * 2.2, 1.0) * PI * 0.5)
+			c += gdir * (len * TENDRIL_SAG * f * f)
+			var tr: float = lerpf(TENDRIL_R0, TENDRIL_R1, pow(f, 0.8))
+			var tcol: Color = flesh.darkened(0.12).lerp(marrow.darkened(0.25), f * 0.7)
+			var nb: Vector3 = out.cross(side).normalized()
 			for si: int in TENDRIL_SIDES:
 				var sa: float = TAU * float(si) / float(TENDRIL_SIDES)
-				pos.append(c + (side * cos(sa) + Vector3.UP * sin(sa)) * tr)
+				pos.append(c + (side * cos(sa) + nb * sin(sa)) * tr)
 				col.append(tcol)
 		for sg: int in TENDRIL_SEGS:
 			for si: int in TENDRIL_SIDES:

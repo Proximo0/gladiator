@@ -14,6 +14,7 @@ uniform vec3 blood_dark1 : source_color = vec3(0.52, 0.008, 0.018);
 uniform float blood_glow1 = 0.0;
 uniform float stretch_time = 0.006;
 uniform float tail_cap = 3.0;  // longest tail as a multiple of the drop radius: short motion trail, never a hatch line
+uniform float edge_dark = 0.55;  // how much the silhouette darkens (thick liquid absorbs light)
 uniform float min_px = 2.2;  // smallest drop radius on screen in pixels: far drops stay round dots instead of sub-pixel slivers
 
 varying float v_thick;
@@ -41,19 +42,24 @@ void vertex() {
 }
 
 void fragment() {
-	float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+	float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
+	float fr = pow(1.0 - ndv, 3.0);
 	float dark = clamp(v_thick * 0.3 + v_shade * 0.25, 0.0, 0.55);
 	bool second = v_pal > 0.5;
 	vec3 bright = second ? blood_bright1 : blood_bright;
 	vec3 dark_c = second ? blood_dark1 : blood_dark;
 	float glow = second ? blood_glow1 : blood_glow;
+	// Liquid look: the body is a deep translucent-looking red that darkens toward the silhouette (light is absorbed by
+	// the thick edge), with a small hard highlight and a soft warm one on the lit side.
 	vec3 col = mix(bright, dark_c, dark);
+	col = mix(col, dark_c * 0.45, smoothstep(0.0, 1.0, 1.0 - ndv) * edge_dark);
 	ALBEDO = col;
-	ROUGHNESS = 0.04;
-	SPECULAR = 1.0;
+	ROUGHNESS = 0.06;
+	SPECULAR = 0.05;
 	METALLIC = 0.0;
-	// glints: a wet highlight toward the sky, so drops catch the light
 	vec3 up_v = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-	float hl = pow(max(dot(NORMAL, normalize(up_v * 0.8 + vec3(0.35, 0.2, 0.5))), 0.0), 22.0);
-	EMISSION = col * (0.32 + glow) + bright * 0.56 * fr * 0.5 + mix(bright, vec3(1.0), 0.2) * 0.9 * hl * 0.4;
+	vec3 ld = normalize(up_v * 0.8 + vec3(0.35, 0.2, 0.5));
+	float hl = pow(max(dot(NORMAL, ld), 0.0), 60.0);
+	float soft = pow(max(dot(NORMAL, ld), 0.0), 6.0);
+	EMISSION = col * (0.26 + glow) * (1.0 - 0.5 * fr) + bright * 0.12 * soft + vec3(1.0, 0.92, 0.85) * hl * 0.55;
 }
