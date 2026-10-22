@@ -16,6 +16,7 @@ const BASE_FLOW: float = 0.10
 const BUDGETS: Array[int] = [600, 2400, 5000]
 const MIST_BUDGETS: Array[int] = [90, 240, 480]
 const RATE_MULT: Array[float] = [0.5, 1.0, 1.7]
+const FOUNTAIN_STREAMS: Array[float] = [0.5, 1.0, 1.25]  ## share of the base jet count per quality level
 const RAY_BUDGETS: Array[int] = [50, 140, 260]
 ## Ground decals (spots and pools) and body/weapon stains per quality.
 const DECAL_BUDGETS: Array[int] = [160, 420, 900]
@@ -181,3 +182,47 @@ static func stretch_length(speed: float, radius: float, factor: float) -> float:
 ## Grid key for aggregating ground splats.
 static func splat_cell(x: float, z: float, cell: float) -> Vector2i:
 	return Vector2i(floori(x / cell), floori(z / cell))
+
+
+# --- Beheading fountain -----------------------------------------------------------------------------------
+
+## Number of jets for a base count at a quality level (never fewer than one).
+static func fountain_streams(base: float, level: int) -> int:
+	return maxi(1, roundi(base * FOUNTAIN_STREAMS[clampi(level, 0, 2)]))
+
+
+## Strength 0..1 of the fountain over time: full for `hold` seconds, then a smooth taper that reaches zero at `dur`.
+static func fountain_envelope(age: float, hold: float, dur: float) -> float:
+	if age <= hold:
+		return 1.0
+	if age >= dur:
+		return 0.0
+	var t: float = (age - hold) / maxf(dur - hold, 0.001)
+	return pow(1.0 - t, 1.7)
+
+
+## Heartbeat flow of the fountain: the arterial beat with `floor` of the flow left between beats.
+static func fountain_pulse(phase: float, floor_share: float) -> float:
+	return floor_share + (1.0 - floor_share) * pulse(phase)
+
+
+## Share 0..1 of the planned droplets that may be emitted given the free slots of the droplet pool:
+## full while more than `headroom` of the pool is free, falling to zero as it fills.
+static func fountain_headroom(free_slots: int, capacity: int, headroom: float) -> float:
+	return clampf(float(free_slots) / maxf(float(capacity) * headroom, 1.0), 0.0, 1.0)
+
+
+## Direction of jet `i` of `n` at time `t`: the neck axis turned toward world up by `up_bias`, then each jet leans
+## away by `fan` (the lean breathes), sways by `wobble`, and the whole bunch circles at `swirl` rad/s.
+static func fountain_dir(axis: Vector3, up_bias: float, fan: float, wobble: float, swirl: float,
+		i: int, n: int, t: float) -> Vector3:
+	var a: Vector3 = axis.normalized().lerp(Vector3.UP, clampf(up_bias, 0.0, 1.0)).normalized()
+	var fi: float = float(i)
+	var az: float = TAU * fi / float(maxi(n, 1)) + t * swirl + 0.7 * sin(t * 1.3 + fi * 2.1)
+	var lean: float = fan * (0.55 + 0.45 * sin(t * 3.1 + fi * 1.7)) + wobble * sin(t * 7.3 + fi * 2.9)
+	if n == 1:
+		lean *= 0.5
+	var ref: Vector3 = Vector3.UP if absf(a.y) < 0.95 else Vector3.RIGHT
+	var u: Vector3 = a.cross(ref).normalized()
+	var w: Vector3 = a.cross(u)
+	return (a * cos(lean) + (u * cos(az) + w * sin(az)) * sin(lean)).normalized()

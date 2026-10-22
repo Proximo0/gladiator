@@ -92,3 +92,82 @@ func test_tracked_fighter_slot_follows_its_side() -> void:
 	a.free()
 	b.free()
 	fx.free()
+
+
+class _DummyHealth extends RefCounted:
+	var blood: float = 2.0  ## below the death line: a normal arterial spurt would stop at once
+	var dead: bool = true
+
+
+class _BeheadFighter extends Node3D:
+	var side: int = 1
+	var health: _DummyHealth = _DummyHealth.new()
+	var torso: Node3D = Node3D.new()
+	var head: Node3D = Node3D.new()
+
+
+func _beheaded(quality: int) -> Array:
+	var fx: BloodFx = BloodFx.new()
+	fx.auto_step = false
+	fx._build()
+	fx.set_quality(quality)
+	fx.set_palette(1, OutfitRules.blood_palette("alien"))
+	var f: _BeheadFighter = _BeheadFighter.new()
+	f.add_child(f.torso)
+	f.add_child(f.head)
+	(Engine.get_main_loop() as SceneTree).root.add_child(f)  ## world transforms need a tree
+	f.torso.position = Vector3(0, 1.3, 0)
+	fx.track(f)
+	fx.on_gore({"kind": "behead", "part": "head", "point": Vector3(0, 1.6, 0), "normal": Vector3.UP, "amount": 1.0}, f)
+	return [fx, f]
+
+
+func test_behead_fountain_runs_without_touching_the_fighters_blood() -> void:
+	var pair: Array = _beheaded(1)
+	var fx: BloodFx = pair[0]
+	var f: _BeheadFighter = pair[1]
+	var peak: int = 0
+	for i: int in 120:
+		fx.step(1.0 / 60.0)
+		peak = maxi(peak, fx.live_droplets())
+	assert_true(peak > 300, "a dead fighter with blood below the death line still fountains")
+	assert_near(f.health.blood, 2.0)
+	assert_true(f.health.dead)
+	assert_true(fx._spurts.size() >= 1, "still running after 2 s")
+	for i: int in 60 * 10:
+		fx.step(1.0 / 60.0)
+	assert_eq(fx._spurts.size(), 0, "the fountain tapers off and ends")
+	f.free()
+	fx.free()
+
+
+func test_behead_fountain_scales_down_at_low_quality_and_respects_the_pool() -> void:
+	var peaks: Array[int] = []
+	for q: int in 3:
+		var pair: Array = _beheaded(q)
+		var fx: BloodFx = pair[0]
+		var peak: int = 0
+		for i: int in 90:
+			fx.step(1.0 / 60.0)
+			peak = maxi(peak, fx.live_droplets())
+		assert_true(peak <= fx.sim.capacity)
+		peaks.append(peak)
+		(pair[1] as Node).free()
+		fx.free()
+	assert_true(peaks[0] < peaks[1], "low quality emits less")
+	assert_true(peaks[0] <= BloodMath.budget(0))
+
+
+func test_behead_fountain_droplets_carry_the_victims_palette_slot() -> void:
+	var pair: Array = _beheaded(1)
+	var fx: BloodFx = pair[0]
+	for i: int in 20:
+		fx.step(1.0 / 60.0)
+	var alien: int = 0
+	for i: int in fx.sim.count:
+		if fx.sim.slot_of(i) == 1:
+			alien += 1
+	assert_true(alien > 100)
+	assert_eq(alien, fx.sim.count, "every droplet of the fountain is the fighter's own colour")
+	(pair[1] as Node).free()
+	fx.free()

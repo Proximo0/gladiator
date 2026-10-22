@@ -103,3 +103,53 @@ func test_splat_calls_grow_with_quality() -> void:
 	assert_true(BloodMath.splat_calls(0) < BloodMath.splat_calls(1))
 	assert_true(BloodMath.splat_calls(1) < BloodMath.splat_calls(2))
 	assert_eq(BloodMath.splat_calls(9), BloodMath.splat_calls(2))
+
+
+func test_fountain_envelope_holds_then_tapers_to_zero() -> void:
+	assert_near(BloodMath.fountain_envelope(0.0, 1.5, 6.0), 1.0)
+	assert_near(BloodMath.fountain_envelope(1.5, 1.5, 6.0), 1.0)
+	var mid: float = BloodMath.fountain_envelope(3.5, 1.5, 6.0)
+	var late: float = BloodMath.fountain_envelope(5.5, 1.5, 6.0)
+	assert_true(mid < 1.0 and mid > late and late > 0.0)
+	assert_near(BloodMath.fountain_envelope(6.0, 1.5, 6.0), 0.0)
+	assert_near(BloodMath.fountain_envelope(9.0, 1.5, 6.0), 0.0)
+
+
+func test_fountain_pulse_beats_and_never_drops_below_floor() -> void:
+	var lo: float = 1.0
+	var hi: float = 0.0
+	for i: int in 100:
+		var v: float = BloodMath.fountain_pulse(float(i) / 100.0, 0.14)
+		lo = minf(lo, v)
+		hi = maxf(hi, v)
+	assert_near(lo, 0.14, 0.001)
+	assert_true(hi > 0.95)
+	assert_near(BloodMath.fountain_pulse(2.3, 0.2), BloodMath.fountain_pulse(0.3, 0.2), 0.0001)
+
+
+func test_fountain_streams_scale_with_quality() -> void:
+	assert_eq(BloodMath.fountain_streams(4.0, 0), 2)
+	assert_eq(BloodMath.fountain_streams(4.0, 1), 4)
+	assert_eq(BloodMath.fountain_streams(4.0, 2), 5)
+	assert_eq(BloodMath.fountain_streams(1.0, 0), 1)
+
+
+func test_fountain_headroom_throttles_as_the_pool_fills() -> void:
+	assert_near(BloodMath.fountain_headroom(2400, 2400, 0.35), 1.0)
+	assert_near(BloodMath.fountain_headroom(840, 2400, 0.35), 1.0)
+	assert_near(BloodMath.fountain_headroom(420, 2400, 0.35), 0.5)
+	assert_near(BloodMath.fountain_headroom(0, 2400, 0.35), 0.0)
+
+
+func test_fountain_dir_leans_up_stays_unit_and_streams_differ() -> void:
+	var axis: Vector3 = Vector3(1, 0, 0)
+	var dirs: Array[Vector3] = []
+	for i: int in 4:
+		var d: Vector3 = BloodMath.fountain_dir(axis, 0.7, 0.4, 0.2, 1.0, i, 4, 0.5)
+		assert_near(d.length(), 1.0, 0.001)
+		assert_true(d.y > 0.4, "mostly upward")
+		dirs.append(d)
+	assert_true(dirs[0].distance_to(dirs[1]) > 0.05)
+	var still: Vector3 = BloodMath.fountain_dir(axis, 1.0, 0.0, 0.0, 0.0, 0, 1, 3.0)
+	assert_near(still.y, 1.0, 0.001)
+	assert_true(BloodMath.fountain_dir(axis, 0.0, 0.0, 0.0, 0.0, 0, 1, 1.0).is_equal_approx(axis))

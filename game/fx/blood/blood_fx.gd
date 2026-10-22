@@ -48,6 +48,15 @@ class _BfSpurt extends RefCounted:
 	var slot: int = 0
 	var anchor_vel: Vector3 = Vector3.ZERO
 	var prev_pulse: float = 0.0
+	var fountain: bool = false  ## the beheading fountain: ignores the fighter's blood, several jets
+	var streams: int = 1
+	var share: float = 1.0  ## strength of this fountain relative to a neck (the head's trail is smaller)
+	var up_bias: float = 0.6
+	var stream_acc: PackedFloat32Array = PackedFloat32Array()
+	var pool_slot: int = -1
+	var pool_acc: float = 0.0
+	var sand_acc: float = 0.0
+	var sand_timer: float = 0.0
 
 class _BfWound extends RefCounted:
 	var anchor: Node3D = null
@@ -453,6 +462,10 @@ func on_gore(event: Dictionary, f: Object = null) -> void:
 				_wound_owner_tag(f)
 		"behead":
 			start_spurt(anchor, point, (nrm + Vector3.UP * 0.35).normalized(), strength, "behead", cb, gslot)
+			var head: Node3D = _part_node(f, "head")
+			if head != null and Tuning.shared().fountain_head_share > 0.0:
+				var hdir: Vector3 = -nrm  ## the head's cut face looks back at the neck
+				start_spurt(head, point, hdir, strength, "fountain_head", Callable(), gslot)
 			_burst(point, nrm, 130, 2.5, 9.5, 0.55, 0.0078, gslot)
 			_ground_splash(point, 34, gslot)
 			if anchor != null:
@@ -501,22 +514,19 @@ func start_spurt(anchor: Node3D, point: Vector3, dir: Vector3, strength: float, 
 	s.blood_cb = blood_cb
 	s.phase = rng.randf() * 0.2
 	match kind:
-		"behead":
-			s.tau = 24.0
-			s.dur = 55.0
-			s.max_rate = 1700.0
-			s.v_min = 2.5
-			s.v_max = 9.0
-			s.spread = 0.07
+		"behead", "fountain_head":
+			s.fountain = true
+			var tn: Tuning = Tuning.shared()
+			var head_trail: bool = kind == "fountain_head"
+			s.streams = 1 if head_trail else BloodMath.fountain_streams(tn.fountain_streams, quality)
+			s.share = tn.fountain_head_share if head_trail else 1.0
+			s.up_bias = tn.fountain_up_bias * (0.4 if head_trail else 1.0)
+			s.dur = tn.fountain_dur * (0.5 if head_trail else 1.0)
+			s.stream_acc.resize(s.streams)
+			s.phase = rng.randf()
 			s.r_min = 0.0026
 			s.r_max = 0.0075
-			s.stretch = 4.5
-			s.base_flow = 0.14
-			var lean: float = rng.randf() * TAU
-			var axis: Vector3 = s.ldir
-			var side: Vector3 = axis.cross(Vector3(cos(lean), 0.0, sin(lean))).normalized()
-			if side.length_squared() > 0.5:
-				s.ldir = axis.rotated(side, 0.75)
+			s.stretch = 3.0
 		"gut":
 			s.tau = 18.0
 			s.dur = 45.0
@@ -663,6 +673,10 @@ func _update_spurts(dt: float) -> void:
 			origin = xf * s.lpos
 			dir = (xf.basis * s.ldir).normalized()
 			s.anchor_vel = s.anchor_vel.lerp((origin - s.last_origin) / dt, 0.5)
+		if s.fountain:
+			_emit_fountain(s, origin, dir, dt)
+			s.last_origin = origin
+			continue
 		var blood: float = _read_blood(s.blood_cb, full - s.consumed)
 		var res: float = BloodMath.reserve(blood, full, death)
 		var press: float = BloodMath.pressure(res)
@@ -692,6 +706,59 @@ func _update_spurts(dt: float) -> void:
 			var r: float = BloodMath.drop_radius(rng.randf(), s.r_min, s.r_max) * (0.75 + 0.45 * minf(flow, 1.0))
 			sim.emit(p, v, r, s.stretch, 6.0, rng.randf(), s.slot)
 		s.last_origin = origin
+
+
+## The beheading fountain. Presentation only: it never reads or changes the fighter's blood. Several jets leave the
+## neck (or the head's cut face), aimed mostly up, swaying and circling, pulsing like a heartbeat and tapering off.
+func _emit_fountain(s: _BfSpurt, origin: Vector3, axis: Vector3, dt: float) -> void:
+	var tn: Tuning = Tuning.shared()
+	var env: float = BloodMath.fountain_envelope(s.age, tn.fountain_hold, s.dur)
+	if env <= 0.0:
+		_spurts.erase(s)
+		return
+	s.phase += dt * tn.fountain_bpm / 60.0
+	var gush: float = 1.0 + tn.fountain_gush * exp(-s.age / 0.7)
+	var beat: float = BloodMath.fountain_pulse(s.phase, tn.fountain_pulse_floor)
+	var flow: float = s.strength * s.share * env * beat
+	var fresh: bool = beat > 0.6 and s.prev_pulse <= 0.6
+	s.prev_pulse = beat
+	var room: float = BloodMath.fountain_headroom(sim.free_slots(), sim.capacity, tn.fountain_headroom)
+	var per_jet_cap: int = maxi(int(tn.fountain_emit_cap / float(s.streams)), 1)
+	var rate: float = tn.fountain_rate * BloodMath.rate_mult(quality) * room
+	var speed: float = BloodMath.spurt_speed((beat - tn.fountain_pulse_floor) / maxf(1.0 - tn.fountain_pulse_floor, 0.01) * minf(env + 0.15, 1.0), tn.fountain_v_min, tn.fountain_v_max)
+	for k: int in s.streams:
+		var jet_dir: Vector3 = BloodMath.fountain_dir(axis, s.up_bias, tn.fountain_fan, tn.fountain_wobble, tn.fountain_swirl,
+				k, s.streams, s.age)
+		if fresh and room > 0.0:
+			for m: int in int(tn.fountain_mist):
+				mist.emit(origin + jet_dir * 0.1, jet_dir * rng.randf_range(1.0, 2.4) + _jit(0.5), 0.06,
+						rng.randf_range(0.35, 0.6), rng.randf_range(0.7, 1.2), 0.4, rng.randf() * TAU, s.slot)
+		var want: float = flow * gush * rate * dt + s.stream_acc[k]
+		var n: int = mini(int(want), per_jet_cap)
+		s.stream_acc[k] = minf(want - float(int(want)), 1.0)
+		for j: int in n:
+			var frac: float = (float(j) + rng.randf()) / float(maxi(n, 1))
+			var ta: float = dt * (1.0 - frac)
+			var d: Vector3 = BloodMath.cone_dir(jet_dir, 0.05 + 0.05 * (1.0 - minf(flow, 1.0)), rng.randf(), rng.randf())
+			var v: Vector3 = d * speed * rng.randf_range(0.85, 1.12) + s.anchor_vel * 0.8
+			var p: Vector3 = s.last_origin.lerp(origin, frac) + v * ta + Vector3(0, -0.5 * gravity * ta * ta, 0)
+			var r: float = BloodMath.drop_radius(rng.randf(), s.r_min, s.r_max) * tn.fountain_drop_scale * (0.7 + 0.5 * minf(flow, 1.0))
+			sim.emit(p, v, r, s.stretch, 6.0, rng.randf(), s.slot)
+	# Pools on the sand under the body, poured while the fountain runs (a head's trail makes none).
+	if s.share >= 1.0 and tn.fountain_pool > 0.0:
+		var ground: Vector3 = Vector3(origin.x, _ground_y(origin) + 0.006, origin.z)
+		var l: float = tn.fountain_pool * env * (0.5 + 0.5 * beat) * dt * BloodMath.rate_mult(quality)
+		s.pool_acc += l
+		s.sand_acc += l
+		s.sand_timer += dt
+		if s.pool_acc >= 0.01:
+			s.pool_slot = decals.feed(s.pool_slot, ground, s.pool_acc, rng.randf(), s.slot)
+			s.pool_acc = 0.0
+		if s.sand_timer >= 0.25 and sand != null and sand.has_method("add_blood"):
+			var at: Vector3 = ground + Vector3(rng.randf_range(-0.2, 0.2), 0.0, rng.randf_range(-0.2, 0.2))
+			sand.call("add_blood", at, BloodMath.splat_radius(s.sand_acc), s.sand_acc, s.slot)
+			s.sand_acc = 0.0
+			s.sand_timer = 0.0
 
 
 func _update_wounds(dt: float) -> void:

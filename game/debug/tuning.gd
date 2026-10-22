@@ -150,6 +150,25 @@ const FIELDS: Array = [
 	["health_consc_recover", 0.03, 0.0, 0.5, 0.005, "Health", "Consciousness recovery per second."],
 	["health_stamina_recover", 0.2, 0.0, 1.0, 0.01, "Health", "Stamina recovered per second at rest."],
 	["health_stamina_drain", 0.3, 0.0, 1.0, 0.01, "Health", "Stamina drained per second at full exertion."],
+	["fountain_streams", 5.0, 1.0, 8.0, 1.0, "Blood", "Beheading fountain: jets from the neck at normal quality (low quality uses half, high a quarter more)."],
+	["fountain_dur", 6.5, 1.0, 15.0, 0.1, "Blood", "Beheading fountain: seconds until the jets stop."],
+	["fountain_hold", 1.6, 0.0, 8.0, 0.1, "Blood", "Beheading fountain: seconds at full strength before it tapers off."],
+	["fountain_bpm", 150.0, 40.0, 240.0, 5.0, "Blood", "Beheading fountain: heartbeat pulses per minute."],
+	["fountain_pulse_floor", 0.14, 0.0, 1.0, 0.02, "Blood", "Beheading fountain: share of the flow that stays between heartbeats."],
+	["fountain_rate", 1300.0, 50.0, 2000.0, 10.0, "Blood", "Beheading fountain: droplets per second per jet at full flow and normal quality."],
+	["fountain_v_min", 3.2, 1.0, 12.0, 0.1, "Blood", "Beheading fountain: droplet exit speed between beats, m/s."],
+	["fountain_v_max", 7.5, 3.0, 20.0, 0.1, "Blood", "Beheading fountain: droplet exit speed at the top of a beat, m/s."],
+	["fountain_up_bias", 0.6, 0.0, 1.0, 0.05, "Blood", "Beheading fountain: how far the jets turn from the neck axis toward straight up (0 = along the neck, 1 = vertical)."],
+	["fountain_fan", 0.5, 0.0, 1.0, 0.02, "Blood", "Beheading fountain: radians the jets lean away from the main axis."],
+	["fountain_wobble", 0.22, 0.0, 1.0, 0.02, "Blood", "Beheading fountain: radians of swaying added to each jet."],
+	["fountain_swirl", 0.9, 0.0, 4.0, 0.1, "Blood", "Beheading fountain: radians per second the jets circle around the axis."],
+	["fountain_drop_scale", 3.2, 0.5, 3.0, 0.05, "Blood", "Beheading fountain: droplet size multiplier (cartoon fat drops)."],
+	["fountain_gush", 1.4, 0.0, 4.0, 0.1, "Blood", "Beheading fountain: extra flow in the first moments."],
+	["fountain_emit_cap", 250.0, 20.0, 400.0, 5.0, "Blood", "Beheading fountain: most droplets all jets may emit in one frame."],
+	["fountain_mist", 2.0, 0.0, 6.0, 1.0, "Blood", "Beheading fountain: mist puffs per jet per heartbeat."],
+	["fountain_pool", 0.9, 0.0, 4.0, 0.05, "Blood", "Beheading fountain: presentation litres per second poured onto the sand under the body."],
+	["fountain_head_share", 0.35, 0.0, 1.0, 0.05, "Blood", "Beheading fountain: strength of the trail from the severed head, as a share of one neck jet."],
+	["fountain_headroom", 0.35, 0.05, 1.0, 0.05, "Blood", "Beheading fountain: the jets taper off as free droplet slots drop below this share of the pool."],
 ]
 
 static var _shared: Tuning = null
@@ -294,6 +313,25 @@ var health_clot: float
 var health_consc_recover: float
 var health_stamina_recover: float
 var health_stamina_drain: float
+var fountain_streams: float
+var fountain_dur: float
+var fountain_hold: float
+var fountain_bpm: float
+var fountain_pulse_floor: float
+var fountain_rate: float
+var fountain_v_min: float
+var fountain_v_max: float
+var fountain_up_bias: float
+var fountain_fan: float
+var fountain_wobble: float
+var fountain_swirl: float
+var fountain_drop_scale: float
+var fountain_gush: float
+var fountain_emit_cap: float
+var fountain_mist: float
+var fountain_pool: float
+var fountain_head_share: float
+var fountain_headroom: float
 
 
 func _init() -> void:
