@@ -82,12 +82,20 @@ func test_thrusts_with_a_spear() -> void:
 	var b := _brain({"preset": "berserker"})
 	var f: Array = _pair(3.0, "spear")
 	var thrust_seen: bool = false
+	var early: bool = false
 	for i in 300:
-		var inp: FighterInput = b.think(f[0], f[1], DT)
+		# The point closes on the chest at 4 m/s while the spear drives in.
+		var me: Dictionary = f[0]
+		var tc: float = 1.2 - 4.0 / 60.0 * float(i % 40) if b.state_name() == "strike" else 1.2
+		me["tip_pos"] = Vector3(0.0, 1.3, -3.0 + maxf(tc, 0.05))
+		me["pelvis_vel"] = Vector3(0.0, 0.0, -4.0) if b.state_name() == "strike" else Vector3.ZERO
+		var inp: FighterInput = b.think(me, f[1], DT)
 		if b.state_name() == "strike" and inp.has(FighterInput.THRUST):
 			thrust_seen = true
+			early = tc > 0.8
 			break
 	assert_true(thrust_seen, "spear strikes use THRUST")
+	assert_false(early, "THRUST waits until the point is about to arrive")
 	assert_eq(str(b.plan()["kind"]), "thrust")
 
 
@@ -146,16 +154,18 @@ func test_goes_for_the_neck_when_foe_blood_is_low() -> void:
 	var b := _brain({"preset": "duelist"})
 	var f: Array = _pair(1.2)
 	(f[1] as Dictionary)["blood_frac"] = 0.15
-	var aim_y: float = 0.0
-	var seen: bool = false
-	for i in 200:
-		var inp: FighterInput = b.think(f[0], f[1], DT)
-		if b.state_name() == "windup" or b.state_name() == "strike":
-			seen = true
-	assert_true(seen, "attacks")
-	assert_eq(str(b.plan()["part"]), "head", "neck is the finisher target")
-	assert_true(bool(b.plan()["neck"]), "aimed below the head")
-	assert_true(aim_y == 0.0)
+	var plans: int = 0
+	var necks: int = 0
+	var was: String = ""
+	for i in 600:
+		b.think(f[0], f[1], DT)
+		if b.state_name() == "windup" and was != "windup":
+			plans += 1
+			if str(b.plan()["part"]) == "head" and bool(b.plan()["neck"]):
+				necks += 1
+		was = b.state_name()
+	assert_true(plans > 0, "attacks")
+	assert_true(necks * 2 > plans, "the neck (below the head) is the usual finisher target: %d of %d" % [necks, plans])
 
 
 func test_finishes_a_fallen_foe() -> void:
