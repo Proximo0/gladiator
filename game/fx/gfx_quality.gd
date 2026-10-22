@@ -24,6 +24,12 @@ const CROWD_TIER_LOD: Array = [[1, 1, 1, 2, 2, 2], [0, 0, 0, 1, 1, 1], [-1, -1, 
 const SHADOW_SPLITS: Array[int] = [1, 2, 2]
 const SHADOW_DISTANCE: Array[float] = [34.0, 44.0, 52.0]
 const SHADOW_BLUR: Array[float] = [0.0, 1.0, 2.0]
+## Sun shadow bias and normal bias. At 0.05 / 0.5 the split (blurred) maps speckled every small prop lying in the sun
+## (tests/render/shadow_capture.gd: 12.6k acne pixels on the high-tier weapon row, 14.6k on medium); 0.2 / 1.0 leaves
+## ~1.7k, the sand's own sparkle floor. The low tier's single unblurred map had no acne, and a normal bias of 1 or more
+## there thinned the props' cast shadows (shade pixels 64k to 50k), so it keeps 0.5.
+const SHADOW_BIAS: Array[float] = [0.2, 0.2, 0.2]
+const SHADOW_NORMAL_BIAS: Array[float] = [0.5, 1.0, 1.0]
 ## Do small fighter pieces (forearms, shins and feet, armor trims on them) cast into the sun shadow map? Each caster is
 ## drawn a second time in the shadow pass, and from the camera a forearm's shadow is hardly seen on the sand.
 const SMALL_PART_SHADOWS: Array[bool] = [false, true, true]
