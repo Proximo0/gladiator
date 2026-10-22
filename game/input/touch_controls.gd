@@ -2,8 +2,8 @@ class_name TouchControls
 extends Control
 ## On-screen controls for touch, drawn over the game. A floating thumbstick anywhere on the left half moves. A drag
 ## on the right half aims: the offset from where the drag started, springing back to centre on release, and SWING is
-## held while that finger is down. Six buttons hold OFFHAND, THRUST, HALF_SWORD, SPRINT,
-## GRAB and ROLL. The mouse stands in
+## held while that finger is down. Nine buttons hold OFFHAND, THRUST, HALF_SWORD, SPRINT,
+## GRAB, ROLL, KICK, SHOVE and CLINCH (HOLD). The mouse stands in
 ## for a finger on a machine without a touchscreen (for --touch testing). Pure mapping is in static functions.
 
 const UNIT_FRACTION: float = 0.1  ## one layout unit u = min(width, height) * UNIT_FRACTION
@@ -64,6 +64,13 @@ static func button_layout(area: Vector2, k: float = 1.0, insets: Vector4 = Vecto
 		[FighterInput.GRAB, 4.1, 3.6, 1.0, "GRAB"],
 		[FighterInput.SPRINT, 4.5, 5.9, 1.0, "SPRINT"],
 	]
+	# The close-range buttons: a fourth column in landscape, stacked above the arc on a tall (portrait) screen.
+	if area.y > area.x:
+		defs.append_array([[FighterInput.KICK, 1.3, 8.6, 1.0, "KICK"], [FighterInput.SHOVE, 3.6, 8.2, 1.0, "SHOVE"],
+			[FighterInput.CLINCH, 2.4, 10.5, 1.0, "HOLD"]])
+	else:
+		defs.append_array([[FighterInput.KICK, 6.1, 1.2, 1.0, "KICK"], [FighterInput.SHOVE, 6.3, 3.4, 1.0, "SHOVE"],
+			[FighterInput.CLINCH, 6.6, 5.6, 1.0, "HOLD"]])
 	var out: Array = []
 	for d: Array in defs:
 		out.append({

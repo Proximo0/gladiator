@@ -82,7 +82,7 @@ func test_every_button_action_has_a_unique_bit() -> void:
 		assert_eq(seen & bit, 0, "duplicate bit for %s" % action)
 		seen |= bit
 		union |= bit
-	assert_eq(union, 511, "all nine button bits covered")
+	assert_eq(union, 4095, "all twelve button bits covered")
 
 
 func test_every_button_action_has_a_device_binding() -> void:
@@ -142,7 +142,7 @@ func test_touch_clamp_offset() -> void:
 
 func test_touch_button_layout_lives_on_the_right() -> void:
 	var layout: Array = TouchControls.button_layout(AREA)
-	assert_eq(layout.size(), 6)
+	assert_eq(layout.size(), 9)
 	var bits: int = 0
 	for b: Dictionary in layout:
 		var c: Vector2 = b["center"]
@@ -150,7 +150,8 @@ func test_touch_button_layout_lives_on_the_right() -> void:
 		assert_true(c.y > 0.0 and c.y < AREA.y, "button %s on screen" % b["label"])
 		bits |= int(b["bit"])
 	assert_eq(bits, FighterInput.OFFHAND | FighterInput.THRUST | FighterInput.HALF_SWORD \
-		| FighterInput.SPRINT | FighterInput.GRAB | FighterInput.ROLL)
+		| FighterInput.SPRINT | FighterInput.GRAB | FighterInput.ROLL | FighterInput.SHOVE | FighterInput.KICK \
+		| FighterInput.CLINCH)
 
 
 func test_touch_button_hit_test() -> void:
