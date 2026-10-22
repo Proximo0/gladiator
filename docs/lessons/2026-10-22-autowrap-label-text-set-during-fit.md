@@ -1,0 +1,2 @@
+What happened: The docked lock banner went blank and stretched to the frame's full height: its name label was switched to autowrap and given new text inside the same fit pass that measured it, so the panel read a stale, huge minimum height
+Rule: For a short fixed label, break lines yourself ("NAME\nLOCKED") with autowrap off; only autowrap labels whose width is set before their text, and look at the capture after every layout change
