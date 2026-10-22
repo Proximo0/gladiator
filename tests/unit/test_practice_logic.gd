@@ -90,7 +90,7 @@ func test_strike_counts_hits_after_entering() -> void:
 	l.update(_obs({"hits": 9}), DT)
 	assert_eq(l.step_id(), "strike")
 	l.update(_obs({"hits": 10}), DT)
-	assert_eq(l.step_id(), "roll")
+	assert_eq(l.step_id(), "shove")
 
 
 func test_roll_counts_rising_edges() -> void:
@@ -142,12 +142,12 @@ func test_enter_events_set_the_scene() -> void:
 	var l := PracticeLogic.new()
 	l.update(_obs(), DT)
 	var seen: Array = []
-	for i: int in 8:
+	for i: int in PracticeLogic.STEP_IDS.size():
 		for e: Variant in l.skip_step():
 			seen.append(e)
 		for e: Variant in l.update(_obs(), DT):
 			seen.append(e)
-	assert_true("enter:grab" in seen and "enter:finish" in seen)
+	assert_true("enter:grab" in seen and "enter:finish" in seen and "enter:hold" in seen)
 
 
 func test_skip_all_completes_and_records_skips() -> void:
@@ -184,3 +184,39 @@ func test_every_step_has_text_for_every_device() -> void:
 	assert_eq(PracticeText.device_for(true, true), "pad")
 	assert_eq(PracticeText.device_for(false, true), "touch")
 	assert_eq(PracticeText.device_for(false, false), "kbm")
+
+
+func test_shove_counts_landed_shoves_from_the_step_start() -> void:
+	var l := PracticeLogic.new()
+	_to_step(l, "shove", {"shoves": 3})  # shoves landed before the step do not count
+	l.update(_obs({"shoves": 3}), DT)
+	assert_eq(l.counter_text(), "0 / 2")
+	l.update(_obs({"shoves": 4}), DT)
+	assert_eq(l.counter_text(), "1 / 2")
+	assert_near(l.progress(), 0.5, 0.001)
+	var ev: Array = l.update(_obs({"shoves": 5}), DT)
+	assert_true("done:shove" in ev, str(ev))
+	assert_eq(l.step_id(), "kick")
+
+
+func test_kick_needs_two_landed_kicks() -> void:
+	var l := PracticeLogic.new()
+	_to_step(l, "kick")
+	l.update(_obs({"kicks": 1}), DT)
+	assert_eq(l.step_id(), "kick")
+	l.update(_obs({"kicks": 2}), DT)
+	assert_eq(l.step_id(), "hold")
+
+
+func test_hold_needs_one_unbroken_hold() -> void:
+	var l := PracticeLogic.new({"hold_s": 0.44})  # 27 ticks
+	_to_step(l, "hold")
+	for i: int in 20:
+		l.update(_obs({"holding": true}), DT)
+	l.update(_obs({"holding": false}), DT)
+	assert_near(l.progress(), 0.0, 0.001, "a broken hold starts over")
+	for i: int in 26:
+		l.update(_obs({"holding": true}), DT)
+	assert_eq(l.step_id(), "hold")
+	l.update(_obs({"holding": true}), DT)
+	assert_eq(l.step_id(), "roll")

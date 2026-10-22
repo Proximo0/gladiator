@@ -26,7 +26,7 @@ func test_table_rows_are_complete() -> void:
 
 func test_compact_lines_follow_the_device() -> void:
 	var kb: Array = ControlsText.compact_lines("player_vs_cpu", false, false)
-	assert_eq(kb.size(), 1)
+	assert_eq(kb.size(), 2)
 	assert_true("WASD" in str(kb[0]))
 	var touch: Array = ControlsText.compact_lines("player_vs_cpu", false, true)
 	assert_true(touch.size() <= 2)
@@ -37,3 +37,16 @@ func test_compact_lines_follow_the_device() -> void:
 	assert_eq(ControlsText.compact_lines("local_2p", false, false).size(), 2)
 	for l: Variant in kb + touch + pad:
 		assert_true(str(l).length() <= 90, "short enough: %s" % str(l))
+
+
+func test_compact_hints_list_the_close_moves_and_touch_extras() -> void:
+	var kb: String = " ".join(PackedStringArray(ControlsText.compact_lines("player_vs_cpu", false, false)))
+	for k: String in ["F shove", "V kick", "G"]:
+		assert_true(kb.contains(k), "keyboard hint has %s: %s" % [k, kb])
+	var pad: String = " ".join(PackedStringArray(ControlsText.compact_lines("player_vs_cpu", true, false)))
+	assert_true(pad.contains("shove/kick/hold"), pad)
+	var touch: String = " ".join(PackedStringArray(ControlsText.compact_lines("player_vs_cpu", false, true)))
+	for k: String in ["SHOVE", "KICK", "HOLD", "CROUCH", "hold GRAB"]:
+		assert_true(touch.contains(k), "touch hint has %s: %s" % [k, touch])
+	var full: String = " ".join(PackedStringArray(ControlsText.hint_lines("player_vs_cpu", false, true)))
+	assert_true(full.contains("CROUCH") and full.contains("hold GRAB"), full)

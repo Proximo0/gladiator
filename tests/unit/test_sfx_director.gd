@@ -223,3 +223,101 @@ func test_feel_director_sibling_is_found_by_group() -> void:
 	host.add_child(feel)
 	assert_true(d._finisher_roar_is_external())
 	host.free()
+
+
+## A stand-in fighter: the signals and the debug frame the director reads.
+class FakeFighter extends Node3D:
+	signal hit(event: Dictionary)
+	signal gore(event: Dictionary)
+	signal died
+	signal close(event: Dictionary)
+	var side: int = 0
+	var state: String = "standing"
+	var held: String = ""
+
+	func debug_frame() -> Dictionary:
+		return {"state": state, "side": side, "pelvis_pos": Vector3(0, 1, 0), "parts": {},
+			"close": {"held": held}}
+
+
+func test_close_moves_sound_and_a_shoved_foe_falling_gasps() -> void:
+	var d: SfxDirector = _make()
+	var a := FakeFighter.new()
+	var b := FakeFighter.new()
+	b.side = 1
+	d.track(a)
+	d.track(b)
+	var reactions: Array = []
+	d.crowd_reacted.connect(func(k: String) -> void: reactions.append(k))
+	a.close.emit({"kind": "shove", "attacker": 0, "target": 1, "point": Vector3(0, 1.1, -0.5), "landed": true})
+	assert_true(d.recent_keys.has("impact/body_thud"), str(d.recent_keys))
+	assert_true(d.recent_keys.has("voice/grunt"), str(d.recent_keys))
+	d._clock = 0.5
+	b.state = "down"
+	d._poll(d._track_of(b), 1.0 / 60.0)
+	assert_true(reactions.has("gasp"), str(reactions))
+	a.free()
+	b.free()
+	d.free()
+
+
+func test_a_fall_long_after_a_shove_draws_no_gasp() -> void:
+	var d: SfxDirector = _make()
+	var a := FakeFighter.new()
+	var b := FakeFighter.new()
+	b.side = 1
+	d.track(a)
+	d.track(b)
+	var reactions: Array = []
+	d.crowd_reacted.connect(func(k: String) -> void: reactions.append(k))
+	a.close.emit({"kind": "shove", "attacker": 0, "target": 1, "point": Vector3.ZERO, "landed": true})
+	d._clock = 5.0
+	b.state = "down"
+	d._poll(d._track_of(b), 1.0 / 60.0)
+	assert_false(reactions.has("gasp"), str(reactions))
+	a.free()
+	b.free()
+	d.free()
+
+
+func test_held_fighter_grunts_while_struggling() -> void:
+	var d: SfxDirector = _make()
+	var b := FakeFighter.new()
+	b.side = 1
+	b.held = "forearm_r"
+	d.track(b)
+	var t: Dictionary = d._track_of(b)
+	var grunts: int = 0
+	for i: int in range(120):
+		var before: int = d.played_count
+		d._poll(t, 1.0 / 60.0)
+		if d.played_count > before and d.recent_keys[d.recent_keys.size() - 1] == "voice/grunt":
+			grunts += 1
+	assert_true(grunts >= 1 and grunts <= 3, "grunts in 2 s held: %d" % grunts)
+	b.free()
+	d.free()
+
+
+func test_heavy_hit_burst_uses_a_reserve_voice_not_another_heavy_hit() -> void:
+	# CI seed: nine heavy warhammer blows fill the impact group; a louder one 30 ms later used to cut one of them.
+	var d: SfxDirector = _in_tree()
+	var cap: int = SfxLogic.group_cap("impact")
+	for i: int in range(cap):
+		d.play_key("impact/heavy_thump", Vector3.ZERO, 0.0, 1.0, "SFX", SfxLogic.HEAVY_BOOST_DB)
+	d.play_key("impact/heavy_thump", Vector3.ZERO, 4.0, 1.0, "SFX", SfxLogic.HEAVY_BOOST_DB)
+	assert_eq(_playing(d, "impact/heavy_thump"), cap + 1, "the tenth blow got a reserve voice")
+	assert_true(d.lost_important.is_empty(), str(d.lost_log))
+	_drop_tree(d)
+
+
+func test_soft_cap_holds_for_ordinary_sounds() -> void:
+	var d: SfxDirector = _in_tree()
+	var keys: Array[String] = ["move/whoosh_heavy", "move/roll_thud", "voice/grunt", "gore/gut_squelch", "impact/leather_slap"]
+	var n: int = 0
+	while d._total_playing() < SfxLogic.SOFT_TOTAL_CAP and n < 200:
+		d.play_key(keys[n % keys.size()], Vector3.ZERO, -14.0)
+		n += 1
+	var busy: int = d._total_playing()
+	d.play_key("move/whoosh_heavy", Vector3.ZERO, 0.0)  # louder than the quietest: it replaces, not adds
+	assert_eq(d._total_playing(), busy)
+	_drop_tree(d)

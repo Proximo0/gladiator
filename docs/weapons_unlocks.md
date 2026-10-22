@@ -70,6 +70,9 @@ To reset progress, delete `user://progress.json` (Windows: `%APPDATA%\Godot\app_
 or the project's custom user dir if one is set).
 
 ## Balance
+
+**Superseded 2026-10-22:** the full weapon round-robin in docs/balance_matrix.md retuned these numbers (premium blades no
+longer beat the best unlockables; data/weapons.json has the current values). The notes below are the history.
 Measured with `tools/bot_match.sh --matches=6 --seed=2000 --shards=1 --w0=<new> --w1=<opp>` and the swap (seeds
 2000-2005 on both sides, seeded random armor, 60 s limit): wins of the new weapon out of 12. Target 35-65% vs the
 longsword. For scale, the starter gladius wins 3/12 against the longsword on the same seeds.

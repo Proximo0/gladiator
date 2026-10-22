@@ -9,6 +9,9 @@ const HEADINGS: Dictionary = {
 	"swing": ["FERI", "Swing fast"],
 	"thrust": ["PVNGE", "Thrust"],
 	"strike": ["PERCVTE", "Hit the dummy"],
+	"shove": ["PELLE", "Shove"],
+	"kick": ["CALCITRA", "Front kick"],
+	"hold": ["TENE", "Grab and hold"],
 	"roll": ["VOLVE", "Roll away"],
 	"grab": ["CAPE", "Pick up a weapon"],
 	"finish": ["CONFICE", "Finish him"],
@@ -40,6 +43,21 @@ const BODY: Dictionary = {
 		"kbm": "Walk up to the dummy and cut it with a fast swing or a thrust. Slow touches do nothing.",
 		"pad": "Walk up to the dummy and cut it with a fast swing or a thrust. Slow touches do nothing.",
 		"touch": "Walk up to the dummy and cut it with a fast swing or a thrust. Slow touches do nothing.",
+	},
+	"shove": {
+		"kbm": "Step in close and press F: your free hand drives into the dummy. A shove floors a foe already stumbling.",
+		"pad": "Step in close and press D-pad up: your free hand drives into the dummy. A shove floors a foe already stumbling.",
+		"touch": "Step in close and tap SHOVE: your free hand drives into the dummy. A shove floors a foe already stumbling.",
+	},
+	"kick": {
+		"kbm": "Stand a stride from the dummy and press V: knee up, foot out. Kick at nothing and you are left hopping.",
+		"pad": "Stand a stride from the dummy and press D-pad down: knee up, foot out. Kick at nothing and you are left hopping.",
+		"touch": "Stand a stride from the dummy and tap KICK: knee up, foot out. Kick at nothing and you are left hopping.",
+	},
+	"hold": {
+		"kbm": "Get close and hold G: your free hand grabs the dummy's weapon arm (aim high for the head) and hauls it in. Keep holding.",
+		"pad": "Get close and hold D-pad left: your free hand grabs the dummy's weapon arm (aim high for the head) and hauls it in.",
+		"touch": "Get close and keep a finger on HOLD: your free hand grabs the dummy's weapon arm and hauls it in. Keep holding.",
 	},
 	"roll": {
 		"kbm": "Hold a direction and press C. You tumble that way (backward when still).",

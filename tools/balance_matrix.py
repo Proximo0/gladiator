@@ -3,11 +3,12 @@
 
 Usage:
   tools/balance_matrix.py run [--fights=N] [--jobs=K] [--seed=S] [--only=a,b,...] [--vs=a,b,...] [--shard=i --nshards=n] [--out=FILE]
-  tools/balance_matrix.py report FILE [FILE ...] [--md=docs/balance_matrix.md] [--csv=docs/balance_matrix.csv]
+  tools/balance_matrix.py report FILE [FILE ...] [--before=FILE] [--md=FILE] [--csv=docs/balance_matrix.csv]
 
 run: every unordered weapon pair from data/weapons.json fights N times with each weapon on side 0 and N times on
 side 1 (2N per cell). Both orientations of a pair reuse the same seeds, so the seed-rolled armor and personalities
-swap sides and cancel out. Seeds are fixed per pair: S + pair_index * 100 + k. --only limits the matrix to pairs
+swap sides and cancel out. Seeds are fixed per pair: S + (i * 64 + j) * 100 + k for weapon indices i < j; shields
+(off-hand only) are left out unless --shields. --only limits the matrix to pairs
 inside that list; --vs limits it to pairs with at least one weapon in that list; --shard/--nshards take every
 n-th pair (CI fan-out, .github/workflows/balance.yml). Records go to out/balance/*.json.
 report: merges run files (a later file replaces earlier records for the same pair) and writes the tables.
@@ -33,16 +34,17 @@ def weapon_table():
         return json.load(f)["weapons"]
 
 
-def weapon_ids():
-    return [w["id"] for w in weapon_table()]
-
-
 def all_pairs(ids):
     out = []
     for i in range(len(ids)):
         for j in range(i + 1, len(ids)):
             out.append((ids[i], ids[j]))
     return out
+
+
+def pair_seed(base, ids, p):
+    """Stable while weapons are only appended to data/weapons.json."""
+    return base + (ids.index(p[0]) * 64 + ids.index(p[1])) * 100
 
 
 def parse_args(argv):
@@ -93,12 +95,14 @@ def run_side(w0, w1, seed, n, outdir):
 
 
 def cmd_run(opts):
-    ids = weapon_ids()
+    table = weapon_table()
+    ids = [w["id"] for w in table]
     n = int(opts.get("fights", "10"))
     jobs = int(opts.get("jobs", str(max(1, (os.cpu_count() or 2) - 1))))
     base = int(opts.get("seed", "20000"))
-    pairs = all_pairs(ids)
-    index = {p: i for i, p in enumerate(pairs)}
+    # Shields are off-hand only; --shields keeps them in the matrix.
+    mains = [w["id"] for w in table if w.get("shape") != "shield" or "shields" in opts]
+    pairs = all_pairs(mains)
     if opts.get("only"):
         keep = set(opts["only"].split(","))
         pairs = [p for p in pairs if p[0] in keep and p[1] in keep]
@@ -115,7 +119,7 @@ def cmd_run(opts):
     done = [0]
 
     def job(p):
-        seed = base + index[p] * 100
+        seed = pair_seed(base, ids, p)
         # Seeds overlap between the two orientations on purpose; run them one after the other.
         r = run_side(p[0], p[1], seed, n, None) + run_side(p[1], p[0], seed, n, None)
         with lock:
@@ -150,10 +154,25 @@ def load_records(files):
     return [r for rs in by_pair.values() for r in rs]
 
 
+def overall(recs, offhand):
+    """weapon -> (score, fights) against main weapons."""
+    t = defaultdict(lambda: [0.0, 0])
+    for r in recs:
+        w = [r["w0"], r["w1"]]
+        for s in (0, 1):
+            if w[1 - s] in offhand:
+                continue
+            t[w[s]][0] += 1.0 if r["winner"] == s else (0.5 if r["winner"] == -1 else 0.0)
+            t[w[s]][1] += 1
+    return t
+
+
 def cmd_report(opts, files):
     table = weapon_table()
     ids = [w["id"] for w in table]
     tier = {w["id"]: int(w.get("tier", 0)) for w in table}
+    # Shields are off-hand only (LoadoutRules.is_shield); they fight in the matrix but stay out of the win rates.
+    offhand = {w["id"] for w in table if w.get("shape") == "shield"}
     recs = load_records(files)
     cell = defaultdict(lambda: {"n": 0, "w": 0.0, "ticks": 0, "fin": Counter(), "hits": 0, "dmg": 0.0, "side0": 0.0})
     tot = defaultdict(lambda: {"n": 0, "w": 0.0, "ticks": 0, "fin": Counter(), "hits": 0, "hits_taken": 0, "dmg": 0.0})
@@ -176,6 +195,8 @@ def cmd_report(opts, files):
             kind = r["finisher"] or r["reason"]
             if r["winner"] == s:
                 c["fin"][kind] += 1
+            if b in offhand:
+                continue
             t = tot[a]
             t["n"] += 1
             t["w"] += score
@@ -185,6 +206,8 @@ def cmd_report(opts, files):
             t["dmg"] += float((r.get("dmg") or [0, 0])[s])
             if r["winner"] == s:
                 t["fin"][kind] += 1
+
+    before = overall(load_records([opts["before"]]), offhand) if opts.get("before") else {}
 
     def pct(c):
         return 100.0 * c["w"] / c["n"] if c["n"] else float("nan")
@@ -205,14 +228,16 @@ def cmd_report(opts, files):
 
     order = sorted([i for i in ids if tot[i]["n"]], key=lambda x: (tier[x], x))
     lines = []
-    lines.append("| weapon | tier | win % | fights | mean len s | hits/fight | hits taken | dmg/hit | wins by |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
+    lines.append("| weapon | tier | win %% | %sfights | mean len s | hits/fight | hits taken | dmg/hit | wins by |" % ("before | " if before else ""))
+    lines.append("|---" * (10 if before else 9) + "|")
     for a in sorted(ids, key=lambda x: -pct(tot[x])):
         t = tot[a]
         if not t["n"]:
             continue
         top = ", ".join("%s %d" % kv for kv in t["fin"].most_common(4))
-        lines.append("| %s | %d | %.0f | %d | %.1f | %.1f | %.1f | %.1f | %s |" % (a, tier[a], pct(t), t["n"],
+        b = before.get(a)
+        was = ("%.0f | " % (100.0 * b[0] / b[1]) if b and b[1] else "- | ") if before else ""
+        lines.append("| %s | %d | %.0f | %s%d | %.1f | %.1f | %.1f | %.1f | %s |" % (a, tier[a], pct(t), was, t["n"],
             t["ticks"] / 60.0 / t["n"], t["hits"] / t["n"], t["hits_taken"] / t["n"], t["dmg"] / max(t["hits"], 1), top))
     summary = "\n".join(lines)
     short = {i: i.replace("shield_round", "shield").replace("sledgehammer", "sledge").replace("dai_katana", "dai")

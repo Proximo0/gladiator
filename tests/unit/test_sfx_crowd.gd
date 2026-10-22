@@ -85,3 +85,11 @@ func test_ambience_mix_follows_excitement() -> void:
 	assert_true(calm.x > calm.y, "calm loop leads when quiet")
 	assert_true(hot.y >= hot.x, "excited loop leads at the top")
 	assert_true(hot.y <= 1.0 and calm.x <= 0.0)
+
+
+func test_close_moves_excite_and_a_floored_foe_gasps() -> void:
+	assert_true(CrowdModel.close_impulse("kick", true) > CrowdModel.close_impulse("kick", false))
+	assert_eq(CrowdModel.close_impulse("shove", false), 0.0)
+	assert_eq(CrowdModel.floored_reaction(0.4), "gasp")
+	assert_eq(CrowdModel.floored_reaction(CrowdModel.CLOSE_FLOOR_WINDOW + 0.1), "", "a fall long after is its own")
+	assert_eq(CrowdModel.floored_reaction(-1.0), "")

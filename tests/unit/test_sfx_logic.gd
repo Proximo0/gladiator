@@ -281,3 +281,36 @@ func test_real_delta_undoes_time_scale() -> void:
 	assert_near(SfxLogic.real_delta(1.0 / 60.0, 1.0), 1.0 / 60.0, 0.000001)
 	assert_near(SfxLogic.real_delta(0.2 / 60.0, 0.2), 1.0 / 60.0, 0.000001, "0.2x slow motion")
 	assert_true(is_finite(SfxLogic.real_delta(0.0, 0.0)), "paused: no division by zero")
+
+
+func test_close_plan_sounds() -> void:
+	var shove: Array[Dictionary] = SfxLogic.close_plan("shove", true)
+	assert_true(_keys(shove).has("impact/body_thud") and _keys(shove).has("voice/grunt"), str(_keys(shove)))
+	assert_eq(SfxLogic.close_plan("shove", false).size(), 0, "a shove that lands nothing is silent")
+	var whiff: Array = _keys(SfxLogic.close_plan("kick", false))
+	assert_true(whiff.has("move/whoosh_slow") and whiff.has("voice/grunt"), str(whiff))
+	var blocked: Array = _keys(SfxLogic.close_plan("kick", false, true))
+	assert_true(blocked.has("impact/heavy_thump") and not blocked.has("move/whoosh_slow"), str(blocked))
+	assert_false(_keys(SfxLogic.close_plan("kick", true)).has("impact/body_thud"), "a landed kick's thud is its blow")
+	var hold: Array[Dictionary] = SfxLogic.close_plan("hold", true)
+	var whos: Array = []
+	for l: Dictionary in hold:
+		whos.append(str(l["who"]))
+	assert_true(whos.has("attacker") and whos.has("target") and whos.has("point"), str(whos))
+	assert_true(_keys(SfxLogic.close_plan("break", false)).has("voice/grunt"))
+	for kind: String in ["shove", "kick", "hold", "break", "slip"]:
+		for l: Dictionary in SfxLogic.close_plan(kind, true) + SfxLogic.close_plan(kind, false, true):
+			assert_true(SfxLogic.VARIANTS.has(str(l["key"])), "%s uses a key with files: %s" % [kind, l["key"]])
+
+
+func test_kick_impact_is_a_thud_not_a_punch() -> void:
+	var ev: Dictionary = {"energy": 60.0, "contact": "blunt", "total": 10.0, "part": "torso", "weapon_id": "fists"}
+	var keys: Array = _keys(SfxLogic.impact_plan(ev, "kick", "", ""))
+	assert_true(keys.has("impact/body_thud") and keys.has("impact/heavy_thump"), str(keys))
+	assert_false(keys.has("impact/fist_punch"))
+
+
+func test_struggle_grunts_are_spaced() -> void:
+	assert_false(SfxLogic.struggle_grunt_due(false, 5.0), "not held")
+	assert_false(SfxLogic.struggle_grunt_due(true, SfxLogic.STRUGGLE_GRUNT_GAP * 0.5))
+	assert_true(SfxLogic.struggle_grunt_due(true, SfxLogic.STRUGGLE_GRUNT_GAP))

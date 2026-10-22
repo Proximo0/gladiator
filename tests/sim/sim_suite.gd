@@ -1,7 +1,7 @@
 extends Node
 ## Runs the regression sims listed in SIM_FILES (each tests/sim/sim_<name>.gd extends sim_base.gd and returns
 ## [[name, ok, detail], ...] from run()). Prints "SIM <name> PASS|FAIL <detail>" and "SIMS passed=N failed=M".
-## Part of tools/run_sims.sh. Run alone: godot --headless --path . res://tests/sim/sim_suite.tscn [-- name ...]
+## Part of tools/run_sims.sh. Run alone: godot --headless --path . res://tests/sim/sim_suite.tscn [-- name ... | -name ...]
 ## Each file starts from the same process state (sim_globals.gd: statics, Engine, Flags, input, audio, a fresh physics
 ## world); a row "<file> isolation" fails if anything still differs. A file that hits a script error or returns no rows
 ## fails, and "SIMFILE <name> <i>/<n>" before each file shows where a hang is; a file still running after
@@ -32,6 +32,7 @@ const SIM_FILES: Array = [
 	"sim_net_quick_flow",
 	"sim_touch",
 	"sim_sandbox_isolation",
+	"sim_decor_clip",
 	"sim_match_show",  # last: the audio bot sim before it is sensitive to what ran earlier in the process
 ]
 
@@ -73,7 +74,9 @@ var _current: String = ""
 
 
 func _ready() -> void:
+	# Args pick sims: "sim_a sim_b" runs only those; "-sim_a" skips one (CI shards: the last shard skips the others' sims).
 	var only := PackedStringArray()
+	var skip := PackedStringArray()
 	var reset: bool = true
 	var timeout_s: float = DEFAULT_TIMEOUT_S
 	for a: String in OS.get_cmdline_user_args():
@@ -81,11 +84,18 @@ func _ready() -> void:
 			reset = false
 		elif a.begins_with("--sim-timeout="):
 			timeout_s = float(a.trim_prefix("--sim-timeout="))
-		elif not a.begins_with("--"):
+		elif a.begins_with("--"):
+			continue
+		elif a.begins_with("-"):
+			skip.append(a.substr(1))
+		else:
 			only.append(a)
+	for n: String in only + skip:
+		if not SIM_FILES.has(n):
+			_report(["sim_suite", false, "unknown sim name %s (not in SIM_FILES)" % n])
 	var todo: Array = []
 	for f: String in SIM_FILES:
-		if only.is_empty() or only.has(f):
+		if (only.is_empty() or only.has(f)) and not skip.has(f):
 			todo.append(f)
 	var log := SuiteErrorLog.new()
 	OS.add_logger(log)
