@@ -1,0 +1,2 @@
+What happened: Shadow acne on small props was only "seen" in screenshots, where it is hard to tell from texture detail (the scutum's crosshatch, the axe heads); bias was set once for every tier
+Rule: Measure acne with the sun shadow on and off in one process and count isolated darkened pixels (tests/render/shadow_capture.gd); sweep bias per tier, and check that the props' cast shadow area does not shrink (too much normal bias detaches them)
