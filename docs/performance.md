@@ -294,3 +294,31 @@ F7 MSAA toggle turns MSAA on to `GfxQuality.MSAA` for the current level, so it s
 `CROWD_TIER_LOD` level 1 now means Houdini lod2 (about 30% of the triangles, heads kept) and level 2 a 2-triangle
 impostor card. Dressing (`ArenaDressing`) costs about 20 draw calls on high and 12 on low; on low the standards and
 braziers fall back to merged code meshes and statues and the trophy are skipped (`LOW_CODE_PROPS`).
+
+## Arena build time and weapon racks (2026-10-22)
+
+`tools/arena_build.sh [--quality=0|1|2|all] [--runs=N]` builds the presented Arena in a real window (xvfb, software
+GL, 4-core box), 3 builds per fresh process, and prints the median ms per step: the first build in a process and the
+later ones (a match after the menu). `godot ... -- --arena_profile` prints the same `ARENA_BUILD {json}` line from any
+run. Steps are Arena's `_build_*` calls; `sand.<step>` are SandSurface.setup's own laps.
+
+The sand's static tables (256 px noise image, base relief grid and its RGBAH image, the subdivided disc's arrays) were
+GDScript loops rebuilt on every arena: 110-180 ms. They now live in `SandTables`, a process cache whose builders run on
+a WorkerThreadPool task started at the top of `Arena._ready` (`prewarm`, `is_ready` is the ready flag); the sand step
+moved after the dressing, so on a first build the worker overlaps the walls, stands and crowd, and later builds take
+the cached tables. The disc loop also tests each grid point once instead of four times per cell.
+
+| median ms (3 processes) | low first | low later | medium first | medium later | high first | high later |
+|---|---|---|---|---|---|---|
+| before: total | 296 | 203 | 325 | 212 | 358 | 258 |
+| before: floor (sand setup) | 229 | 128 | 228 | 144 | 291 | 193 |
+| before: noise / base map + texture / disc mesh | 64 / 36 / 16 | 66 / 39 / 17 | 63 / 35 / 35 | 65 / 36 / 34 | 62 / 36 / 80 | 68 / 36 / 78 |
+| after: total | 149 | 77 | 163 | 72 | 169 | 79 |
+| after: sand step | 79 | 7 | 87 | 9 | 104 | 14 |
+| after: crowd / wall visual (largest left) | 27 / 21 | 28 / 19 | 29 / 21 | 26 / 19 | 22 / 20 | 24 / 19 |
+
+About 60 ms of a first build's sand step is the one-time GDScript compile of sand_surface.gd and its classes
+(`sand.load_script`); in the game the title backdrop pays it once at boot, never a match start. The racked weapons
+(`RackDressing`) load their art with threaded ResourceLoader requests after the build and appear once loaded; the
+copy rebuild costs about 3 ms on the main thread. They are 11 copies on medium/high (7 on low: three starters per rack
+plus the spares), one MultiMesh per distinct mesh, no shadows.

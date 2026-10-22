@@ -151,21 +151,27 @@ func _use_art_mesh() -> void:
 	var art: Node3D = scene.instantiate() as Node3D
 	art.name = "Art"
 	# Houdini marks every material alpha-blend (depth pre-pass); that sorts and flickers, so force opaque.
-	_force_opaque_art(art)
+	force_opaque_art(art)
+	art.transform = art_transform(weapon_id, def)
+	add_child(art)
+
+
+## Where the art scene sits in the weapon frame (also used by the arena's racked copies).
+static func art_transform(id: String, d: Dictionary) -> Transform3D:
 	# "art_roll" (degrees about the face normal) turns a mesh built the other way round: the aspis's arm band
 	# was modelled toward -X, but a left hand holds the shield with +X toward the holder's left (Fighter._wrist).
-	art.rotation.z = deg_to_rad(float(def.get("art_roll", 0.0)))
+	var xf := Transform3D(Basis(Vector3.BACK, deg_to_rad(float(d.get("art_roll", 0.0)))), Vector3.ZERO)
 	# "art_offset" [x, y, z] (m) shifts the mesh off the grip: the aspis bowl sits 3-6 cm off its grip, so the fist
 	# would poke through the face without a push forward.
-	var off: Variant = def.get("art_offset", [])
+	var off: Variant = d.get("art_offset", [])
 	if off is Array and (off as Array).size() == 3:
-		art.position = Vector3(float(off[0]), float(off[1]), float(off[2]))
-	if weapon_id == "rake":
+		xf.origin = Vector3(float(off[0]), float(off[1]), float(off[2]))
+	if id == "rake":
 		# The art was built at 1.6 m with a 0.36 m head; the collider is 1.45 m with a 0.26 m crossbar (balance_rake.md).
 		# The grip end stays at -0.2 m: y' = RAKE_ART_SCALE.y * y + offset.
-		art.scale = RAKE_ART_SCALE
-		art.position = Vector3(0, -RAKE_ART_BOTTOM * (1.0 - RAKE_ART_SCALE.y), 0)
-	add_child(art)
+		xf.basis = xf.basis * Basis.from_scale(RAKE_ART_SCALE)
+		xf.origin = Vector3(0, -RAKE_ART_BOTTOM * (1.0 - RAKE_ART_SCALE.y), 0)
+	return xf
 
 
 ## A shield face's centre off the grip, from the def's "center" [x, y] (m, weapon frame); zero when absent.
@@ -186,7 +192,7 @@ const ART_ENERGY_EMISSION: float = 2.5
 
 ## Makes every surface material of an art scene opaque (the glb's own alpha flags are import noise). The material
 ## named "energy" becomes an unshaded emissive white-hot core; the game's halo (meta "glow") provides the glow.
-static func _force_opaque_art(root: Node) -> void:
+static func force_opaque_art(root: Node) -> void:
 	if root is MeshInstance3D:
 		var mi := root as MeshInstance3D
 		if mi.mesh != null:
@@ -195,16 +201,21 @@ static func _force_opaque_art(root: Node) -> void:
 				var m := mi.mesh.surface_get_material(s) as BaseMaterial3D
 				if m == null:
 					continue
-				var o := m.duplicate() as BaseMaterial3D
-				o.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
-				o.albedo_color.a = 1.0
-				if o.resource_name == ART_ENERGY_MATERIAL:
-					o.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-					o.emission_enabled = true
-					o.emission_energy_multiplier = ART_ENERGY_EMISSION
-				mi.set_surface_override_material(s, o)
+				mi.set_surface_override_material(s, opaque_art_material(m))
 	for c: Node in root.get_children():
-		_force_opaque_art(c)
+		force_opaque_art(c)
+
+
+## An opaque copy of an art material (see force_opaque_art).
+static func opaque_art_material(m: BaseMaterial3D) -> BaseMaterial3D:
+	var o := m.duplicate() as BaseMaterial3D
+	o.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	o.albedo_color.a = 1.0
+	if o.resource_name == ART_ENERGY_MATERIAL:
+		o.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		o.emission_enabled = true
+		o.emission_energy_multiplier = ART_ENERGY_EMISSION
+	return o
 
 
 ## Dai-katana placeholder: a long wrapped tsuka, a round tsuba and a slightly curved blade of tilted segments
