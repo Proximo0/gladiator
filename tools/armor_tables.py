@@ -54,7 +54,9 @@ def fight(args, side_a, side_b, more):
         if not os.path.exists(fn):
             print("ERROR missing %s (rc %d)\n%s" % (fn, p.returncode, p.stdout[-2000:]))
             continue
-        out.append(json.load(open(fn))["result"])
+        d = json.load(open(fn))
+        d["result"]["hitlog_stats"] = d.get("stats", {})
+        out.append(d["result"])
     return out
 
 
@@ -67,10 +69,17 @@ def row(args, name, mine, theirs, more=None):
     n = len(recs)
     secs = sum(float(r["fight_ticks"]) for r, _ in recs) / 60.0 / max(n, 1)
     share = wins / max(n, 1)
+    gap = armored = 0
+    for r, _ in recs:
+        for st in (r.get("stats", {}), r.get("hitlog_stats", {})):
+            for h in st.get("hitlog", {}).values():
+                gap += int(h.get("gap_n", 0))
+                armored += int(h.get("armored_n", 0))
+    gaps = " gaps=%d/%d" % (gap, armored) if armored else ""
     flag = "" if 0.35 <= share <= 0.65 else " OUT"
-    print("ROW %-18s wins=%d/%d (%.0f%%) draws=%d len=%.1fs%s" % (name, wins, n, share * 100, draws, secs, flag))
+    print("ROW %-18s wins=%d/%d (%.0f%%) draws=%d len=%.1fs%s%s" % (name, wins, n, share * 100, draws, secs, gaps, flag))
     sys.stdout.flush()
-    return {"row": name, "wins": wins, "fights": n, "draws": draws, "len_s": round(secs, 1)}
+    return {"row": name, "wins": wins, "fights": n, "draws": draws, "len_s": round(secs, 1), "gap_hits": gap, "armored_hits": armored}
 
 
 def main():

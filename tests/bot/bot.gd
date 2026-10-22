@@ -149,6 +149,10 @@ func _on_hitlog(ev: Dictionary) -> void:
 	d["emass"] = float(d["emass"]) + float(ev.get("effective_mass", 0.0))
 	if str(ev.get("contact", "")) == "point":
 		d["point"] = int(d["point"]) + 1
+	if not (ev.get("armor_ids", []) as Array).is_empty():  # hits on armor, and those that found a plate gap (ArmorGaps)
+		d["armored_n"] = int(d.get("armored_n", 0)) + 1
+		if float(ev.get("armor_gap", 0.0)) > 0.0:
+			d["gap_n"] = int(d.get("gap_n", 0)) + 1
 	if str(ev.get("part", "")) == "head":
 		d["head_n"] = int(d.get("head_n", 0)) + 1
 		d["head_blunt"] = float(d.get("head_blunt", 0.0)) + float(ev.get("blunt", 0.0))

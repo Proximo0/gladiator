@@ -83,6 +83,10 @@ const STRUGGLE_SHOVE_CHANCE: float = 0.05  ## per tick while held: shove the hol
 const BRAWLER_LEN_RATIO: float = 2.0  ## foe weapon length over fist length that sends a fist fighter rushing in
 const FIST_HEAD_BIAS: float = 2.5  ## extra on top of the blunt bias for bare fists: brawlers go for the jaw (concussion, bloody nose)
 const BLUNT_HEAD_BIAS: float = 4.0  ## blunt weapons do not bleed: they win by knocking the head (consciousness)
+const GAP_THRUST_CHANCE: float = 0.65  ## a point weapon aimed at plate goes for a gap instead (ArmorRead), x difficulty armor_read
+const KITE_MAX_TICKS: int = 420  ## longest kiting stint before going in anyway (no stalemates)
+const KITE_COOLDOWN_TICKS: int = 360  ## after a stint: fight a while before kiting again
+const KITE_KEEP: float = 0.9  ## kiting stands this far outside the foe's reach (m)
 
 const ST_APPROACH: int = 0
 const ST_FEINT: int = 1
@@ -128,6 +132,9 @@ var _roll_rng := RandomNumberGenerator.new()  ## dodge-roll choices only (own st
 var _roll_cd: int = 0  ## ticks before the brain considers another dodge roll
 var _close_rng := RandomNumberGenerator.new()  ## shove, kick and grab choices only (own stream)
 var _close_cd: int = 0
+var _armor_rng := RandomNumberGenerator.new()  ## armor-read choices only (own stream: fights without plate draw as before)
+var _kite_t: int = 0  ## ticks into the current kiting stint (0 = not kiting)
+var _kite_cd: int = 0
 var _hold_left: int = 0  ## ticks the brain keeps CLINCH held
 var _hold_grace: int = 0
 var _p: Dictionary = {}
@@ -200,6 +207,7 @@ func _init(seed: int, personality: Dictionary = {}) -> void:
 	_rng.seed = seed
 	_roll_rng.seed = seed * 7919 + 17
 	_close_rng.seed = seed * 104729 + 31
+	_armor_rng.seed = seed * 15485863 + 7
 	_p = preset(str(personality.get("preset", "duelist")))
 	for k: Variant in personality:
 		if str(k) != "preset":
@@ -609,6 +617,8 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	else:
 		_neutral_aim(out)
 	_shield_up(me, out)
+	if not finishing and _kite(me, obs, out):
+		return
 	if not finishing:
 		if _phase == 0 and _phase_t <= 0 and _desperation() < REPOS_DESPERATE:
 			_begin_repos(-1, 0)
@@ -673,6 +683,45 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 			_enter(ST_WINDUP, _windup_len(me))
 	else:
 		_wait = _rng.randi_range(8, 24)
+
+
+## A lighter fighter keeps just outside a heavier foe's reach while the foe still has breath (chasing costs the armored
+## side stamina per step, ArmorLoad), then goes in: when the foe tires, whiffs, or after KITE_MAX_TICKS. True while
+## kiting (the movement is set).
+func _kite(me: Dictionary, obs: Dictionary, out: FighterInput) -> bool:
+	if _kite_cd > 0:
+		_kite_cd -= 1
+	var mine: Dictionary = me.get("armor", {}) if me.get("armor", {}) is Dictionary else {}
+	var theirs: Dictionary = obs.get("armor", {}) if obs.get("armor", {}) is Dictionary else {}
+	var stamina: float = float(me.get("stamina", 1.0))
+	var want: bool = ArmorRead.should_kite(ArmorRead.load_of(mine), ArmorRead.load_of(theirs), stamina, float(obs.get("stamina", 1.0)))
+	if _kite_t == 0:
+		if not want or _kite_cd > 0 or _burst_t > 0 or _desperation() >= REPOS_DESPERATE or _brawler_rush(me, obs):
+			return false
+		if _armor_rng.randf() >= float(_d.get("armor_read", 1.0)):
+			_kite_cd = KITE_COOLDOWN_TICKS
+			return false
+	_kite_t += 1
+	if not want or _kite_t > KITE_MAX_TICKS or _desperation() >= REPOS_DESPERATE or (_opportunity(obs) and _dist <= _reach * 1.4):
+		_kite_t = 0
+		_kite_cd = KITE_COOLDOWN_TICKS
+		_end_repos()  # re-engage: a committed burst
+		return false
+	var foe_reach: float = 0.9 + float(CombatData.weapon(str(obs.get("weapon_id", "fists"))).get("length", 0.3)) * 0.9
+	var keep: float = maxf(foe_reach, _reach) + KITE_KEEP
+	_flip_t -= 1
+	if _flip_t <= 0:
+		_flip_t = _rng.randi_range(80, 200)
+		_circle_dir = _pick_side()
+	if _dist < keep:
+		_steer(-_dir + _tangent() * 0.6, 1.0, out)
+		if _dist < foe_reach + 0.4 and stamina > 0.4:
+			out.buttons |= FighterInput.SPRINT
+	elif _dist < keep + 1.5:
+		_steer(_tangent() + _venue_lean() * 0.5, 0.5, out)
+	else:
+		_steer(_dir * 0.6 + _tangent() * 0.5, 0.5, out)
+	return true
 
 
 ## Start a footwork phase. style < 0 picks one at random; ticks <= 0 draws the length from the personality.
@@ -1016,6 +1065,7 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 	var part: String = ""
 	var neck: bool = false
 	var half: bool = false
+	var gap: String = ""
 	var avg_armor: float = _avg_armor(armor, blunt)
 	var can_half: bool = bool(def.get("half_sword", false))
 
@@ -1064,12 +1114,17 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 		if can_half and avg_armor >= 0.5 and pointy:
 			kind = "thrust"
 			half = true
-		part = _pick_part(obs, armor, kind, blunt, shape == "fist")
+		part = _pick_part(obs, armor, kind, blunt, shape == "fist", edged)
 		if kind != "thrust" and kind != "low" and _rng.randf() < _pf("disarm_aim") * DISARM_SCALE:
 			part = "forearm_r"  # knock the weapon out of the hand: strike the holding forearm
 			if kind == "overhead":
 				kind = "diag"
 		neck = part == "head" and edged and (kind == "horizontal" or kind == "diag")
+		gap = _pick_gap(armor, obs, part, pointy)
+		if gap != "":
+			kind = "thrust"
+			part = ArmorRead.gap_part(gap)
+			neck = false
 	var dir := Vector2.ZERO
 	match kind:
 		"diag":
@@ -1082,7 +1137,7 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 			dir = Vector2(mirror * 0.45, -0.25)  # thrust: wind up off line, then drive onto the target
 			if shape == "spear":
 				dir = Vector2.ZERO  # a pole thrust is drawn back along its own line, never swept across the foe
-	return {"kind": kind, "part": part, "dir": dir, "noise": noise, "half": half, "neck": neck, "finishing": finishing}
+	return {"kind": kind, "part": part, "dir": dir, "noise": noise, "half": half, "neck": neck, "finishing": finishing, "gap": gap}
 
 
 func _kind_weights(def: Dictionary) -> Dictionary:
@@ -1113,7 +1168,7 @@ func _kind_weights(def: Dictionary) -> Dictionary:
 	return w
 
 
-func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool, fist: bool = false) -> String:
+func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool, fist: bool = false, edged: bool = false) -> String:
 	var parts: Dictionary = obs.get("parts", {})
 	var w: Dictionary = {}
 	var skill: float = float(_d["target_skill"])
@@ -1142,6 +1197,8 @@ func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool, f
 			wt *= 1.0 + _pf("cripple") * 2.5
 		if blunt and n == "head":
 			wt *= BLUNT_HEAD_BIAS * (FIST_HEAD_BIAS if fist else 1.0)
+		if n == "head" and kind != "thrust":
+			wt *= lerpf(1.0, ArmorRead.head_scale(armor, blunt, edged), float(_d.get("armor_read", 1.0)))  # bash helmets, do not cut them
 		var sc: float = _armor_score(armor, n, blunt)
 		var armor_w: float = 1.3 if sc <= 0.0 else (1.0 - 0.85 * sc)
 		wt *= armor_w if skill == 1.0 else pow(armor_w, skill)
@@ -1154,6 +1211,31 @@ func _pick_part(obs: Dictionary, armor: Dictionary, kind: String, blunt: bool, f
 	if w.is_empty():
 		return "torso"
 	return _pick(w)
+
+
+## A plate gap to thrust at instead of `part` ("" for none): only for a point weapon, when `part` wears plate.
+func _pick_gap(armor: Dictionary, obs: Dictionary, part: String, pointy: bool) -> String:
+	if not pointy or not ArmorRead.plate_on(armor, part):
+		return ""
+	if _armor_rng.randf() >= GAP_THRUST_CHANCE * float(_d.get("armor_read", 1.0)):
+		return ""
+	var gaps: Dictionary = ArmorRead.open_gaps(armor)
+	var parts: Dictionary = obs.get("parts", {})
+	for g: Variant in gaps.keys():
+		var pd: Variant = parts.get(ArmorRead.gap_part(str(g)), {})
+		if pd is Dictionary and bool((pd as Dictionary).get("severed", false)):
+			gaps.erase(g)
+	if gaps.is_empty():
+		return ""
+	var total: float = 0.0
+	for g: Variant in gaps:
+		total += float(gaps[g])
+	var r: float = _armor_rng.randf() * total
+	for g: Variant in gaps:
+		r -= float(gaps[g])
+		if r <= 0.0:
+			return str(g)
+	return str(gaps.keys()[-1])
 
 
 func _armor_score(armor: Dictionary, part: String, blunt: bool) -> float:
@@ -1234,6 +1316,8 @@ func _plan_target(me: Dictionary, obs: Dictionary) -> Vector2:
 	if parts.has(part) and bool((parts[part] as Dictionary).get("severed", false)):
 		part = "torso"
 	var p: Vector3 = _part_pos(obs, part, fallback)
+	if str(_plan.get("gap", "")) != "":
+		p = ArmorRead.gap_point(str(_plan["gap"]), parts, p)
 	if bool(_plan.get("neck", false)) and part == "head":
 		p.y += NECK_LIFT
 	var wob: float = sin(float(_tick) * 0.07) * 0.05 * _pf("aim_noise")
@@ -1245,6 +1329,8 @@ func _plan_target(me: Dictionary, obs: Dictionary) -> Vector2:
 func _spear_target(obs: Dictionary) -> Vector3:
 	var fallback: Vector3 = (obs.get("pelvis_pos", Vector3.ZERO) as Vector3) + Vector3(0.0, 0.35, 0.0)
 	var p: Vector3 = _part_pos(obs, "torso", fallback)
+	if str(_plan.get("gap", "")) == "neck":
+		p = ArmorRead.gap_point("neck", obs.get("parts", {}), p)  # over a plate cuirass, the neck band
 	if _state == ST_WINDUP or _state == ST_STRIKE:
 		var n: Vector2 = _plan.get("noise", Vector2.ZERO)
 		p += (_right * n.x + Vector3.UP * n.y) * SPEAR_NOISE_M
