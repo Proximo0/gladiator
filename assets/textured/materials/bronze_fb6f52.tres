@@ -6,7 +6,7 @@
 
 [resource]
 resource_name = "bronze_fb6f52"
-albedo_color = Color(0.9589, 0.9509, 0.9752, 1)
+albedo_color = Color(0.8689, 0.8616, 0.8837, 1)
 albedo_texture = ExtResource("1")
 metallic = 1
 metallic_texture = ExtResource("2")

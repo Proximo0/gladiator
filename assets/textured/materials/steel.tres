@@ -6,12 +6,12 @@
 
 [resource]
 resource_name = "steel"
-albedo_color = Color(0.9038, 0.9051, 0.9088, 1)
+albedo_color = Color(0.7199, 0.721, 0.724, 1)
 albedo_texture = ExtResource("1")
 metallic = 1
 metallic_texture = ExtResource("2")
 metallic_texture_channel = 2
-roughness = 0.3347
+roughness = 0.5
 roughness_texture = ExtResource("2")
 roughness_texture_channel = 1
 normal_enabled = true

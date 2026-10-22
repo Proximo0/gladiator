@@ -4,8 +4,8 @@ extends Node3D
 ## gear. Run in a real (xvfb) window: godot --path . --resolution 1280x720 --fixed-fps 60
 ## res://tests/render/material_capture.tscn -- --out=DIR --name=after [--untextured] [--quality=low|medium|high].
 ## For each item and view it saves <name>_<item>_<view>.png, then renders the item once more in flat magenta to find its pixels and
-## prints "MATCAP <shot> mean=r,g,b sat=<s> contrast=<luma std> spec=<share of pixels over 230>" over those pixels
-## (sRGB 0-255), then one line with the video and texture memory in use. Never part of the check suite.
+## prints "MATCAP <shot> mean=r,g,b luma sat contrast=<luma std> patch=<mean luma change 8 px down> spec=<share
+## of pixels over 230>" over those pixels (sRGB 0-255), then one line with the video and texture memory in use. Never part of the check suite.
 
 const ITEMS: PackedStringArray = ["bronze_helmet", "steel_blade", "wood_shield"]
 ## Camera elevation (rad) per view: "side" near eye level (reflects the sand and horizon), "high" the fight camera's
@@ -13,6 +13,7 @@ const ITEMS: PackedStringArray = ["bronze_helmet", "steel_blade", "wood_shield"]
 const VIEWS: Dictionary = {"side": 0.35, "high": 0.9}
 const SETTLE: int = 30  ## frames before each saved shot (shadows and sky radiance settle)
 const MASK: Color = Color(1.0, 0.0, 1.0)
+const STEP: int = 8  ## px between the samples of the patch measure
 
 var _out: String = "/tmp/material_capture/"
 var _name: String = "shot"
@@ -167,6 +168,8 @@ func _stats(shot: String, lit: Image, mask: Image) -> void:
 	var luma_sq: float = 0.0
 	var sat_sum: float = 0.0
 	var bright: int = 0
+	var step_sum: float = 0.0  ## |luma change| over STEP px down the image: patchy bands along an upright blade
+	var steps: int = 0
 	for y: int in range(0, lit.get_height(), 2):
 		for x: int in range(0, lit.get_width(), 2):
 			var m: Color = mask.get_pixel(x, y)
@@ -181,11 +184,18 @@ func _stats(shot: String, lit: Image, mask: Image) -> void:
 			sat_sum += c.s
 			if l > 230.0 / 255.0:
 				bright += 1
+			if y + STEP < lit.get_height():
+				var m2: Color = mask.get_pixel(x, y + STEP)
+				if m2.r >= 0.8 and m2.g <= 0.35 and m2.b >= 0.7:
+					var c2: Color = lit.get_pixel(x, y + STEP)
+					step_sum += absf(0.2126 * c2.r + 0.7152 * c2.g + 0.0722 * c2.b - l)
+					steps += 1
 	if n == 0:
 		print("MATCAP %s no_pixels" % shot)
 		return
 	var mean: Vector3 = sum / n * 255.0
 	var lm: float = luma_sum / n
 	var sd: float = sqrt(maxf(luma_sq / n - lm * lm, 0.0)) * 255.0
-	print("MATCAP %s mean=%d,%d,%d luma=%.1f sat=%.3f contrast=%.1f spec=%.3f px=%d" % [shot, roundi(mean.x),
-			roundi(mean.y), roundi(mean.z), lm * 255.0, sat_sum / n, sd, float(bright) / n, n])
+	print("MATCAP %s mean=%d,%d,%d luma=%.1f sat=%.3f contrast=%.1f patch=%.1f spec=%.3f px=%d" % [shot, roundi(mean.x),
+			roundi(mean.y), roundi(mean.z), lm * 255.0, sat_sum / n, sd, step_sum / maxi(steps, 1) * 255.0,
+			float(bright) / n, n])
