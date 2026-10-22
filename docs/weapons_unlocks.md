@@ -1,5 +1,8 @@
 # Play-to-unlock weapons
 
+Earned shields (buckler, parma, pelta, kite, aspis, tower) and earned armor pieces use the same milestones and the
+same gating path: see docs/armor_more.md.
+
 Six new weapons, earned by playing. The starters stay free (fists, rake, bat, club, gladius, longsword, axe, spear,
 round shield); the premium blades still come with their outfits (docs/weapons_premium.md).
 
