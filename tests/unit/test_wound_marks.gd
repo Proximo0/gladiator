@@ -48,6 +48,13 @@ func test_tangent_lies_in_the_surface_plane() -> void:
 	assert_near(fb.dot(Vector3.UP), 1.0, 0.0001, "motion along the normal falls back")
 
 
+func test_low_cap_follows_the_tuning_row_and_stays_inside_the_shader() -> void:
+	assert_eq(WoundMarks.cap_for(0, 7), 7)
+	assert_eq(WoundMarks.cap_for(0, 99), WoundMarks.MAX_CAP)
+	assert_eq(WoundMarks.cap_for(1, 12), 8, "only the low tier follows the row")
+	assert_eq(WoundMarks.new(0, 9).cap, 9)
+
+
 func test_marks_merge_nearby_and_respect_the_cap() -> void:
 	var wm: WoundMarks = WoundMarks.new(0)
 	assert_eq(wm.cap, WoundMarks.CAPS[0])
