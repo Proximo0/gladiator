@@ -49,7 +49,7 @@ func _init() -> void:
 func set_quality(level: int) -> void:
 	quality = clampi(level, 0, 2)
 	for side: int in _marks:
-		(_marks[side] as WoundMarks).cap = WoundMarks.cap_for(quality)
+		(_marks[side] as WoundMarks).cap = WoundMarks.cap_for(quality, int(_tn().wound_cap_low))
 
 
 func set_palette(slot: int, pal: BloodPalette) -> void:
@@ -66,7 +66,7 @@ func track(f: Node) -> void:
 	var sv: Variant = f.get("side")
 	var side: int = int(sv) if sv != null else _by_side.size()
 	_by_side[side] = f
-	_marks[side] = WoundMarks.new(quality)
+	_marks[side] = WoundMarks.new(quality, int(_tn().wound_cap_low))
 	_drop_budget[side] = _tn().wound_drop_rate
 	if f.has_signal("hit") and not f.is_connected("hit", on_hit):
 		f.connect("hit", on_hit)

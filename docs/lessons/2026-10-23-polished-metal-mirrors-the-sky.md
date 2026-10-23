@@ -1,0 +1,2 @@
+What happened: Houdini steel at metallic 1 mirrored the deep-blue sky over every blade on the sand, and wet-blood gloss over dark leather armor added a sky highlight that read pink-white; textured gate, barrier and trophy copies sat unused because only the rack was listed in ArenaDressing.TEXTURED.
+Rule: Cap art metals (metallic 0.6, roughness floor) and give armor a low-specular wet sheen; when textured copies are added under assets/textured, list them in the loader the same day and check a capture.

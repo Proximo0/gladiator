@@ -188,6 +188,10 @@ const RAKE_ART_BOTTOM: float = 0.2
 ## Blade material of an energy weapon: kept emissive and unshaded, never alpha-blended.
 const ART_ENERGY_MATERIAL: String = "energy"
 const ART_ENERGY_EMISSION: float = 2.5
+## Polished steel at Houdini's metallic 1 mirrored the sky's deep blue over every blade lying on the sand (and the sun
+## glow over a held one). A capped metal keeps part of its own grey diffuse, and the roughness floor blurs what is left.
+const ART_METAL_MAX: float = 0.6
+const ART_METAL_ROUGHNESS_MIN: float = 0.6
 
 
 ## Makes every surface material of an art scene opaque (the glb's own alpha flags are import noise). The material
@@ -211,6 +215,9 @@ static func opaque_art_material(m: BaseMaterial3D) -> BaseMaterial3D:
 	var o := m.duplicate() as BaseMaterial3D
 	o.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 	o.albedo_color.a = 1.0
+	if o.resource_name != ART_ENERGY_MATERIAL and o.metallic > ART_METAL_MAX:
+		o.metallic = ART_METAL_MAX
+		o.roughness = maxf(o.roughness, ART_METAL_ROUGHNESS_MIN / (0.9 if o.roughness_texture != null else 1.0))
 	if o.resource_name == ART_ENERGY_MATERIAL:
 		o.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		o.emission_enabled = true

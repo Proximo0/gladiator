@@ -5,6 +5,7 @@ extends "res://game/debug/tuning/tuning_wounds.gd"
 
 const ROWS_AI: Array = [
 	["ai_thrust_lead", 0.2, 0.0, 0.5, 0.01, "AI", "CPU thrust: THRUST is punched out when the point is this long from the target at the closing speed, s."],
+	["ai_spear_thrust_lead", 0.5, 0.0, 1.0, 0.01, "AI", "CPU spear: THRUST (and the hip lunge) starts when the point is this long from the target at the closing speed, s."],
 	["ai_thrust_near", 0.45, 0.0, 1.0, 0.01, "AI", "CPU thrust: THRUST goes at the latest when the point is this close to the target, m."],
 	["ai_thrust_hit_d", 0.1, 0.0, 0.5, 0.01, "AI", "CPU thrust: the drive ends when the point is this close to the target (it arrived), m."],
 	["ai_thrust_past_d", 0.25, 0.05, 1.0, 0.01, "AI", "CPU thrust: the drive ends when the point is this much farther than its closest (it went past), m."],
@@ -34,6 +35,7 @@ const ROWS_AI: Array = [
 ]
 
 var ai_thrust_lead: float
+var ai_spear_thrust_lead: float
 var ai_thrust_near: float
 var ai_thrust_hit_d: float
 var ai_thrust_past_d: float

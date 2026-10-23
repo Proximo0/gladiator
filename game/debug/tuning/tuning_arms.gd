@@ -25,6 +25,10 @@ const ROWS_ARMS: Array = [
 	["guard_forward", 0.42, 0.2, 0.8, 0.01, "Arms", "Guard plane distance in front of the chest, m."],
 	["thrust_reach", 0.45, 0.0, 1.0, 0.05, "Arms", "Extra forward reach when thrusting, m."],
 	["swing_reach", 0.35, 0.0, 1.0, 0.05, "Arms", "Extra forward reach while swinging, m."],
+	["thrust_lunge", 3.0, 0.0, 4.0, 0.1, "Arms", "Extra forward body speed while THRUST is held on the run (the hips drive in behind the point), m/s."],
+	["thrust_lunge_accel", 30.0, 0.0, 30.0, 0.5, "Arms", "Extra horizontal acceleration while lunging with THRUST, m/s²."],
+	["thrust_lunge_torso", 1.0, 0.0, 2.0, 0.1, "Arms", "Share of the lunge acceleration that also pushes the chest, so the arm keeps up with the hips."],
+	["thrust_lunge_brake", 0.4, 0.0, 1.0, 0.05, "Arms", "Seconds after a lunge that the extra acceleration also brakes the body, so it does not run on into the foe."],
 	["half_sword_thrust", 1.6, 1.0, 3.0, 0.1, "Arms", "Thrust force multiplier in the half-sword grip."],
 	["torso_twist", 0.7, 0.0, 1.5, 0.05, "Arms", "Torso yaw following horizontal aim, rad at full aim."],
 	["guard_hand_speed", 2.5, 0.5, 10.0, 0.1, "Arms", "Max speed of the hand goal in guard, m/s."],
@@ -63,6 +67,10 @@ var guard_height: float
 var guard_forward: float
 var thrust_reach: float
 var swing_reach: float
+var thrust_lunge: float
+var thrust_lunge_accel: float
+var thrust_lunge_torso: float
+var thrust_lunge_brake: float
 var half_sword_thrust: float
 var torso_twist: float
 var guard_hand_speed: float
