@@ -434,11 +434,15 @@ func _update_state(me: Dictionary, obs: Dictionary) -> void:
 		_low_ticks = 0
 		_no_rest_until = _tick + REST_FAIL_TICKS * 3
 	var stamina_low: bool = stamina < rs and _tick >= _no_rest_until
-	if stamina_low or float(me.get("blood_frac", 1.0)) < _pf("retreat_blood"):
+	var blood: float = float(me.get("blood_frac", 1.0))
+	# Outreached and behind on blood: backing off only lets the longer weapon win on time (round 4: club v spear).
+	var fight_on: bool = ThrustPlan.fight_on_bleeding(_foe_reach - _reach, Tuning.shared().ai_close_margin, blood, _foe_blood(obs))
+	var hurt: bool = blood < _pf("retreat_blood") and not fight_on
+	if stamina_low or hurt:
 		_tired = true
 	elif _tick < _no_rest_until:
-		_tired = float(me.get("blood_frac", 1.0)) < _pf("retreat_blood")
-	elif stamina > rs + 0.3 and float(me.get("blood_frac", 1.0)) >= _pf("retreat_blood") + 0.05:
+		_tired = hurt
+	elif stamina > rs + (Tuning.shared().ai_close_rest_gap if fight_on else 0.3) and (blood >= _pf("retreat_blood") + 0.05 or fight_on):
 		_tired = false
 	var finishing: bool = _want_finish(obs)
 	var busy: bool = _state == ST_STRIKE or _state == ST_GUARD

@@ -686,3 +686,20 @@ func test_short_weapon_presses_in_after_a_parry() -> void:
 		if inp.move_y < -200:
 			backs += 1
 	assert_eq(backs, 0, "inside the spear's point: never backs out while pressing")
+
+
+## Bleeding below the retreat line: against an equal weapon the duelist backs off, but outreached by a spear and
+## behind on blood it fights on (backing off only hands the spear the time-limit win).
+func test_outreached_and_behind_on_blood_fights_on() -> void:
+	for foe_weapon: String in ["club", "spear"]:
+		var b := _brain({"preset": "duelist"})
+		var me: Dictionary = _frame(0, Vector3.ZERO, 0.0, "club")
+		var foe: Dictionary = _frame(1, Vector3(0.0, 0.0, -3.5), PI, foe_weapon)
+		me["blood_frac"] = 0.2
+		foe["blood_frac"] = 0.9
+		for i in 10:
+			b.think(me, foe, DT)
+		if foe_weapon == "spear":
+			assert_true(b.state_name() != "retreat", "outreached: fights on")
+		else:
+			assert_eq(b.state_name(), "retreat", "same reach: backs off to recover")

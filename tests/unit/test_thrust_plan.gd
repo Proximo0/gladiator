@@ -93,3 +93,10 @@ func test_away_speed_and_chase_gait() -> void:
 	assert_false(ThrustPlan.chase_gait(3.0, 1.5, 0.3, 0.8, 0.8, 0.3), "he stands: walk up")
 	assert_false(ThrustPlan.chase_gait(1.2, 1.5, 2.0, 0.8, 0.8, 0.3), "close enough already")
 	assert_false(ThrustPlan.chase_gait(3.0, 1.5, 2.0, 0.2, 0.8, 0.3), "no breath to sprint")
+
+
+func test_fight_on_bleeding() -> void:
+	assert_true(ThrustPlan.fight_on_bleeding(1.3, 0.25, 0.2, 0.7), "outreached and behind: no retreat")
+	assert_false(ThrustPlan.fight_on_bleeding(1.3, 0.25, 0.7, 0.2), "ahead on blood: resting is fine")
+	assert_false(ThrustPlan.fight_on_bleeding(0.1, 0.25, 0.2, 0.7), "even reach: retreat as usual")
+	assert_false(ThrustPlan.fight_on_bleeding(-1.3, 0.25, 0.2, 0.7), "the longer weapon keeps its retreat")

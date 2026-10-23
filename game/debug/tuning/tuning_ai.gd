@@ -27,6 +27,7 @@ const ROWS_AI: Array = [
 	["ai_close_press_frac", 0.7, 0.3, 1.0, 0.05, "AI", "CPU closing plan: while pressing, the standing distance as a share of my own reach."],
 	["ai_close_point_frac", 0.55, 0.2, 1.0, 0.05, "AI", "CPU closing plan: closer than this share of the foe's reach I am inside his point (shove him, step in)."],
 	["ai_close_shove_chance", 0.03, 0.0, 0.2, 0.005, "AI", "CPU closing plan: chance per tick of a shove while pressing inside the foe's point."],
+	["ai_close_rest_gap", 0.1, 0.0, 0.5, 0.05, "AI", "CPU closing plan: outreached and behind on blood, a winded fighter rests only to this much past its retreat stamina (else 0.3)."],
 	["ai_chase_away", 0.8, 0.0, 4.0, 0.05, "AI", "CPU chase gait: the foe backing off faster than this (m/s) is chased at a sprint."],
 	["ai_chase_stamina", 0.3, 0.0, 1.0, 0.05, "AI", "CPU chase gait: only with more stamina than this."],
 ]
@@ -56,3 +57,4 @@ var ai_close_point_frac: float
 var ai_close_shove_chance: float
 var ai_chase_away: float
 var ai_chase_stamina: float
+var ai_close_rest_gap: float

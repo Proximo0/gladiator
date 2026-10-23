@@ -105,3 +105,10 @@ static func away_speed(foe_vel: Vector3, dir: Vector3) -> float:
 ## catches him.
 static func chase_gait(dist: float, hold: float, away: float, stamina: float, min_away: float, min_stamina: float) -> bool:
 	return dist > hold and away > min_away and stamina > min_stamina
+
+
+## True when a bleeding fighter should fight on rather than back off to recover: the foe outreaches it by at least
+## `margin` (`reach_gap` = his reach minus mine) and it has less blood left than he does. Retreating from a longer
+## weapon never gets inside it, and the time limit goes to the fighter with more blood.
+static func fight_on_bleeding(reach_gap: float, margin: float, my_blood: float, foe_blood: float) -> bool:
+	return reach_gap >= margin and my_blood < foe_blood

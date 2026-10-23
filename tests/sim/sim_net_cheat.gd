@@ -12,6 +12,7 @@ extends "res://tests/sim/sim_net_soak.gd"
 const BASELINE_TICKS: int = 360
 const CHEAT_TICKS: int = 600
 const HOSTILE_TICKS: int = 120
+const ABUSE_LAST_TICK: int = 400  ## the last scripted abuse step of `_abuse`
 const CheatFuzz: GDScript = preload("res://tests/unit/test_net_fuzz.gd")
 
 var _cheating: bool = false
@@ -67,7 +68,7 @@ func _abuse(k: int) -> void:
 		big.resize(65536)
 		big[0] = NetConfig.MSG_LOADOUT
 		_client.send(big, true)
-	if k == 400:
+	if k == ABUSE_LAST_TICK:
 		p.record(newest + NetInputBuffer.MAX_AHEAD - 1, FighterInput.new())  # walks the host's buffer ahead (only hurts the cheater)
 		_client.send(p.pack(), false)
 
@@ -79,12 +80,12 @@ func _valid_snap_bytes() -> PackedByteArray:
 
 func run() -> Array:
 	var rows: Array = []
-	_rng.seed = 9400
+	_rng.seed = 9403  # a seed whose bot fight outlasts the cheat window (9400 ended inside it once the closing plan pressed)
 	loss = 0.0
 	time_limit_s = 120.0
 	port = net_port(61)  # per-process block (sim_base.net_port); slot 61 is the cheating-client sim
 	await sandbox(true)  # own physics space: the host path must not depend on the sims that ran before (see sim_practice)
-	if not await _setup(0, 0, 0, 9400):
+	if not await _setup(0, 0, 0, 9403):
 		await _teardown()
 		return [row("net_cheat_lobby", false, "no lobby")]
 	var n: int = 0
@@ -140,9 +141,13 @@ func run() -> Array:
 		"fighter 1 kept %s through HELLO/LOADOUT spam (lobby loadout for a rematch: %s)" % [weapon0, str(_host.remote_loadout.get("weapon", ""))]))
 	rows.append(row("net_cheat_buffers_bounded", held <= NetInputBuffer.MAX_HELD and buf.rejected > 0,
 		"host input buffer held %d, rejected %d, skipped %d" % [held, buf.rejected, buf.skipped]))
+	# Snapshots are owed for the live ticks only: the bots' fight may end honestly inside the window (the host then
+	# stops sending), but only after every abuse step (the last is at tick 400) went out.
+	var live: int = int(cheat["ticks"])
 	rows.append(row("net_cheat_flood_dropped", _host.dropped_packets - dropped0 >= 100 and _host.is_open() and _client.is_open()
-		and _host.host_driver.snapshots_sent - snaps0 >= CHEAT_TICKS / NetConfig.SNAP_EVERY_TICKS - 5,
-		"dropped %d packets, both sessions open, %d snapshots sent while cheating" % [_host.dropped_packets - dropped0, _host.host_driver.snapshots_sent - snaps0]))
+		and live > ABUSE_LAST_TICK and _host.host_driver.snapshots_sent - snaps0 >= live / NetConfig.SNAP_EVERY_TICKS - 5,
+		"dropped %d packets, both sessions open, %d snapshots sent while cheating over %d live ticks" % [_host.dropped_packets - dropped0,
+			_host.host_driver.snapshots_sent - snaps0, live]))
 	rows.append(row("net_cheat_no_script_errors", errors_cheat == 0 and errors_hostile == 0 and hostile_ok,
 		"errors: honest %d, cheating client %d, hostile host %d; engine unmarshal noise %d; client poses finite %s" % [
 			errors_honest, errors_cheat, errors_hostile, int(errlog.get("unmarshal")), str(hostile_ok)]))
@@ -177,7 +182,7 @@ func _forged_over_row() -> Array:
 ## Over `ticks` host ticks: the largest per-tick step of fighter 1's hand goal while it stands (the arm is driven),
 ## its peak horizontal pelvis speed, and its hits.
 func _measure(f1: Fighter, ticks: int, abuse: bool) -> Dictionary:
-	var out: Dictionary = {"goal_step": 0.0, "speed": 0.0, "hits": 0, "max_hit": 0.0}
+	var out: Dictionary = {"goal_step": 0.0, "speed": 0.0, "hits": 0, "max_hit": 0.0, "ticks": 0}
 	var on_hit: Callable = func(ev: Dictionary) -> void:
 		if int(ev.get("attacker", -1)) == 1:
 			out["hits"] = int(out["hits"]) + 1
@@ -192,6 +197,7 @@ func _measure(f1: Fighter, ticks: int, abuse: bool) -> Dictionary:
 		await host.get_tree().physics_frame
 		if _hm.over:
 			break
+		out["ticks"] = k + 1  # live ticks (the bots' fight can end honestly inside the window)
 		var goal: Vector3 = f1.get("_goal_r")
 		var ok: bool = f1.state() == "standing" or f1.state() == "stumbling"
 		if ok and prev_ok:
