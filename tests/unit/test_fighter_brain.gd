@@ -648,3 +648,29 @@ func test_raises_every_shield_like_the_round_shield() -> void:
 	assert_true(round_n > 0, "round shield raised")
 	for id: String in ["scutum", "buckler", "parma", "pelta", "aspis", "kite_shield", "tower_shield"]:
 		assert_eq(_offhand_presses(id), round_n, id)
+
+
+func _recover_ticks(weapon: String, chance: float) -> int:
+	var tun: Tuning = Tuning.shared()
+	var saved: float = tun.ai_overcommit_chance
+	tun.ai_overcommit_chance = chance
+	var b := _brain({"preset": "berserker", "preferred_attacks": ["horizontal"]})
+	var f: Array = _pair(1.2, weapon)
+	var longest: int = 0
+	var run: int = 0
+	for i in 600:
+		b.think(f[0], f[1], DT)
+		if b.state_name() == "recover":
+			run += 1
+			longest = maxi(longest, run)
+		else:
+			run = 0
+	tun.ai_overcommit_chance = saved
+	return longest
+
+
+func test_long_blade_overcommit_lengthens_recovery() -> void:
+	var plain: int = _recover_ticks("dai_katana", 0.0)
+	var over: int = _recover_ticks("dai_katana", 1.0)
+	assert_true(over > plain, "an over-committed swing recovers longer (%d vs %d)" % [over, plain])
+	assert_eq(_recover_ticks("laser_sword", 1.0), _recover_ticks("laser_sword", 0.0), "a one-handed blade never over-commits")

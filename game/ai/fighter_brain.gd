@@ -130,6 +130,10 @@ var _rng := RandomNumberGenerator.new()
 var _drng := RandomNumberGenerator.new()  ## difficulty rolls only, so "normal" draws exactly what it always drew
 var _roll_rng := RandomNumberGenerator.new()  ## dodge-roll choices only (own stream: the rest of the brain draws as before)
 var _roll_cd: int = 0  ## ticks before the brain considers another dodge roll
+var _reach_rng := RandomNumberGenerator.new()  ## over-commit choices only (own stream)
+var _holder: bool = false  ## my weapon is the long two-handed blade (ReachPlan.is_holder)
+var _overcommit: bool = false  ## the swing under way is an over-commit: a lunge, then a long recovery
+var _bait_t: int = 0  ## ticks spent waiting outside a longer blade (the bait cycle's clock)
 var _close_rng := RandomNumberGenerator.new()  ## shove, kick and grab choices only (own stream)
 var _close_cd: int = 0
 var _armor_rng := RandomNumberGenerator.new()  ## armor-read choices only (own stream: fights without plate draw as before)
@@ -212,6 +216,8 @@ func _init(seed: int, personality: Dictionary = {}) -> void:
 	_rng.seed = seed
 	_roll_rng.seed = seed * 7919 + 17
 	_close_rng.seed = seed * 104729 + 31
+	_reach_rng.seed = seed * 1299709 + 5
+	_bait_t = seed % 97  # fighters do not all bait on the same beat
 	_armor_rng.seed = seed * 15485863 + 7
 	_p = preset(str(personality.get("preset", "duelist")))
 	for k: Variant in personality:
@@ -497,6 +503,9 @@ func _after_guard(me: Dictionary, obs: Dictionary) -> void:
 func _enter(s: int, len_ticks: int) -> void:
 	if s == ST_WINDUP or s == ST_FEINT:
 		_idle_ticks = 0
+	if s == ST_STRIKE:
+		_overcommit = _holder and not bool(_plan.get("finishing", false)) \
+			and _reach_rng.randf() < Tuning.shared().ai_overcommit_chance
 	_state = s
 	_st_ticks = 0
 	_st_len = len_ticks
@@ -684,7 +693,10 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		_range_t = _rng.randi_range(50, 140)
 		_range_off = _rng.randf_range(-0.1, 1.0) * _reach * (1.0 - _pf("aggression") * 0.5)
 	if waiting:
-		hold = _foe_reach + Tuning.shared().ai_close_wait_gap
+		var tn: Tuning = Tuning.shared()
+		_bait_t += 1
+		hold = ReachPlan.bait_hold(_bait_t, int(tn.ai_bait_cycle), int(tn.ai_bait_in_start), int(tn.ai_bait_in_len),
+			_foe_reach, tn.ai_close_wait_gap, tn.ai_bait_depth)
 	elif not finishing:
 		hold += _range_off
 	if _spear:
@@ -767,7 +779,7 @@ func _kite(me: Dictionary, obs: Dictionary, out: FighterInput) -> bool:
 	var keep: float = maxf(foe_reach, _reach) + KITE_KEEP
 	_flip_t -= 1
 	if _flip_t <= 0:
-		_flip_t = _rng.randi_range(80, 200)
+		_flip_t = _rng.randi_range(80, 120)
 		_circle_dir = _pick_side()
 	if _dist < keep:
 		_steer(-_dir + _tangent() * 0.6, 1.0, out)
@@ -1033,7 +1045,8 @@ func _do_strike(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	if _st_ticks + 1 >= _st_len:
 		var def: Dictionary = CombatData.weapon(str(me.get("weapon_id", "fists")))
 		var rec: float = (14.0 + float(def.get("mass", 1.0)) * 8.0) * (1.3 - _pf("aggression") * 0.6)
-		_enter(ST_RECOVER, clampi(roundi(rec * float(_d["recover_scale"])), 8, 65))
+		var rec_ticks: int = clampi(roundi(rec * float(_d["recover_scale"])), 8, 65)
+		_enter(ST_RECOVER, ReachPlan.recover_ticks(rec_ticks, _overcommit, Tuning.shared().ai_overcommit_recover, 120))
 
 
 func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
@@ -1044,6 +1057,8 @@ func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	_shield_up(me, out)
 	if _spear and not _want_finish(obs):
 		_spear_footwork(out)
+	elif _overcommit:
+		out.move_y = 0  # off balance after the lunge: stands where the swing left him
 	elif _want_finish(obs):
 		out.move_y = roundi(-300.0 * (1.0 - _pf("aggression")))
 	else:
@@ -1052,7 +1067,9 @@ func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		var finishing: bool = _want_finish(obs)
 		var stamina: float = float(me.get("stamina", 1.0))
 		var room: bool = not _spear or (_dist >= SPEAR_THRUST_MIN and _dist <= Tuning.shared().ai_spear_drive_max)
-		if not _tired and room and _dist <= _reach * 1.1 and _rng.randf() <= maxf(_pf("aggression") * 0.6 * minf(stamina * 1.5, 1.0), 0.8 if finishing else 0.0):
+		var spent: bool = _overcommit
+		_overcommit = false
+		if not spent and not _tired and room and _dist <= _reach * 1.1 and _rng.randf() <= maxf(_pf("aggression") * 0.6 * minf(stamina * 1.5, 1.0), 0.8 if finishing else 0.0):
 			_plan = _make_plan(me, obs, finishing)
 			_enter(ST_WINDUP, roundi(float(_windup_len(me)) * 0.7))
 		else:
@@ -1089,7 +1106,7 @@ func _do_retreat(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var keep: float = _reach * 2.2 + 1.0 - _pf("risk") + (1.0 if _pf("range_frac") > 1.0 else 0.0)
 	_flip_t -= 1
 	if _flip_t <= 0:
-		_flip_t = _rng.randi_range(80, 200)
+		_flip_t = _rng.randi_range(80, 120)
 		_circle_dir = _pick_side()
 	if _dist < keep:
 		_steer(-_dir + _tangent() * 0.6, 0.9 if _dist < keep - 1.0 else 0.6, out)
@@ -1223,6 +1240,8 @@ func _make_plan(me: Dictionary, obs: Dictionary, finishing: bool) -> Dictionary:
 		if kw.has("thrust") and _shape == "sword" and ThrustPlan.square_on(float(obs.get("facing_yaw", 0.0)),
 				obs.get("pelvis_pos", Vector3.ZERO), me.get("pelvis_pos", Vector3.ZERO), Tuning.shared().ai_square_cos):
 			kw["thrust"] = float(kw["thrust"]) * Tuning.shared().ai_square_thrust_mult  # his whole chest shows: stab it
+		if _close_step == ThrustPlan.CLOSE_RUSH or _close_step == ThrustPlan.CLOSE_WAIT:
+			kw["low"] = float(kw.get("low", 0.0)) * Tuning.shared().ai_reach_low_mult  # under a longer blade's guard
 		kind = _pick(kw)
 		if can_half and avg_armor >= 0.5 and pointy:
 			kind = "thrust"
@@ -1415,6 +1434,7 @@ func _geometry(me: Dictionary, obs: Dictionary) -> void:
 	_reach = 0.9 + float(def.get("length", 0.3)) * 0.9
 	_shape = str(def.get("shape", "fist"))
 	_spear = _shape == "spear"
+	_holder = ReachPlan.is_holder(_shape, bool(def.get("two_handed", false)), float(def.get("length", 0.3)), Tuning.shared().ai_holder_min_length)
 	if str(me.get("grip", "normal")) == "half":
 		_reach -= 0.25
 	_foe_reach = ThrustPlan.reach_of(float(CombatData.weapon(str(obs.get("weapon_id", "fists"))).get("length", 0.3)))
@@ -1612,7 +1632,8 @@ func _strike_len(me: Dictionary) -> int:
 
 func _new_wait() -> int:
 	var base: float = _rng.randf_range(20.0, 70.0)
-	return roundi(base * (0.4 + _pf("patience") * 1.4) * (1.35 - _pf("aggression") * 0.9) * float(_d["wait_scale"]))
+	var hold: float = Tuning.shared().ai_holder_wait_mult if _holder else 1.0
+	return roundi(base * (0.4 + _pf("patience") * 1.4) * (1.35 - _pf("aggression") * 0.9) * float(_d["wait_scale"]) * hold)
 
 
 func _lagged(k: int) -> Dictionary:

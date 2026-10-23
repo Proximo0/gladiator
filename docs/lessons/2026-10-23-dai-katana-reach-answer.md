@@ -1,0 +1,2 @@
+What happened: the dai-katana CPU's "over-commit" (a lunge, then a long still recovery) raised its win rate against the laser sword (58 -> 63-73) instead of lowering it, and an over-commit rolled in `_do_strike` never fired because `_st_ticks` is already 1 on the first strike call; only waiting longer between attacks moved it.
+Rule: roll a state's choice in `_enter`, not on a tick counter of the state; measure the harsh setting of a brain lever on the 48-fight pairing before trusting its name.
