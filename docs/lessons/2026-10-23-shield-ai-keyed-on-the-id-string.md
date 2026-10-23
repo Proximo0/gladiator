@@ -1,0 +1,2 @@
+What happened: five shields lost 25-33% (or won 67%) and looked like data outliers; the brain only raised a shield whose id contained "shield", so the scutum, buckler, parma, pelta and aspis were never lifted, and 24-fight rows swung 10+ points between seed sets
+Rule: key behaviour on data shape (`LoadoutRules.is_shield`), never on id text; trace a balance outlier in the brain before touching data, and judge a row on 96 fights, not 24

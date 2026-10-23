@@ -11,14 +11,14 @@ built another way round.
 
 | Shield | Face | Mass | Bash (blunt) | Unlock |
 | --- | --- | --- | --- | --- |
-| `buckler` Buckler | disc 0.31 m | 1.5 kg | 0.85 | Play 1 fight |
-| `parma` Parma | disc 0.47 m | 2.5 kg | 0.65 | Play 3 fights |
+| `buckler` Buckler | disc 0.31 m | 1.5 kg | 1.35 | Play 1 fight |
+| `parma` Parma | disc 0.47 m | 2.5 kg | 0.8 | Play 3 fights |
 | `pelta` Pelta | crescent board 0.61 x 0.41 m | 2.2 kg | 0.5 | Win 3 fights |
-| `kite_shield` Kite shield | board 0.58 x 1.0 m, 10 cm low | 4.5 kg | 0.6 | Win 5 fights |
-| `aspis` Aspis | disc 0.9 m, 25 cm to the left | 6.5 kg | 0.75 | Win 6 fights |
-| `tower_shield` Tower shield | board 0.7 x 1.3 m | 8.0 kg | 0.7 | Win 2 ranked Quick Matches |
+| `kite_shield` Kite shield | board 0.58 x 1.0 m, 10 cm low | 4.5 kg | 0.45 | Win 5 fights |
+| `aspis` Aspis | disc 0.9 m, 25 cm to the left | 6.5 kg | 0.45 | Win 6 fights |
+| `tower_shield` Tower shield | board 0.7 x 1.3 m | 10.0 kg | 0.2 | Win 2 ranked Quick Matches |
 | (`shield_round` Round shield) | disc 0.6 m | 3.5 kg | 0.6 | starter |
-| (`scutum` Scutum) | board 0.68 x 1.08 m | 6.0 kg | 0.7 | Win 2 fights |
+| (`scutum` Scutum) | board 0.68 x 1.08 m | 6.0 kg | 0.35 | Win 2 fights |
 
 Side-grade rule (tested in `test_armor_more.gd`): no shield is at once no heavier, no smaller and no softer-bashing than
 another. Small shields are light and hit hard with the boss; big ones cover more and drag the off hand.
@@ -212,6 +212,9 @@ fights have no plate, so the new brain plays them as before; they need data or s
 and balteus 29% (was 42%: the balteus leaves the chest bare, and the foe's thrusts now go to the open chest rather
 than the plate gaps; within about 3 wins of noise, re-check in the next matrix). Plate v plate fights got longer
 (iron set mirror 34 s to 45 s) as both sides thrust at gaps instead of swinging.
+
+Round 5 (96 fights per row, after the shield raise fix and the round-4 AI): every shield row is inside the band;
+scutum, kite and tower bash went 0.7 / 0.6 / 0.35 to 0.35 / 0.45 / 0.2. See docs/balance_matrix.md, "Shields".
 
 ## Next
 - Gaps are bands on the part's own axis, not per-piece art: a piece that covers only the middle of a limb (or the

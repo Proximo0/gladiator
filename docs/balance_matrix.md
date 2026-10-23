@@ -15,102 +15,117 @@ Fights are seed-deterministic across machines (local and CI cell values matched)
 +-8 points, one weapon's overall rate (600 fights) about +-2 points. A change on one weapon moves the cells of every other
 weapon a little, so judge single cells with care.
 
-## Targets and where they ended
+## Round 4 (after the round-4 AI: committed thrusts, closing plan, armor reads; main 654f700)
 
-| Target | Main (before) | This branch (after) |
+The new brain moved the matrix a lot: the baseline on main 654f700 had 36 pairings out of the 35-65 band (fists left
+out), with the spear at 67% and the bat at 39%. Four rounds of data changes on the CI runners, 4800 fights each.
+
+| Target | Main 654f700 (before) | After (0816f76) |
 | --- | --- | --- |
-| Inside a tier no cell above ~65 or below ~35 | tier 1: sledgehammer 78-85 against bat, club, machete, bat 68 v machete; tier 4: warhammer 72 v halberd | one cell left: sledgehammer v bat 68/32 (tier 1); tiers 3, 4 and 5 inside |
-| Unlocks are side-grades of the starters | sledgehammer (play 5 fights) 69%, the best weapon outside premium | sledgehammer 59, mace 56, falchion 52, halberd 49, machete 47, warhammer 60 against starters longsword 56, bat 54, club 47, axe 47 |
-| Premium not pay-to-win (at most even with the best unlockables) | dai-katana 77%, laser 70%; the dai beat every weapon (sledgehammer 58 its closest) | dai 64, laser 58 against warhammer 60, sledgehammer 59. Head to head: dai v warhammer 38, v longsword 50, v mace 55, v halberd 58, v sledgehammer 68; laser v warhammer 48, v mace 48, v sledgehammer 55, v halberd 60 |
-| Fists a fun KO underdog | 9%, wins by KO and pummel | 13%, wins by KO 44, pummel 27 |
+| Pairings outside 35-65 (no fists) | 36 | 24 |
+| Inside a tier no cell above ~65 or below ~35 | 8 cells: sledgehammer v bat 86, rake v club 75, sledgehammer v club 70, falchion v axe 68, spear v axe 66, spear v mace 68, longsword v warhammer 72, dai v laser 78 | 5 cells: bat v club 78, rake v club 72, sledgehammer v club 70 (all the club), spear v mace 76, dai v laser 78. Sledgehammer v bat is 58/42 |
+| Unlocks are side-grades of the starters | spear 67, falchion 59 against starters longsword 59, bat 39, club 37 | spear 58, warhammer 59, falchion 54, sledgehammer 52 against longsword 61, bat 50, club 36, axe 49 |
+| Premium not pay-to-win | dai 69, laser 58 | dai 67, laser 58 (dai still above every unlockable; see below) |
+| Fists a fun KO underdog | 11% | 12%, wins by KO 42, pummel 22 |
 
-The dai-katana is still the strongest weapon overall (64) because it beats the cheap weapons (65-80 against bat, club,
-rake, gladius), but head to head it is even with the best unlockables: it loses to the warhammer and splits with the
-longsword. Its cut went 2.0 to 1.1, the floor `tests/unit/test_premium_weapons.gd` allows (it must out-cut the longsword
-and match the falchion, with a 0.9 m edge). A heavier (2.1 kg), blade-heavy (balance 0.45 m) version measured stronger,
-not weaker (69 vs 64), so mass and balance are back at 1.6 kg / 0.25 m.
-
-## Data changes (data/weapons.json)
+### Data changes (data/weapons.json)
 
 | Weapon | Change | Why (traced) |
 | --- | --- | --- |
-| dai_katana | cut 2.0 -> 1.1 | 7.3 damage per hit (longsword 3.8); won 77%. Mass and balance tried and reverted |
-| laser_sword | cut 2.9 -> 1.6 | 6.2 damage per hit, won 70%; at 1.5 it fell to 54, 1.7 gave 61 |
-| sledgehammer | blunt 1.65 -> 1.24, mass 3.2 -> 3.0 | KO and skull-crush machine: 5.4 blunt per hit to the head (club 4.0). Blunt is what moves it; mass 2.6-3.2 measured the same. Still above the club's (test_weapon_unlocks) |
-| club | blunt 1.55 -> 1.22 | 65% at baseline, 70-78 against bat, machete, rake |
-| machete | cut 1.05 -> 1.4 | 43%, under the band against bat and club |
-| gladius | cut 1.0 -> 1.35, pierce 0.8 -> 1.1 | 39%; the bots rarely thrust (2% point contacts), so cut does the work |
-| axe | cut 1.15 -> 1.35 | 43-45% |
-| halberd | cut 1.1 -> 1.6 | 43%, 28 against the warhammer |
-| rake | blunt 0.28 -> 0.45 | 38%, 2.0 damage per hit; wins by KO |
-| fists | blunt 1.3 -> 1.5 | 9%; a slightly harder punch keeps them an underdog with more KOs |
+| bat | blunt 1.2 -> 1.55 | 39% overall, 14 against the sledgehammer; the closing plan makes it wait outside longer reach. 1.4 gave 45, 1.55 gives 50 and sledgehammer v bat 58 |
+| spear | cut 0.3 -> 0.15, pierce 1.0 -> 0.8 | 67%: the committed thrust plus edge contacts on every swing. Pierce 0.8 is the floor `test_spear_passes_mail_and_guts` allows (0.7 fails it); mass 2.3 measured the same and was reverted. 62 after pierce, 58 after the cut |
+| falchion | cut 1.1 -> 0.95 | 59%, 68 against the axe; now 54 and 58 |
+| warhammer | blunt 0.85 -> 1.05 | 28% against the longsword (same tier); now 35 |
+| scutum (shield) | bash 0.7 -> 0.35 | shield row 70% at 96 fights; 0.5 measured 69, 0.35 gives 56 |
+| tower_shield (shield) | bash 0.35 -> 0.2 | shield row 67% at 96 fights; 0.2 gives 58 (12 kg measured 78) |
+| kite_shield (shield) | bash 0.6 -> 0.45 | shield row 64-67% at 96 fights; 0.45 gives 57 |
 
-Round by round (overall win %, no shields; rounds 2+ on the stable seeds):
+Tried and reverted (no move on the weapon's own rate, within noise): club blunt 1.22 -> 1.35 (with the sledgehammer at
+1.36 to keep `test_weapon_unlocks`' out-crush rule), club mass 1.6 -> 1.9, club balance 0.5 -> 0.42 (club 36-38% in
+every round); dai-katana cut 1.1 -> 0.95 and 1.02, pierce 0.7 -> 0.4 (69% each time), mass 1.6 -> 1.35 (72%).
 
-| Round | dai | laser | sledge | club | rake | machete | gladius | halberd | axe | fists |
+Round by round (overall win %):
+
+| Round | dai | spear | long | falchion | whammer | sledge | bat | club | mace | axe |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| main | 77 | 70 | 69 | 50 | 38 | 44 | 39 | 43 | 43 | 9 |
-| 2 (dai 1.15, laser 2.2, sledge 1.35/2.8 kg) | 68 | 63 | 62 | 50 | 41 | 45 | 41 | 48 | 48 | 12 |
-| 3 (dai heavier, laser 1.7, sledge 1.31/2.6 kg) | 68 | 61 | 68 | 48 | 49 | 44 | 43 | 47 | 47 | 12 |
-| 4 (club 1.22, sledge 1.24/3.0 kg, laser 1.5) | 69 | 54 | 61 | 47 | 50 | 46 | 42 | 50 | 47 | 12 |
-| 5 (dai 1.1, laser 1.6) | 69 | 57 | 60 | 48 | 50 | 46 | 43 | 50 | 48 | 12 |
-| 6 final (dai mass/balance reverted) | 64 | 58 | 59 | 47 | 50 | 47 | 42 | 49 | 47 | 13 |
+| main 654f700 | 69 | 67 | 59 | 59 | 54 | 51 | 39 | 37 | 49 | 49 |
+| 1 (spear pierce 0.8, dai/falchion cut 0.95, bat 1.4, club 1.9 kg) | 69 | 62 | 61 | 55 | 53 | 51 | 45 | 38 | 48 | 51 |
+| 2 (dai pierce 0.4, spear 2.3 kg, bat 1.55, club balance 0.42, whammer 0.95) | 69 | 62 | 61 | 53 | 54 | 50 | 48 | 37 | 48 | 47 |
+| 3 (club 1.35 / sledge 1.36, spear cut 0.15, dai 1.35 kg, whammer 1.05) | 72 | 59 | 62 | 53 | 58 | 50 | 48 | 38 | 45 | 48 |
+| 4 final (club, sledge, dai back) | 67 | 58 | 61 | 54 | 59 | 52 | 50 | 36 | 47 | 49 |
 
-## AI handling problems (for the lead; the AI was not changed)
+### Shields (gladius + shield v longsword, leather, seeds 2000-2047 both sides, 96 fights per row)
+The bot only raised a shield whose id contained "shield" (`FighterBrain._shield_up`), so the scutum, buckler, parma,
+pelta and aspis were never lifted; fixed on main (`LoadoutRules.is_shield`). With 24 fights a row moves by about 10
+points between seed sets (tower 71 on seeds 2000-2011, 56 on 2000-2023), so the rows below use 96.
 
-1. **Spear pokes, it doesn't stab.** 30 hits a fight at 1.2 damage per hit, mean contact speed 4.2 m/s, 7% point contacts.
-   54 of its 270 wins come on the time limit (mean fight 35 s). The thrust needs speed at the point (damage_min_speed is 3 m/s).
-2. **Swords almost never thrust.** Point contacts: longsword 2%, gladius 2%, falchion 1%, machete 3%. Pierce numbers
-   (gladius 1.1, halberd 0.8) barely matter, so the gladius's identity (stab) doesn't show.
-3. **Long blades dominate short weapons.** The dai-katana wins 65-80% against bat, club, rake and gladius, and the
-   longsword 58-68%; the CPU's spacing rarely lets a short weapon close inside the reach (a guess from the numbers,
-   not traced in the brain).
-4. **Rake fights drag on.** 23 hits a fight at 2.9 damage, 30 s mean, 37 of its wins on the time limit.
-5. **Pole arms swing slowly.** Halberd contacts at 4.9 m/s (sword 6.0); its wins come from blood loss over time.
-6. **Shield as a main weapon** (forced bot loadouts only) stalls: 130 of the scutum's wins came on the time limit (mean fight 44 s). Real loadouts
-   never do this (MatchConfig keeps shields off-hand), so the matrix leaves shields out. A one-handed weapon plus
-   shield matrix is not measured yet.
+| Shield | Main 654f700 | After | Length after |
+| --- | --- | --- | --- |
+| shield_round | 42 (44%) | 40 (42%) | 23.5 s |
+| scutum | 67 (70%) OUT | 55 (57%), bash 0.35 | 27.4 s |
+| buckler | 36 (38%) | 37 (39%) | 22.8 s |
+| parma | 35 (36%) | 35 (36%) | 24.5 s |
+| pelta | 43 (45%) | 40 (42%) | 26.1 s |
+| kite_shield | 61-64 (64-67%) | 55 (57%), bash 0.45 | 25.7 s |
+| aspis | 51 (53%) | 49 (51%) | 25.1 s |
+| tower_shield | 64 (67%) OUT | 56 (58%), bash 0.2 | 27.0 s |
 
-## Tables (after; "before" is main's weapon data on the same seeds)
+Unchanged rows move by 1-3 wins of 96 between runs. The kite row read 64 then 67 with no change to its data, so its
+bash went 0.6 -> 0.45 too.
 
-fights=4800, side 0 won 49.5% of decided fights
+### What data cannot fix (for the lead)
+1. **Club** (36%, loses 22-30 to bat, rake and sledgehammer): blunt +11%, mass +19% and balance -16% each moved it by a
+   point at most. It is the shortest weapon, so the closing plan (task 19) keeps it waiting outside every foe's reach;
+   its fights are long (31 s) with 32 time-limit losses. Needs the closing plan tuned for short blunt weapons.
+2. **Dai-katana** (67%, 78 against the laser): cut, pierce and mass do not move it; it wins on reach and two-handed
+   guard (9.9 hits taken a fight, fewest of all). Its cut cannot go lower than the longsword's (test_premium_weapons)
+   and its length not under 1.2 m. Options: a slower two-handed recovery for the brain, or relax the premium test.
+3. **Spear v mace 76**: the mace (shortest tier-3 weapon) cannot get inside the point; same closing-plan cause.
+
+## Tables (after; "before" is main 654f700 on the same seeds)
+
+fights=4800, side 0 won 49.6% of decided fights
 
 | weapon | tier | win % | before | fights | mean len s | hits/fight | hits taken | dmg/hit | wins by |
 |---|---|---|---|---|---|---|---|---|---|
-| dai_katana | 5 | 64 | 77 | 600 | 20.7 | 16.4 | 12.3 | 4.1 | blood_loss 253, gut 61, behead 56, time 6 |
-| warhammer | 4 | 60 | 59 | 600 | 25.5 | 16.7 | 13.5 | 4.6 | ko 212, skull_crush 64, blood_loss 30, gut 21 |
-| sledgehammer | 1 | 59 | 69 | 600 | 23.6 | 14.5 | 13.8 | 5.1 | ko 224, skull_crush 102, pummel 15, time 11 |
-| laser_sword | 5 | 58 | 70 | 600 | 21.2 | 15.7 | 14.9 | 3.5 | blood_loss 251, behead 41, gut 29, ko 13 |
-| longsword | 4 | 56 | 55 | 600 | 21.6 | 16.9 | 14.2 | 3.8 | blood_loss 236, gut 49, behead 25, ko 13 |
-| mace | 3 | 56 | 53 | 600 | 24.5 | 12.4 | 13.9 | 5.0 | ko 175, skull_crush 96, pummel 29, time 17 |
-| bat | 1 | 54 | 54 | 600 | 25.3 | 14.9 | 14.9 | 4.0 | ko 166, skull_crush 103, time 24, pummel 22 |
-| falchion | 3 | 52 | 51 | 600 | 21.7 | 14.7 | 14.7 | 4.0 | blood_loss 227, gut 45, behead 27, time 6 |
-| rake | 1 | 50 | 38 | 600 | 29.7 | 22.5 | 13.6 | 2.9 | ko 192, blood_loss 57, time 37, run_through 6 |
-| halberd | 4 | 49 | 43 | 600 | 22.2 | 16.2 | 14.5 | 3.6 | blood_loss 206, gut 45, time 13, behead 12 |
-| axe | 3 | 47 | 43 | 600 | 21.4 | 13.4 | 16.9 | 4.4 | blood_loss 178, gut 43, behead 25, ko 23 |
-| machete | 1 | 47 | 44 | 600 | 23.6 | 12.6 | 17.5 | 3.6 | blood_loss 207, behead 27, gut 22, ko 13 |
-| club | 1 | 47 | 50 | 600 | 24.9 | 13.6 | 17.5 | 3.4 | ko 156, skull_crush 77, pummel 20, time 18 |
-| spear | 3 | 45 | 43 | 600 | 34.7 | 29.8 | 13.4 | 1.2 | blood_loss 173, time 54, run_through 37, ko 4 |
-| gladius | 2 | 42 | 39 | 600 | 24.3 | 14.1 | 18.2 | 3.0 | blood_loss 180, gut 24, behead 17, time 14 |
-| fists | 0 | 13 | 9 | 600 | 25.0 | 8.2 | 28.6 | 8.7 | ko 44, pummel 27, time 6, blood_loss 1 |
+| dai_katana | 5 | 67 | 69 | 600 | 23.1 | 13.8 | 9.9 | 4.6 | blood_loss 305, gut 43, behead 39, run_through 8 |
+| longsword | 4 | 61 | 59 | 600 | 24.6 | 15.1 | 10.9 | 4.1 | blood_loss 265, gut 54, behead 28, time 11 |
+| warhammer | 4 | 59 | 54 | 600 | 29.1 | 14.0 | 11.3 | 5.2 | ko 188, skull_crush 59, blood_loss 41, time 41 |
+| spear | 3 | 58 | 67 | 600 | 38.1 | 20.2 | 8.2 | 1.8 | blood_loss 187, time 90, run_through 67, pummel 1 |
+| laser_sword | 5 | 58 | 58 | 600 | 24.8 | 12.1 | 11.7 | 4.2 | blood_loss 255, gut 30, behead 28, time 18 |
+| halberd | 4 | 55 | 57 | 600 | 25.8 | 13.8 | 11.2 | 4.1 | blood_loss 254, gut 24, time 21, behead 13 |
+| falchion | 3 | 54 | 59 | 600 | 25.3 | 12.9 | 13.2 | 4.0 | blood_loss 235, gut 33, behead 24, time 16 |
+| gladius | 2 | 53 | 53 | 600 | 25.3 | 12.4 | 14.1 | 3.7 | blood_loss 230, gut 26, time 22, behead 16 |
+| sledgehammer | 1 | 52 | 51 | 600 | 28.0 | 13.1 | 13.5 | 4.8 | ko 194, skull_crush 65, time 33, pummel 13 |
+| bat | 1 | 50 | 39 | 600 | 28.1 | 10.9 | 12.1 | 5.0 | ko 143, skull_crush 94, time 33, pummel 17 |
+| axe | 3 | 49 | 49 | 600 | 25.1 | 11.8 | 14.3 | 4.4 | blood_loss 207, gut 28, behead 25, time 21 |
+| mace | 3 | 47 | 49 | 600 | 29.1 | 10.4 | 12.7 | 5.1 | ko 136, skull_crush 85, time 38, pummel 15 |
+| rake | 1 | 45 | 46 | 600 | 35.8 | 20.3 | 12.0 | 2.6 | ko 111, time 87, blood_loss 57, pummel 9 |
+| machete | 1 | 44 | 43 | 600 | 25.2 | 10.7 | 13.7 | 3.7 | blood_loss 206, gut 16, time 14, behead 14 |
+| club | 1 | 36 | 37 | 600 | 30.7 | 11.2 | 15.7 | 3.3 | ko 117, skull_crush 45, time 32, pummel 11 |
+| fists | 0 | 12 | 11 | 600 | 27.8 | 6.8 | 24.9 | 8.2 | ko 42, pummel 22, time 7 |
 
 | row vs col | fists | bat | club | machete | rake | sledge | gladius | axe | falchion | mace | spear | halberd | long | whammer | dai | laser |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| fists (0) | - | 2 | 15 | 28 | 8 | 11 | 20 | 25 | 12 | 18 | 2 | 15 | 5 | 8 | 20 | 8 |
-| bat (1) | 98 | - | 60 | 60 | 60 | **32** | 65 | 55 | 58 | 52 | 62 | 55 | 45 | 32 | 35 | 48 |
-| club (1) | 85 | 40 | - | 58 | 52 | 38 | 38 | 62 | 45 | 40 | 35 | 55 | 42 | 38 | 25 | 48 |
-| machete (1) | 72 | 40 | 42 | - | 38 | 42 | 61 | 58 | 38 | 45 | 58 | 50 | 32 | 50 | 45 | 35 |
-| rake (1) | 92 | 40 | 48 | 62 | - | 40 | 75 | 55 | 58 | 48 | 52 | 40 | 32 | 48 | 30 | 25 |
-| sledge (1) | 89 | **68** | 62 | 58 | 60 | - | 62 | 60 | 48 | 72 | 65 | 65 | 52 | 50 | 32 | 45 |
-| gladius (2) | 80 | 35 | 62 | 39 | 25 | 38 | - | 48 | 30 | 42 | 65 | 62 | 32 | 28 | 20 | 30 |
-| axe (3) | 75 | 45 | 38 | 42 | 45 | 40 | 52 | - | 48 | 35 | 60 | 75 | 35 | 45 | 28 | 45 |
-| falchion (3) | 88 | 42 | 55 | 62 | 42 | 52 | 70 | 52 | - | 38 | 60 | 48 | 52 | 50 | 28 | 40 |
-| mace (3) | 82 | 48 | 60 | 55 | 52 | 28 | 58 | 65 | 62 | - | 58 | 58 | 65 | 45 | 45 | 52 |
-| spear (3) | 98 | 38 | 65 | 42 | 48 | 35 | 35 | 40 | 40 | 42 | - | 35 | 41 | 32 | 28 | 55 |
-| halberd (4) | 85 | 45 | 45 | 50 | 60 | 35 | 38 | 25 | 52 | 42 | 65 | - | 60 | 52 | 42 | 40 |
-| long (4) | 95 | 55 | 58 | 68 | 68 | 48 | 68 | 65 | 48 | 35 | 59 | 40 | - | 45 | 50 | 48 |
-| whammer (4) | 92 | 68 | 62 | 50 | 52 | 50 | 72 | 55 | 50 | 55 | 68 | 48 | 55 | - | 62 | 52 |
-| dai (5) | 80 | 65 | 75 | 55 | 70 | 68 | 80 | 72 | 72 | 55 | 72 | 58 | 50 | 38 | - | 55 |
-| laser (5) | 92 | 52 | 52 | 65 | 75 | 55 | 70 | 55 | 60 | 48 | 45 | 60 | 52 | 48 | 45 | - |
+| fists (0) | - | 12 | 12 | 20 | 12 | 12 | 0 | 12 | 8 | 12 | 11 | 10 | 22 | 8 | 18 | 8 |
+| bat (1) | 88 | - | **78** | 58 | 58 | 42 | 50 | 52 | 55 | 42 | 46 | 35 | 32 | 32 | 35 | 52 |
+| club (1) | 88 | **22** | - | 48 | **28** | **30** | 38 | 50 | 40 | 39 | 18 | 39 | 28 | 20 | 25 | 32 |
+| machete (1) | 80 | 42 | 52 | - | 55 | 45 | 50 | 45 | 40 | 35 | 48 | 32 | 38 | 38 | 25 | 32 |
+| rake (1) | 88 | 42 | **72** | 45 | - | 48 | 35 | 45 | 55 | 68 | 36 | 30 | 20 | 42 | 19 | 28 |
+| sledge (1) | 88 | 58 | **70** | 55 | 52 | - | 50 | 55 | 45 | 55 | 48 | 42 | 38 | 40 | 38 | 40 |
+| gladius (2) | 100 | 50 | 62 | 50 | 65 | 50 | - | 60 | 38 | 60 | 52 | 50 | 50 | 35 | 35 | 38 |
+| axe (3) | 88 | 48 | 50 | 55 | 55 | 45 | 40 | - | 42 | 45 | 44 | 65 | 32 | 58 | 38 | 38 |
+| falchion (3) | 92 | 45 | 60 | 60 | 45 | 55 | 62 | 58 | - | 58 | 52 | 65 | 35 | 30 | 38 | 48 |
+| mace (3) | 88 | 58 | 61 | 65 | 32 | 45 | 40 | 55 | 42 | - | **24** | 50 | 45 | 35 | 38 | 30 |
+| spear (3) | 89 | 54 | 82 | 52 | 64 | 52 | 48 | 56 | 48 | **76** | - | 42 | 42 | 50 | 40 | 75 |
+| halberd (4) | 90 | 65 | 61 | 68 | 70 | 58 | 50 | 35 | 35 | 50 | 58 | - | 40 | 52 | 45 | 42 |
+| long (4) | 78 | 68 | 72 | 62 | 80 | 62 | 50 | 68 | 65 | 55 | 58 | 60 | - | 65 | 38 | 38 |
+| whammer (4) | 92 | 68 | 80 | 62 | 58 | 60 | 65 | 42 | 70 | 65 | 50 | 48 | 35 | - | 40 | 52 |
+| dai (5) | 82 | 65 | 75 | 75 | 81 | 62 | 65 | 62 | 62 | 62 | 60 | 55 | 62 | 60 | - | **78** |
+| laser (5) | 92 | 48 | 68 | 68 | 72 | 60 | 62 | 62 | 52 | 70 | 25 | 58 | 62 | 48 | **22** | - |
 
-Run files: before docs/balance_runs/f056344-main.json.gz, after docs/balance_runs/0ae1f59.json.gz. Per-pairing rows (win %, fight length, hits, damage per hit, how the wins came, side-0 win %) are in docs/balance_matrix.csv.
+Run files: before docs/balance_runs/654f700.json.gz, rounds d5234a9, 5d54b46, a6ba2fc, after docs/balance_runs/0816f76.json.gz. Per-pairing rows are in docs/balance_matrix.csv.
+
+## Earlier rounds
+Round 3 (before the round-4 AI) ended with one in-tier cell out (sledgehammer v bat 68/32); its data changes (dai,
+laser, sledgehammer, club, machete, gladius, axe, halberd, rake, fists) are in git history (0ae1f59).

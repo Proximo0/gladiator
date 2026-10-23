@@ -516,7 +516,7 @@
       "unlock": {"stat": "wins", "count": 5},
       "edge_len": 0.0,
       "point": false,
-      "blunt_factor": 0.6,
+      "blunt_factor": 0.45,
       "cut_factor": 0.0,
       "pierce_factor": 0.0,
       "two_handed": false,
