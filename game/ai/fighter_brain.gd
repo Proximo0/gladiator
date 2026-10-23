@@ -195,6 +195,10 @@ var _spear: bool = false  ## the held weapon is a spear (thrusts with the whole 
 var _shape: String = "fist"
 var _foe_reach: float = 1.5
 var _close_step: int = ThrustPlan.CLOSE_NONE  ## closing plan against a longer weapon (ThrustPlan.CLOSE_*)
+var _rush_t: int = 0  ## closing plan: ticks left of the opening that lets a short weapon rush in
+var _press_t: int = 0  ## closing plan: ticks left of the press after a rush got inside
+var _away: float = 0.0  ## how fast the (lagged) foe moves away from me, m/s (chase gait)
+var _stam: float = 1.0  ## my stamina this tick
 var _tp_best: float = 99.0  ## committed thrust: closest the point has come to the target in this drive (m)
 var _tp_pressed: bool = false  ## committed thrust: THRUST is out in this drive
 
@@ -348,7 +352,10 @@ func _maybe_close(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		return
 	# One draw, stacked chances: shove, then kick, then grab (each only in its own range).
 	var r: float = _close_rng.randf()
-	var shove_p: float = (SHOVE_STUMBLE_CHANCE if foe_state == "stumbling" else SHOVE_CHANCE) if _dist < SHOVE_RANGE else 0.0
+	var base_shove: float = SHOVE_CHANCE
+	if _close_step == ThrustPlan.CLOSE_PRESS and ThrustPlan.inside_point(_dist, _foe_reach, Tuning.shared().ai_close_point_frac):
+		base_shove = Tuning.shared().ai_close_shove_chance  # inside his point: shove him off balance for the next blow
+	var shove_p: float = (SHOVE_STUMBLE_CHANCE if foe_state == "stumbling" else base_shove) if _dist < SHOVE_RANGE else 0.0
 	var kick_p: float = shove_p + (KICK_CHANCE if _dist >= KICK_MIN and _dist <= KICK_MAX else 0.0)
 	var grab_p: float = kick_p + (GRAB_CHANCE if _dist < GRAB_RANGE and str(me.get("offhand_id", "")) == "" else 0.0)
 	if r < shove_p:
@@ -649,9 +656,10 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		committed = true  # bare fists against a longer weapon: waiting outside its reach only gets cut, so close in
 	var waiting: bool = _close_step == ThrustPlan.CLOSE_WAIT and not finishing and _desperation() <= 0.0 and _burst_t <= 0
 	var rushing: bool = _close_step == ThrustPlan.CLOSE_RUSH and not finishing
+	var pressing: bool = _close_step == ThrustPlan.CLOSE_PRESS and not finishing
 	if waiting:
 		committed = false  # a shorter weapon walking in under a longer blade only gets cut: wait for his swing
-	if rushing:
+	if rushing or pressing:
 		committed = true
 	if committed:
 		hold = minf(hold, _reach * 0.85)  # waited long enough: step into striking range
@@ -663,9 +671,9 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	else:
 		_neutral_aim(out)
 	_shield_up(me, out)
-	if not finishing and _kite(me, obs, out):
+	if not finishing and not pressing and _kite(me, obs, out):
 		return
-	if not finishing:
+	if not finishing and not rushing and not pressing:
 		if _phase == 0 and _phase_t <= 0 and _desperation() < REPOS_DESPERATE:
 			_begin_repos(-1, 0)
 		elif _phase == 1 and (_phase_t <= 0 or _desperation() >= REPOS_DESPERATE):
@@ -685,6 +693,8 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		_range_off = _rng.randf_range(-0.1, 1.0) * _reach * (1.0 - _pf("aggression") * 0.5)
 	if waiting:
 		hold = _foe_reach + Tuning.shared().ai_close_wait_gap
+	elif pressing:
+		hold = _reach * Tuning.shared().ai_close_press_frac  # inside his point: stay in, no range work back out
 	elif not finishing:
 		hold += _range_off
 	if _spear:
@@ -692,10 +702,11 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	if rushing:
 		_closing_rush(me, out)
 	elif _dist > hold + 0.25:
+		var chase: bool = not waiting and _chasing(hold + 0.25)
 		if not _pin_target(hold, out):
-			out.move_y = 1000 if _dist > hold + 1.0 else 600
+			out.move_y = 1000 if _dist > hold + 1.0 or chase else 600
 		var sprint_from: float = hold + (2.0 if _pf("risk") > 0.7 else 3.5)
-		if (_dist > sprint_from and stamina > 0.5) or (finishing and _dist > hold + 1.5 and stamina > 0.25):
+		if (_dist > sprint_from and stamina > 0.5) or (finishing and _dist > hold + 1.5 and stamina > 0.25) or chase:
 			out.buttons |= FighterInput.SPRINT
 		if _dist <= hold + 0.8:
 			_wait = maxi(_wait - 1, 0)
@@ -704,7 +715,8 @@ func _do_approach(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		if _circle_t <= 0:
 			_circle_t = _rng.randi_range(40, 110)
 			_circle_dir = _pick_side()
-		_steer(_tangent() * 0.7 + _dir * clampf((_dist - hold) * 1.5, -0.6, 0.6) + _venue_lean() * 0.9, 0.7, out)
+		var lean: Vector3 = Vector3.ZERO if pressing else _venue_lean() * 0.9  # pressing: no drifting off his front
+		_steer(_tangent() * 0.7 + _dir * clampf((_dist - hold) * 1.5, -0.6, 0.6) + lean, 0.7, out)
 		_wait = maxi(_wait - 1, 0)
 	if finishing or committed:
 		_wait = 0
@@ -1042,10 +1054,17 @@ func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	else:
 		_neutral_aim(out, SLEW_RECOVER)
 	_shield_up(me, out)
+	var pressing: bool = _close_step == ThrustPlan.CLOSE_PRESS
 	if _spear and not _want_finish(obs):
 		_spear_footwork(out)
 	elif _want_finish(obs):
 		out.move_y = roundi(-300.0 * (1.0 - _pf("aggression")))
+	elif pressing:
+		# Inside a longer weapon: backing off after the blow walks straight back onto his point. Stay in.
+		var hold: float = _reach * Tuning.shared().ai_close_press_frac
+		_steer(_dir * clampf((_dist - hold) * 1.5, -0.6, 1.0) + _tangent() * 0.5, 0.7, out)
+		if _chasing(hold + 0.25):
+			out.buttons |= FighterInput.SPRINT
 	else:
 		_steer(-_dir * (1.0 - _pf("aggression")) + _tangent() * 0.5 + _venue_lean() * 0.6, 0.35 + 0.35 * (1.0 - _pf("aggression")), out)
 	if _st_ticks + 1 >= _st_len:
@@ -1058,7 +1077,8 @@ func _do_recover(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 		else:
 			_enter(ST_APPROACH, 0)
 			_wait = _new_wait()
-			if not finishing and _phase == 0 and _desperation() < REPOS_DESPERATE and _rng.randf() < _pf("disengage"):
+			if not finishing and _phase == 0 and _desperation() < REPOS_DESPERATE and _rng.randf() < _pf("disengage") \
+					and not pressing:
 				_begin_repos(-1, 0)
 
 
@@ -1418,11 +1438,23 @@ func _geometry(me: Dictionary, obs: Dictionary) -> void:
 	if str(me.get("grip", "normal")) == "half":
 		_reach -= 0.25
 	_foe_reach = ThrustPlan.reach_of(float(CombatData.weapon(str(obs.get("weapon_id", "fists"))).get("length", 0.3)))
+	_away = ThrustPlan.away_speed(obs.get("pelvis_vel", Vector3.ZERO), _dir)
+	_stam = float(me.get("stamina", 1.0))
+	var prev_step: int = _close_step
 	_close_step = ThrustPlan.CLOSE_NONE
+	_press_t = maxi(_press_t - 1, 0)
 	if not _spear and _shape != "fist" and float(_d.get("close_plan", 1.0)) > 0.0:
 		var tun: Tuning = Tuning.shared()
-		var opening: bool = _opportunity(obs) or str(obs.get("state", "standing")) == "stumbling"
-		_close_step = ThrustPlan.close_step(_dist, _reach, _foe_reach, opening, tun.ai_close_margin, tun.ai_close_band)
+		var parried: bool = _opp_ok and ThrustPlan.foe_parried(me.get("contacts", []), int(me.get("side", -1)))
+		var opening: bool = _opportunity(obs) or str(obs.get("state", "standing")) == "stumbling" or parried
+		_rush_t = ThrustPlan.window_tick(_rush_t, opening, int(tun.ai_close_rush_ticks))
+		_close_step = ThrustPlan.close_step(_dist, _reach, _foe_reach, _rush_t > 0, tun.ai_close_margin, tun.ai_close_band, _press_t > 0)
+		# A rush that got inside, or his blow held off by my guard while I stand inside: commit to staying in.
+		if _close_step == ThrustPlan.CLOSE_INSIDE and (prev_step == ThrustPlan.CLOSE_RUSH or parried):
+			_press_t = int(tun.ai_close_press_ticks)
+			_close_step = ThrustPlan.CLOSE_PRESS
+	else:
+		_press_t = 0
 
 
 func _part_pos(d: Dictionary, part: String, fallback: Vector3) -> Vector3:
@@ -1560,11 +1592,17 @@ func _spear_footwork(out: FighterInput) -> void:
 		out.move_y = -SPEAR_BACKSTEP / 2
 
 
-## Lunge toward the foe while winding up or striking when out of comfortable reach.
+## Chase gait (ThrustPlan.chase_gait): the foe is backing off while I am farther than `hold`, so sprint after him.
+func _chasing(hold: float) -> bool:
+	var tun: Tuning = Tuning.shared()
+	return ThrustPlan.chase_gait(_dist, hold, _away, _stam, tun.ai_chase_away, tun.ai_chase_stamina)
+
+
+## Lunge toward the foe while winding up or striking when out of comfortable reach (at a sprint after one who backs off).
 func _advance(out: FighterInput) -> void:
 	if _dist > _reach * 0.85:
 		out.move_y = 800
-		if _pf("risk") > 0.7 and _dist > _reach * 1.3:
+		if (_pf("risk") > 0.7 and _dist > _reach * 1.3) or _chasing(_reach * 0.85):
 			out.buttons |= FighterInput.SPRINT
 	elif _dist < _reach * 0.45:
 		out.move_y = -300

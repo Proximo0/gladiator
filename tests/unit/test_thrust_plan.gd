@@ -49,3 +49,47 @@ func test_close_step() -> void:
 	assert_eq(ThrustPlan.close_step(1.9, g, l, false, 0.25, 0.5), ThrustPlan.CLOSE_WAIT)
 	assert_eq(ThrustPlan.close_step(1.9, g, l, true, 0.25, 0.5), ThrustPlan.CLOSE_RUSH, "he just swung")
 	assert_eq(ThrustPlan.close_step(1.4, g, l, false, 0.25, 0.5), ThrustPlan.CLOSE_INSIDE)
+
+
+func test_close_step_presses_once_inside() -> void:
+	var c: float = ThrustPlan.reach_of(0.75)  # club
+	var s: float = ThrustPlan.reach_of(2.2)  # spear
+	assert_eq(ThrustPlan.close_step(1.2, c, s, false, 0.25, 0.5, true), ThrustPlan.CLOSE_PRESS, "inside and pressing")
+	assert_eq(ThrustPlan.close_step(1.2, c, s, false, 0.25, 0.5, false), ThrustPlan.CLOSE_INSIDE, "inside, no press")
+	assert_eq(ThrustPlan.close_step(2.8, c, s, false, 0.25, 0.5, true), ThrustPlan.CLOSE_PRESS, "he backed off: no standing off")
+	assert_eq(ThrustPlan.close_step(2.8, c, s, false, 0.25, 0.5, false), ThrustPlan.CLOSE_WAIT)
+	assert_eq(ThrustPlan.close_step(6.0, c, s, false, 0.25, 0.5, true), ThrustPlan.CLOSE_NONE, "far out: walk up")
+	assert_eq(ThrustPlan.close_step(1.2, s, c, false, 0.25, 0.5, true), ThrustPlan.CLOSE_NONE, "the longer weapon never presses")
+
+
+func test_foe_parried() -> void:
+	var parry: Dictionary = {"attacker": 1, "target": 0, "hit_on_weapon": true}
+	assert_true(ThrustPlan.foe_parried([parry], 0), "his blow met my weapon")
+	assert_false(ThrustPlan.foe_parried([parry], 1), "my blow met his weapon: no opening for me")
+	assert_false(ThrustPlan.foe_parried([{"attacker": 1, "target": 0, "hit_on_weapon": false}], 0), "a body hit is no parry")
+	assert_false(ThrustPlan.foe_parried([], 0))
+	assert_false(ThrustPlan.foe_parried(["junk"], 0))
+
+
+func test_window_tick() -> void:
+	assert_eq(ThrustPlan.window_tick(0, true, 40), 40)
+	assert_eq(ThrustPlan.window_tick(40, false, 40), 39)
+	assert_eq(ThrustPlan.window_tick(0, false, 40), 0, "never below zero")
+	assert_eq(ThrustPlan.window_tick(5, true, 40), 40, "a new opening restarts it")
+
+
+func test_inside_point() -> void:
+	var s: float = ThrustPlan.reach_of(2.2)
+	assert_true(ThrustPlan.inside_point(1.2, s, 0.55))
+	assert_false(ThrustPlan.inside_point(2.2, s, 0.55), "still on his point")
+
+
+func test_away_speed_and_chase_gait() -> void:
+	var dir := Vector3(0, 0, -1)
+	assert_near(ThrustPlan.away_speed(Vector3(0, 0, -2), dir), 2.0, 0.001, "backing off")
+	assert_true(ThrustPlan.away_speed(Vector3(0, 0, 2), dir) < 0.0, "coming in")
+	assert_near(ThrustPlan.away_speed(Vector3(3, 1, 0), dir), 0.0, 0.001, "sideways does not count")
+	assert_true(ThrustPlan.chase_gait(3.0, 1.5, 2.0, 0.8, 0.8, 0.3))
+	assert_false(ThrustPlan.chase_gait(3.0, 1.5, 0.3, 0.8, 0.8, 0.3), "he stands: walk up")
+	assert_false(ThrustPlan.chase_gait(1.2, 1.5, 2.0, 0.8, 0.8, 0.3), "close enough already")
+	assert_false(ThrustPlan.chase_gait(3.0, 1.5, 2.0, 0.2, 0.8, 0.3), "no breath to sprint")

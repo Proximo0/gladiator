@@ -648,3 +648,41 @@ func test_raises_every_shield_like_the_round_shield() -> void:
 	assert_true(round_n > 0, "round shield raised")
 	for id: String in ["scutum", "buckler", "parma", "pelta", "aspis", "kite_shield", "tower_shield"]:
 		assert_eq(_offhand_presses(id), round_n, id)
+
+
+func test_chases_a_foe_who_backs_off() -> void:
+	var b := _brain({"preset": "duelist", "commit_ticks": 0})
+	var f: Array = _pair(3.2)
+	(f[1] as Dictionary)["pelvis_vel"] = Vector3(0.0, 0.0, -2.5)  # he walks away from me
+	var sprints: int = 0
+	for i in 60:
+		if b.think(f[0], f[1], DT).has(FighterInput.SPRINT):
+			sprints += 1
+	var b2 := _brain({"preset": "duelist", "commit_ticks": 0})
+	var g: Array = _pair(3.2)
+	var still: int = 0
+	for i in 60:
+		if b2.think(g[0], g[1], DT).has(FighterInput.SPRINT):
+			still += 1
+	assert_true(sprints > still + 20, "chase gait: %d sprinting ticks vs %d against a foe who stands" % [sprints, still])
+
+
+## A club outreached by a spear: the spear's thrust is parried, the club rushes in, and once inside it stays in (no
+## backing out onto the point) for the press.
+func test_short_weapon_presses_in_after_a_parry() -> void:
+	var b := _brain({"preset": "duelist"})
+	var me: Dictionary = _frame(0, Vector3.ZERO, 0.0, "club")
+	var foe: Dictionary = _frame(1, Vector3(0.0, 0.0, -3.0), PI, "spear")
+	for i in 30:
+		b.think(me, foe, DT)
+	me["contacts"] = [{"attacker": 1, "target": 0, "hit_on_weapon": true}]
+	var inp: FighterInput = b.think(me, foe, DT)
+	me["contacts"] = []
+	assert_true(inp.move_y > 500, "rushes in on the parry")
+	var backs: int = 0
+	foe["pelvis_pos"] = Vector3(0.0, 0.95, -1.1)
+	for i in 120:
+		inp = b.think(me, foe, DT)
+		if inp.move_y < -200:
+			backs += 1
+	assert_eq(backs, 0, "inside the spear's point: never backs out while pressing")

@@ -22,6 +22,13 @@ const ROWS_AI: Array = [
 	["ai_close_band", 0.5, 0.0, 2.0, 0.05, "AI", "CPU closing plan: distance past the foe's reach that still counts as at his range, m."],
 	["ai_close_wait_gap", 0.35, 0.0, 1.5, 0.05, "AI", "CPU closing plan: how far outside the longer weapon's reach a shorter one stands off while it waits, m."],
 	["ai_close_roll_chance", 0.02, 0.0, 0.05, 0.001, "AI", "CPU closing plan: chance per tick of a forward roll in under a longer weapon (with stamina to spare)."],
+	["ai_close_rush_ticks", 40.0, 0.0, 120.0, 1.0, "AI", "CPU closing plan: how long an opening (the foe swung, had a blow parried, stumbles) keeps the way in open, ticks."],
+	["ai_close_press_ticks", 240.0, 0.0, 600.0, 10.0, "AI", "CPU closing plan: once a rush gets inside, how long the short weapon keeps pressing in (no backing out), ticks."],
+	["ai_close_press_frac", 0.7, 0.3, 1.0, 0.05, "AI", "CPU closing plan: while pressing, the standing distance as a share of my own reach."],
+	["ai_close_point_frac", 0.55, 0.2, 1.0, 0.05, "AI", "CPU closing plan: closer than this share of the foe's reach I am inside his point (shove him, step in)."],
+	["ai_close_shove_chance", 0.03, 0.0, 0.2, 0.005, "AI", "CPU closing plan: chance per tick of a shove while pressing inside the foe's point."],
+	["ai_chase_away", 0.8, 0.0, 4.0, 0.05, "AI", "CPU chase gait: the foe backing off faster than this (m/s) is chased at a sprint."],
+	["ai_chase_stamina", 0.3, 0.0, 1.0, 0.05, "AI", "CPU chase gait: only with more stamina than this."],
 ]
 
 var ai_thrust_lead: float
@@ -42,3 +49,10 @@ var ai_close_margin: float
 var ai_close_band: float
 var ai_close_wait_gap: float
 var ai_close_roll_chance: float
+var ai_close_rush_ticks: float
+var ai_close_press_ticks: float
+var ai_close_press_frac: float
+var ai_close_point_frac: float
+var ai_close_shove_chance: float
+var ai_chase_away: float
+var ai_chase_stamina: float
