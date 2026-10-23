@@ -3,17 +3,17 @@ render_mode blend_mix, depth_draw_never, cull_back, diffuse_burley, specular_sch
 // Accumulated damage on one body part, drawn as a material_overlay over the part's own meshes (skin, outfit, armor):
 // gashes, punctures, bruises (which swell the overlay surface), blood smears and sever rings (the wet band round a
 // stump or a severed part's cut end), each a shape in the part's frame,
-// so a mark wraps the real surface wherever the hit landed. Up to 8 marks (WoundMarks.pack); `to_part` takes this
+// so a mark wraps the real surface wherever the hit landed. Up to 12 marks (WoundMarks.pack); `to_part` takes this
 // mesh's local space into the part frame. On armor (`armor`) cuts and holes show only as blood, never flesh.
 // Palette slot 0 / 1: the two fighters' blood (fresh / dried colour, glow) and flesh colours.
 
 uniform mat4 to_part = mat4(1.0);
 uniform int count = 0;
-uniform vec4 wa[8];  // pos, size (half length / radius)
-uniform vec4 wb[8];  // cut direction, half width
-uniform vec4 wc[8];  // outward normal (a ring: the bone axis out through the cut), kind (0 gash, 1 puncture, 2 bruise, 3 smear, 4 ring)
-uniform vec4 wd[8];  // trickle direction (down), trickle length
-uniform vec4 we[8];  // dryness, seed, palette slot, severity
+uniform vec4 wa[12];  // pos, size (half length / radius)
+uniform vec4 wb[12];  // cut direction, half width
+uniform vec4 wc[12];  // outward normal (a ring: the bone axis out through the cut), kind (0 gash, 1 puncture, 2 bruise, 3 smear, 4 ring)
+uniform vec4 wd[12];  // trickle direction (down), trickle length
+uniform vec4 we[12];  // dryness, seed, palette slot, severity
 uniform bool armor = false;
 uniform float swell = 0.016;  // bruise swelling at full severity (m)
 uniform float core_scale = 1.0;  // open slit / hole width multiplier (Tuning wound_core_scale)
@@ -53,7 +53,7 @@ void vertex() {
 	vec3 p = (to_part * vec4(VERTEX, 1.0)).xyz;
 	v_p = p;
 	float s = 0.0;
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 12; i++) {
 		if (i >= count) {
 			break;
 		}
@@ -72,7 +72,7 @@ void fragment() {
 	float wet = 0.0;
 	float glow_sum = 0.0;
 	vec3 rim_em = vec3(0.0);
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 12; i++) {
 		if (i >= count) {
 			break;
 		}
