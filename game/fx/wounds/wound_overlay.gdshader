@@ -231,8 +231,10 @@ void fragment() {
 		discard;
 	}
 	ALBEDO = col / max(alpha, 0.001);  // col is premultiplied (front layers drawn over older ones)
-	ROUGHNESS = mix(0.82, 0.3, wet);
-	SPECULAR = mix(0.12, 0.35, wet);
+	// Wet blood over dark leather or metal (armor): the full wet gloss added a sky-and-sun highlight over a dark albedo
+	// that read pink-white, so armor keeps a dull, low-specular wet sheen.
+	ROUGHNESS = mix(0.82, armor ? 0.62 : 0.3, wet);
+	SPECULAR = mix(0.12, armor ? 0.12 : 0.35, wet);
 	EMISSION = ALBEDO * glow_sum + rim_em;
 	ALPHA = clamp(alpha, 0.0, 1.0);
 }
