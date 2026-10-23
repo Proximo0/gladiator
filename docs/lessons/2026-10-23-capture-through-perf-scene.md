@@ -1,0 +1,2 @@
+What happened: gameplay clips were rendered through tests/perf/perf.tscn, which is a measurement harness: it showed the human aim aid and weapon-lost prompt on fighter 0, fast-forwarded, stopped at a decal count, and picked whatever seed was given, so clips had no kill or finisher
+Rule: clips come from tools/record_fight.sh (tests/capture/capture.tscn, aim aid off, seed picked by a headless bot scan for a finisher); never film a measurement scene, and pick the seed by observed outcome rather than by trying seeds in a movie render
