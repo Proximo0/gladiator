@@ -28,9 +28,9 @@ const ROWS_AI: Array = [
 	["ai_bait_depth", 0.25, 0.0, 0.8, 0.05, "AI", "CPU reach plan: how far inside the foe's reach the bait steps, m."],
 	["ai_reach_low_mult", 3.0, 1.0, 8.0, 0.1, "AI", "CPU reach plan: weight multiplier of the low cut for a fighter outreached by the foe's blade (the legs sit under a high guard)."],
 	["ai_holder_min_length", 1.2, 0.5, 2.0, 0.05, "AI", "CPU reach plan: a two-handed sword at least this long (data length) counts as the long blade that over-commits."],
-	["ai_overcommit_chance", 0.15, 0.0, 1.0, 0.05, "AI", "CPU reach plan: chance that a swing of the long blade is an over-commit (a lunge and a long recovery)."],
+	["ai_overcommit_chance", 0.1, 0.0, 1.0, 0.05, "AI", "CPU reach plan: chance that a swing of the long blade is an over-commit (a lunge and a long recovery)."],
 	["ai_overcommit_recover", 1.8, 1.0, 4.0, 0.1, "AI", "CPU reach plan: recovery time multiplier after an over-commit."],
-	["ai_holder_wait_mult", 3.0, 1.0, 4.0, 0.1, "AI", "CPU reach plan: the long two-handed blade waits this many times longer between attacks (it holds the reach instead of pressing)."],
+	["ai_holder_wait_mult", 4.0, 1.0, 4.0, 0.1, "AI", "CPU reach plan: the long two-handed blade waits this many times longer between attacks (it holds the reach instead of pressing)."],
 	["ai_close_roll_chance", 0.02, 0.0, 0.05, 0.001, "AI", "CPU closing plan: chance per tick of a forward roll in under a longer weapon (with stamina to spare)."],
 ]
 
