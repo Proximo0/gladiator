@@ -1001,7 +1001,7 @@ func _do_drive(me: Dictionary, obs: Dictionary, out: FighterInput) -> void:
 	var tc: float = (me.get("tip_pos", tgt) as Vector3).distance_to(tgt)
 	_tp_best = minf(_tp_best, tc)
 	var closing: float = ThrustPlan.closing_speed(me.get("pelvis_vel", Vector3.ZERO), obs.get("pelvis_vel", Vector3.ZERO), _dir)
-	if _tp_pressed or ThrustPlan.press_now(tc, closing, tun.ai_thrust_lead, tun.ai_thrust_near):
+	if _tp_pressed or ThrustPlan.press_now(tc, closing, tun.ai_spear_thrust_lead if _spear else tun.ai_thrust_lead, tun.ai_thrust_near):
 		_tp_pressed = true
 		out.buttons |= FighterInput.THRUST
 	var landed: bool = false

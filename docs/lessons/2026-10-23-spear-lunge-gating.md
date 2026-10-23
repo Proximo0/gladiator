@@ -1,0 +1,2 @@
+What happened: a hip lunge tied to THRUST plus forward input was meant for the spear's committed drive, but the CPU also presses THRUST in wind-ups and pokes while advancing, so the spear lunged in unprompted and its win rate against the gladius fell from 25/22 to about 19/28 in 48 fights while point speed did not move.
+Rule: gate a new move on the exact input combination of the behaviour it serves (here weapon shape, THRUST and SPRINT, as the drive sends), and compare win rate with and without it before tuning its strength.
