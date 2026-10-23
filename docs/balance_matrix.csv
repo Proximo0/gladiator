@@ -1,241 +1,241 @@
 weapon,opponent,tier,opp_tier,fights,win_pct,mean_len_s,hits_per_fight,dmg_per_hit,wins_by,side0_win_pct
-fists,rake,0,1,40,12.5,38.2,7.4,7.3,ko:4 pummel:1,15.0
-fists,bat,0,1,40,12.5,28.4,6.0,8.4,ko:4 pummel:1,15.0
-fists,club,0,1,40,12.5,33.8,11.1,7.7,ko:3 pummel:1 time:1,20.0
-fists,gladius,0,2,40,0.0,19.8,5.9,8.9,,0.0
-fists,longsword,0,4,40,22.5,23.0,7.6,8.0,ko:5 pummel:4,15.0
-fists,axe,0,3,40,12.5,22.8,7.8,8.8,ko:2 pummel:2 time:1,5.0
-fists,spear,0,3,40,11.2,45.5,2.1,6.6,ko:1 pummel:1 time:2,5.0
-fists,machete,0,1,40,20.0,21.7,5.6,9.2,ko:2 pummel:5 time:1,25.0
-fists,sledgehammer,0,1,40,12.5,32.0,9.6,7.3,ko:4 time:1,15.0
-fists,mace,0,3,40,12.5,26.0,6.0,8.4,ko:4 pummel:1,15.0
-fists,falchion,0,3,40,7.5,24.0,6.3,9.1,ko:2 pummel:1,5.0
-fists,warhammer,0,4,40,7.5,30.1,7.0,7.5,ko:3,10.0
-fists,halberd,0,4,40,10.0,30.7,8.1,8.2,ko:3 time:1,0.0
-fists,dai_katana,0,5,40,17.5,19.0,6.0,8.2,ko:4 pummel:3,20.0
-fists,laser_sword,0,5,40,7.5,22.2,5.5,9.8,ko:1 pummel:2,0.0
-rake,fists,1,0,40,87.5,38.2,38.6,1.8,blood_loss:2 ko:20 pummel:1 time:12,90.0
-rake,bat,1,1,40,42.5,34.4,20.5,2.4,blood_loss:3 ko:9 pummel:1 time:4,55.0
-rake,club,1,1,40,72.5,40.5,28.2,2.3,blood_loss:6 ko:10 pummel:2 time:11,70.0
-rake,gladius,1,2,40,35.0,30.2,22.6,2.6,blood_loss:1 ko:11 time:2,25.0
-rake,longsword,1,4,40,20.0,34.1,16.1,2.6,blood_loss:4 ko:2 time:2,30.0
-rake,axe,1,3,40,45.0,26.0,17.3,3.1,blood_loss:6 ko:10 pummel:1 time:1,60.0
-rake,spear,1,3,40,36.2,43.1,15.7,3.4,blood_loss:5 ko:4 time:5,45.0
-rake,machete,1,1,40,45.0,39.7,20.5,2.5,blood_loss:3 gut:1 ko:5 pummel:1 time:8,45.0
-rake,sledgehammer,1,1,40,47.5,37.5,17.8,2.3,blood_loss:3 ko:5 time:11,50.0
-rake,mace,1,3,40,67.5,37.9,24.3,2.8,blood_loss:3 ko:13 time:11,60.0
-rake,falchion,1,3,40,55.0,34.4,20.1,2.9,blood_loss:8 ko:6 pummel:3 run_through:1 time:4,65.0
-rake,warhammer,1,4,40,42.5,39.4,18.0,3.1,blood_loss:6 ko:2 time:9,40.0
-rake,halberd,1,4,40,30.0,32.9,14.7,2.9,blood_loss:2 ko:8 time:2,30.0
-rake,dai_katana,1,5,40,18.8,35.4,15.0,3.0,blood_loss:2 ko:2 time:3,32.5
-rake,laser_sword,1,5,40,27.5,33.5,15.6,3.0,blood_loss:3 gut:1 ko:4 run_through:1 time:2,30.0
-bat,fists,1,0,40,87.5,28.4,17.2,4.8,blood_loss:2 ko:12 pummel:4 skull_crush:10 time:7,90.0
-bat,rake,1,1,40,57.5,34.4,14.0,5.0,ko:10 skull_crush:8 time:5,70.0
-bat,club,1,1,40,77.5,29.1,12.4,5.5,blood_loss:1 ko:13 pummel:2 skull_crush:12 time:3,85.0
-bat,gladius,1,2,40,50.0,26.7,12.2,4.1,blood_loss:2 ko:12 pummel:2 skull_crush:4,45.0
-bat,longsword,1,4,40,32.5,25.4,7.6,6.4,blood_loss:2 ko:5 skull_crush:6,30.0
-bat,axe,1,3,40,52.5,23.9,11.1,4.8,blood_loss:1 ko:14 pummel:1 skull_crush:4 time:1,55.0
-bat,spear,1,3,40,46.2,37.5,7.7,6.3,ko:7 skull_crush:8 time:3,57.5
-bat,machete,1,1,40,57.5,26.7,12.9,5.7,blood_loss:2 ko:11 pummel:2 skull_crush:8,60.0
-bat,sledgehammer,1,1,40,42.5,31.5,10.2,5.1,ko:5 pummel:1 skull_crush:4 time:7,35.0
-bat,mace,1,3,40,42.5,31.1,9.7,4.3,ko:8 pummel:2 skull_crush:6 time:1,55.0
-bat,falchion,1,3,40,55.0,24.8,12.2,4.0,blood_loss:3 ko:10 pummel:2 skull_crush:6 time:1,60.0
-bat,warhammer,1,4,40,32.5,27.2,10.0,4.7,ko:7 pummel:1 skull_crush:4 time:1,40.0
-bat,halberd,1,4,40,35.0,29.1,8.1,5.0,ko:7 skull_crush:6 time:1,30.0
-bat,dai_katana,1,5,40,35.0,22.1,7.2,6.5,blood_loss:1 ko:9 skull_crush:3 time:1,30.0
-bat,laser_sword,1,5,40,52.5,24.2,10.5,4.2,blood_loss:1 ko:13 skull_crush:5 time:2,50.0
-club,fists,1,0,40,87.5,33.8,23.3,2.6,ko:23 skull_crush:4 time:8,95.0
-club,rake,1,1,40,27.5,40.5,12.7,3.3,ko:7 skull_crush:3 time:1,25.0
-club,bat,1,1,40,22.5,29.1,10.1,2.7,ko:3 pummel:1 skull_crush:3 time:2,30.0
-club,gladius,1,2,40,37.5,26.0,10.8,4.2,ko:13 pummel:1 skull_crush:1,40.0
-club,longsword,1,4,40,27.5,25.6,9.7,2.9,blood_loss:2 ko:3 skull_crush:4 time:2,30.0
-club,axe,1,3,40,50.0,28.3,13.2,3.3,ko:13 pummel:1 skull_crush:5 time:1,55.0
-club,spear,1,3,40,17.5,44.1,4.7,5.4,ko:2 skull_crush:2 time:2,30.0
-club,machete,1,1,40,47.5,24.7,10.7,3.7,blood_loss:2 gut:1 ko:6 pummel:2 skull_crush:7 time:1,40.0
-club,sledgehammer,1,1,40,30.0,29.7,11.0,2.5,ko:3 pummel:2 skull_crush:4 time:3,25.0
-club,mace,1,3,40,38.8,31.6,9.2,3.3,ko:10 pummel:2 time:3,27.5
-club,falchion,1,3,40,40.0,26.7,12.3,2.8,blood_loss:1 gut:1 ko:8 pummel:1 skull_crush:4 time:1,50.0
-club,warhammer,1,4,40,20.0,33.7,8.9,2.8,ko:4 pummel:1 time:3,10.0
-club,halberd,1,4,40,38.8,29.0,11.4,4.1,ko:11 skull_crush:3 time:1,45.0
-club,dai_katana,1,5,40,25.0,29.1,8.6,4.1,blood_loss:1 ko:5 skull_crush:3 time:1,30.0
-club,laser_sword,1,5,40,32.5,28.6,11.0,3.6,blood_loss:1 gut:1 ko:6 skull_crush:2 time:3,35.0
-gladius,fists,2,0,40,100.0,19.8,27.4,3.4,behead:2 blood_loss:31 gut:5 pummel:1 run_through:1,100.0
-gladius,rake,2,1,40,65.0,30.2,13.3,4.2,behead:2 blood_loss:18 gut:2 pummel:1 run_through:1 time:2,55.0
-gladius,bat,2,1,40,50.0,26.7,11.8,3.1,behead:3 blood_loss:11 ko:1 pummel:1 time:4,45.0
-gladius,club,2,1,40,62.5,26.0,12.5,3.9,behead:1 blood_loss:21 gut:1 time:2,65.0
-gladius,longsword,2,4,40,50.0,20.8,9.7,4.2,blood_loss:18 gut:2,60.0
-gladius,axe,2,3,40,60.0,23.9,15.4,3.4,blood_loss:15 gut:5 ko:2 pummel:1 run_through:1,65.0
-gladius,spear,2,3,40,52.5,35.7,7.8,5.5,behead:1 blood_loss:14 gut:2 run_through:2 time:2,60.0
-gladius,machete,2,1,40,50.0,20.7,11.4,4.1,behead:1 blood_loss:16 gut:2 pummel:1,50.0
-gladius,sledgehammer,2,1,40,50.0,27.6,13.3,3.5,behead:2 blood_loss:12 gut:1 time:5,35.0
-gladius,mace,2,3,40,60.0,30.3,11.4,3.1,behead:1 blood_loss:15 gut:1 ko:2 run_through:1 time:4,55.0
-gladius,falchion,2,3,40,37.5,21.4,10.0,3.9,blood_loss:14 ko:1,45.0
-gladius,warhammer,2,4,40,35.0,22.9,9.4,3.6,blood_loss:12 gut:1 time:1,40.0
-gladius,halberd,2,4,40,50.0,27.2,12.5,3.2,behead:1 blood_loss:14 gut:2 ko:2 time:1,30.0
-gladius,dai_katana,2,5,40,35.0,23.7,8.6,4.0,blood_loss:11 gut:1 pummel:1 run_through:1,45.0
-gladius,laser_sword,2,5,40,37.5,22.5,11.8,3.9,behead:2 blood_loss:8 gut:1 ko:1 run_through:2 time:1,30.0
-longsword,fists,4,0,40,77.5,23.0,29.1,2.6,blood_loss:27 gut:4,70.0
-longsword,rake,4,1,40,80.0,34.1,14.3,4.6,behead:4 blood_loss:21 gut:4 time:3,90.0
-longsword,bat,4,1,40,67.5,25.4,12.1,4.5,behead:1 blood_loss:18 gut:4 run_through:1 time:3,65.0
-longsword,club,4,1,40,72.5,25.6,18.7,4.2,behead:1 blood_loss:19 gut:7 run_through:1 time:1,75.0
-longsword,gladius,4,2,40,50.0,20.8,15.4,4.6,behead:2 blood_loss:12 gut:6,60.0
-longsword,axe,4,3,40,67.5,20.5,14.0,4.9,behead:4 blood_loss:18 gut:4 pummel:1,60.0
-longsword,spear,4,3,40,57.5,38.3,9.5,4.3,blood_loss:19 gut:2 time:2,50.0
-longsword,machete,4,1,40,62.5,19.8,16.8,4.6,behead:5 blood_loss:17 gut:3,70.0
-longsword,sledgehammer,4,1,40,62.5,19.0,15.3,4.2,behead:1 blood_loss:17 gut:6 run_through:1,55.0
-longsword,mace,4,3,40,55.0,22.7,11.4,4.4,behead:2 blood_loss:16 gut:1 ko:1 pummel:1 time:1,55.0
-longsword,falchion,4,3,40,65.0,25.7,15.1,4.0,behead:1 blood_loss:19 gut:6,65.0
-longsword,warhammer,4,4,40,65.0,30.2,13.2,3.6,behead:1 blood_loss:23 pummel:1 time:1,70.0
-longsword,halberd,4,4,40,60.0,25.8,14.0,3.7,behead:2 blood_loss:18 gut:2 ko:2,55.0
-longsword,dai_katana,4,5,40,37.5,17.7,12.7,4.6,behead:3 blood_loss:10 gut:2,35.0
-longsword,laser_sword,4,5,40,37.5,21.2,14.5,3.9,behead:1 blood_loss:11 gut:3,25.0
-axe,fists,3,0,40,87.5,22.8,24.1,3.9,behead:3 blood_loss:27 gut:2 ko:1 pummel:1 time:1,80.0
-axe,rake,3,1,40,55.0,26.0,8.0,6.6,behead:1 blood_loss:15 gut:3 ko:1 pummel:1 time:1,70.0
-axe,bat,3,1,40,47.5,23.9,8.9,4.6,behead:1 blood_loss:12 gut:3 ko:1 skull_crush:1 time:1,50.0
-axe,club,3,1,40,50.0,28.3,13.8,3.5,behead:1 blood_loss:10 gut:1 ko:2 pummel:1 skull_crush:1 time:4,55.0
-axe,gladius,3,2,40,40.0,23.9,13.6,3.8,behead:1 blood_loss:14 ko:1,45.0
-axe,longsword,3,4,40,32.5,20.5,8.1,5.2,blood_loss:11 ko:2,25.0
-axe,spear,3,3,40,43.8,40.5,7.8,5.9,behead:3 blood_loss:10 gut:2 time:2,42.5
-axe,machete,3,1,40,55.0,24.1,15.1,4.1,behead:2 blood_loss:17 gut:3,60.0
-axe,sledgehammer,3,1,40,45.0,26.3,11.2,3.6,behead:1 blood_loss:10 gut:3 time:4,45.0
-axe,mace,3,3,40,45.0,31.1,12.0,3.1,blood_loss:11 gut:1 ko:1 time:5,45.0
-axe,falchion,3,3,40,42.5,20.5,11.4,5.3,blood_loss:16 gut:1,50.0
-axe,warhammer,3,4,40,57.5,26.2,9.8,5.6,behead:2 blood_loss:15 gut:4 time:2,60.0
-axe,halberd,3,4,40,65.0,22.7,11.6,5.0,behead:6 blood_loss:15 gut:3 pummel:1 time:1,60.0
-axe,dai_katana,3,5,40,37.5,20.3,10.0,4.3,behead:2 blood_loss:12 gut:1,25.0
-axe,laser_sword,3,5,40,37.5,20.0,11.3,4.3,behead:2 blood_loss:12 gut:1,15.0
-spear,fists,3,0,40,88.8,45.5,26.9,1.4,blood_loss:13 run_through:4 time:18,82.5
-spear,rake,3,1,40,63.8,43.1,18.6,2.1,blood_loss:20 run_through:4 time:1,72.5
-spear,bat,3,1,40,53.8,37.5,18.7,2.0,blood_loss:11 run_through:4 time:6,65.0
-spear,club,3,1,40,82.5,44.1,21.6,2.0,blood_loss:15 run_through:7 time:10,95.0
-spear,gladius,3,2,40,47.5,35.7,19.4,2.0,blood_loss:11 run_through:6 time:2,55.0
-spear,longsword,3,4,40,42.5,38.3,20.4,1.6,blood_loss:12 time:5,35.0
-spear,axe,3,3,40,56.2,40.5,22.4,1.5,blood_loss:10 run_through:7 time:5,55.0
-spear,machete,3,1,40,52.5,38.5,22.5,1.7,blood_loss:10 run_through:4 time:7,50.0
-spear,sledgehammer,3,1,40,52.5,41.3,23.2,1.5,blood_loss:12 run_through:2 time:7,70.0
-spear,mace,3,3,40,76.2,38.7,20.7,1.9,blood_loss:9 pummel:1 run_through:10 time:10,87.5
-spear,falchion,3,3,40,47.5,35.2,24.4,1.5,blood_loss:12 run_through:5 time:2,40.0
-spear,warhammer,3,4,40,50.0,37.2,17.1,1.9,blood_loss:9 run_through:3 time:8,45.0
-spear,halberd,3,4,40,42.5,26.1,13.3,2.6,blood_loss:11 run_through:5 time:1,45.0
-spear,dai_katana,3,5,40,40.0,32.3,17.2,1.7,blood_loss:11 run_through:4 time:1,35.0
-spear,laser_sword,3,5,40,75.0,38.3,17.2,2.3,blood_loss:21 run_through:2 time:7,80.0
-machete,fists,1,0,40,80.0,21.7,19.6,3.7,behead:2 blood_loss:28 gut:2,85.0
-machete,rake,1,1,40,55.0,39.7,10.6,4.0,blood_loss:16 gut:2 time:4,55.0
-machete,bat,1,1,40,42.5,26.7,8.7,4.0,blood_loss:14 ko:1 time:2,45.0
-machete,club,1,1,40,52.5,24.7,12.0,3.6,behead:2 blood_loss:15 gut:1 ko:2 time:1,45.0
-machete,gladius,1,2,40,50.0,20.7,13.1,3.7,behead:1 blood_loss:17 pummel:2,50.0
-machete,longsword,1,4,40,37.5,19.8,9.1,3.7,blood_loss:13 ko:1 pummel:1,45.0
-machete,axe,1,3,40,45.0,24.1,15.7,3.5,behead:2 blood_loss:16,50.0
-machete,spear,1,3,40,47.5,38.5,6.7,4.9,behead:2 blood_loss:13 gut:2 pummel:1 time:1,45.0
-machete,sledgehammer,1,1,40,45.0,25.1,11.3,3.0,blood_loss:15 gut:1 ko:1 time:1,30.0
-machete,mace,1,3,40,35.0,27.9,7.5,3.2,behead:2 blood_loss:8 gut:1 ko:1 time:2,40.0
-machete,falchion,1,3,40,40.0,21.0,9.0,4.2,behead:1 blood_loss:11 gut:2 ko:1 time:1,40.0
-machete,warhammer,1,4,40,37.5,27.6,9.3,3.5,blood_loss:13 gut:1 time:1,40.0
-machete,halberd,1,4,40,32.5,21.4,7.4,4.1,blood_loss:11 ko:1 time:1,40.0
-machete,dai_katana,1,5,40,25.0,18.9,9.6,3.5,behead:1 blood_loss:8 ko:1,20.0
-machete,laser_sword,1,5,40,32.5,19.9,10.4,3.2,behead:1 blood_loss:8 gut:4,30.0
-sledgehammer,fists,1,0,40,87.5,32.0,24.5,3.6,ko:18 pummel:2 skull_crush:8 time:7,90.0
-sledgehammer,rake,1,1,40,52.5,37.5,11.2,5.1,ko:13 skull_crush:5 time:3,55.0
-sledgehammer,bat,1,1,40,57.5,31.5,11.0,5.9,ko:12 pummel:2 skull_crush:6 time:3,50.0
-sledgehammer,club,1,1,40,70.0,29.7,15.9,4.7,ko:14 pummel:2 skull_crush:6 time:6,65.0
-sledgehammer,gladius,1,2,40,50.0,27.6,13.9,4.5,ko:16 skull_crush:3 time:1,35.0
-sledgehammer,longsword,1,4,40,37.5,19.0,9.4,5.3,ko:11 pummel:2 skull_crush:2,30.0
-sledgehammer,axe,1,3,40,55.0,26.3,13.3,5.4,blood_loss:1 ko:15 skull_crush:6,55.0
-sledgehammer,spear,1,3,40,47.5,41.3,13.2,5.6,ko:12 skull_crush:4 time:3,65.0
-sledgehammer,machete,1,1,40,55.0,25.1,13.9,4.8,gut:1 ko:14 skull_crush:6 time:1,40.0
-sledgehammer,mace,1,3,40,55.0,28.2,15.3,3.6,ko:11 pummel:1 skull_crush:5 time:5,50.0
-sledgehammer,falchion,1,3,40,45.0,27.2,13.4,4.4,blood_loss:1 ko:14 skull_crush:3,30.0
-sledgehammer,warhammer,1,4,40,40.0,27.3,11.9,4.9,ko:10 pummel:1 skull_crush:2 time:3,45.0
-sledgehammer,halberd,1,4,40,42.5,26.1,10.1,5.2,ko:14 skull_crush:2 time:1,30.0
-sledgehammer,dai_katana,1,5,40,37.5,19.3,7.2,6.5,blood_loss:1 ko:8 pummel:3 skull_crush:3,35.0
-sledgehammer,laser_sword,1,5,40,40.0,22.6,11.7,4.7,ko:12 skull_crush:4,35.0
-mace,fists,3,0,40,87.5,26.0,17.8,4.5,ko:17 skull_crush:12 time:6,90.0
-mace,rake,3,1,40,32.5,37.9,8.0,4.5,ko:8 pummel:1 skull_crush:3 time:1,25.0
-mace,bat,3,1,40,57.5,31.1,10.9,5.1,ko:8 skull_crush:7 time:8,70.0
-mace,club,3,1,40,61.2,31.6,9.9,5.5,ko:10 pummel:1 skull_crush:7 time:6,50.0
-mace,gladius,3,2,40,40.0,30.3,12.2,5.3,ko:11 pummel:1 skull_crush:3 time:1,35.0
-mace,longsword,3,4,40,45.0,22.7,8.0,5.7,blood_loss:1 ko:10 pummel:2 skull_crush:4 time:1,45.0
-mace,axe,3,3,40,55.0,31.1,13.0,4.2,blood_loss:1 gut:1 ko:11 pummel:2 skull_crush:6 time:1,55.0
-mace,spear,3,3,40,23.8,38.7,5.3,6.6,ko:5 skull_crush:4,35.0
-mace,machete,3,1,40,65.0,27.9,11.7,5.2,blood_loss:2 ko:12 pummel:3 skull_crush:7 time:2,70.0
-mace,sledgehammer,3,1,40,45.0,28.2,10.8,3.1,ko:8 pummel:4 skull_crush:4 time:2,40.0
-mace,falchion,3,3,40,42.5,26.0,12.4,6.0,ko:9 skull_crush:6 time:2,45.0
-mace,warhammer,3,4,40,35.0,29.7,9.6,4.5,ko:10 skull_crush:2 time:2,40.0
-mace,halberd,3,4,40,50.0,25.4,10.7,6.0,blood_loss:1 ko:8 skull_crush:8 time:3,45.0
-mace,dai_katana,3,5,40,37.5,20.6,6.6,6.7,blood_loss:1 ko:7 skull_crush:6 time:1,35.0
-mace,laser_sword,3,5,40,30.0,29.7,9.6,5.9,blood_loss:1 ko:2 pummel:1 skull_crush:6 time:2,35.0
-falchion,fists,3,0,40,92.5,24.0,24.9,3.2,behead:4 blood_loss:26 gut:2 pummel:1 time:4,90.0
-falchion,rake,3,1,40,45.0,34.4,12.6,4.0,blood_loss:15 gut:1 ko:1 time:1,55.0
-falchion,bat,3,1,40,45.0,24.8,12.4,3.7,behead:1 blood_loss:8 gut:4 ko:1 pummel:1 time:3,50.0
-falchion,club,3,1,40,60.0,26.7,16.3,3.1,behead:1 blood_loss:18 gut:3 ko:1 time:1,70.0
-falchion,gladius,3,2,40,62.5,21.4,14.7,4.2,behead:4 blood_loss:19 gut:1 pummel:1,70.0
-falchion,longsword,3,4,40,35.0,25.7,9.7,4.1,behead:1 blood_loss:11 pummel:1 time:1,35.0
-falchion,axe,3,3,40,57.5,20.5,12.6,4.0,behead:2 blood_loss:17 gut:2 ko:1 pummel:1,65.0
-falchion,spear,3,3,40,52.5,35.2,8.9,5.6,blood_loss:16 gut:3 time:2,45.0
-falchion,machete,3,1,40,60.0,21.0,13.2,4.8,behead:4 blood_loss:19 gut:1,60.0
-falchion,sledgehammer,3,1,40,55.0,27.2,14.1,3.0,behead:1 blood_loss:14 gut:5 ko:1 time:1,40.0
-falchion,mace,3,3,40,57.5,26.0,12.3,3.9,blood_loss:18 gut:3 ko:2,60.0
-falchion,warhammer,3,4,40,30.0,28.4,9.6,3.5,behead:1 blood_loss:9 time:2,35.0
-falchion,halberd,3,4,40,65.0,21.6,13.9,4.7,behead:2 blood_loss:18 gut:5 ko:1,55.0
-falchion,dai_katana,3,5,40,37.5,20.6,8.7,4.4,behead:2 blood_loss:10 gut:2 time:1,30.0
-falchion,laser_sword,3,5,40,47.5,22.3,9.8,4.7,behead:1 blood_loss:17 gut:1,35.0
-warhammer,fists,4,0,40,92.5,30.1,25.1,3.6,blood_loss:2 gut:2 ko:22 pummel:1 skull_crush:4 time:6,95.0
-warhammer,rake,4,1,40,57.5,39.4,12.3,6.9,blood_loss:7 gut:1 ko:7 skull_crush:5 time:3,55.0
-warhammer,bat,4,1,40,67.5,27.2,13.7,4.5,blood_loss:3 gut:1 ko:15 skull_crush:2 time:6,75.0
-warhammer,club,4,1,40,80.0,33.7,19.1,4.9,blood_loss:3 gut:2 ko:16 skull_crush:4 time:7,70.0
-warhammer,gladius,4,2,40,65.0,22.9,14.9,5.4,behead:1 blood_loss:2 gut:1 ko:16 skull_crush:4 time:2,70.0
-warhammer,longsword,4,4,40,35.0,30.2,11.0,5.0,blood_loss:3 ko:11,40.0
-warhammer,axe,4,3,40,42.5,26.2,13.1,5.0,blood_loss:2 gut:2 ko:9 skull_crush:3 time:1,45.0
-warhammer,spear,4,3,40,50.0,37.2,11.3,6.9,behead:1 blood_loss:2 gut:2 ko:11 skull_crush:3 time:1,45.0
-warhammer,machete,4,1,40,62.5,27.6,13.8,5.3,behead:1 blood_loss:4 gut:1 ko:12 pummel:1 skull_crush:3 time:3,65.0
-warhammer,sledgehammer,4,1,40,60.0,27.3,13.6,5.1,blood_loss:1 ko:14 pummel:1 skull_crush:6 time:2,65.0
-warhammer,mace,4,3,40,65.0,29.7,14.9,4.2,blood_loss:2 gut:1 ko:14 pummel:1 skull_crush:4 time:4,70.0
-warhammer,falchion,4,3,40,70.0,28.4,13.9,6.1,blood_loss:6 ko:13 skull_crush:8 time:1,75.0
-warhammer,halberd,4,4,40,47.5,25.9,10.1,5.6,behead:1 blood_loss:1 ko:11 pummel:1 skull_crush:4 time:1,45.0
-warhammer,dai_katana,4,5,40,40.0,27.3,12.0,4.9,behead:1 blood_loss:1 ko:6 pummel:1 skull_crush:4 time:3,35.0
-warhammer,laser_sword,4,5,40,52.5,22.8,11.5,6.3,behead:1 blood_loss:2 gut:1 ko:11 skull_crush:5 time:1,55.0
-halberd,fists,4,0,40,90.0,30.7,28.2,3.2,behead:1 blood_loss:26 gut:4 run_through:1 time:4,80.0
-halberd,rake,4,1,40,70.0,32.9,13.0,4.6,behead:1 blood_loss:23 gut:2 time:2,70.0
-halberd,bat,4,1,40,65.0,29.1,13.9,3.3,blood_loss:19 ko:1 pummel:1 time:5,60.0
-halberd,club,4,1,40,61.2,29.0,16.0,3.7,behead:1 blood_loss:17 gut:1 ko:1 time:4,67.5
-halberd,gladius,4,2,40,50.0,27.2,15.7,3.6,blood_loss:18 gut:1 run_through:1,30.0
-halberd,longsword,4,4,40,40.0,25.8,12.5,3.5,blood_loss:16,35.0
-halberd,axe,4,3,40,35.0,22.7,13.9,2.7,blood_loss:12 gut:1 time:1,30.0
-halberd,spear,4,3,40,57.5,26.1,9.3,7.5,behead:2 blood_loss:17 gut:4,60.0
-halberd,machete,4,1,40,67.5,21.4,10.7,6.1,behead:3 blood_loss:21 gut:2 ko:1,75.0
-halberd,sledgehammer,4,1,40,57.5,26.1,14.1,3.5,blood_loss:16 gut:1 ko:1 run_through:3 time:2,45.0
-halberd,mace,4,3,40,50.0,25.4,12.7,4.5,behead:1 blood_loss:14 gut:2 ko:2 time:1,45.0
-halberd,falchion,4,3,40,35.0,21.6,12.2,3.7,blood_loss:11 gut:2 run_through:1,25.0
-halberd,warhammer,4,4,40,52.5,25.9,11.6,4.1,behead:1 blood_loss:17 gut:2 ko:1,50.0
-halberd,dai_katana,4,5,40,45.0,19.8,11.5,5.2,behead:2 blood_loss:14 gut:1 run_through:1,40.0
-halberd,laser_sword,4,5,40,42.5,22.9,11.9,4.5,behead:1 blood_loss:13 gut:1 time:2,45.0
-dai_katana,fists,5,0,40,82.5,19.0,24.7,3.1,behead:3 blood_loss:25 gut:4 run_through:1,85.0
-dai_katana,rake,5,1,40,81.2,35.4,12.1,4.5,behead:3 blood_loss:24 gut:2 run_through:1 time:2,95.0
-dai_katana,bat,5,1,40,65.0,22.1,11.2,5.1,behead:3 blood_loss:19 gut:3 run_through:1,60.0
-dai_katana,club,5,1,40,75.0,29.1,13.6,4.5,behead:1 blood_loss:23 gut:3 ko:1 time:2,80.0
-dai_katana,gladius,5,2,40,65.0,23.7,12.8,4.4,behead:3 blood_loss:21 gut:1 run_through:1,75.0
-dai_katana,longsword,5,4,40,62.5,17.7,13.7,4.8,behead:3 blood_loss:19 gut:3,60.0
-dai_katana,axe,5,3,40,62.5,20.3,17.4,4.0,behead:2 blood_loss:21 gut:2,50.0
-dai_katana,spear,5,3,40,60.0,32.3,8.8,6.5,behead:4 blood_loss:14 gut:5 time:1,55.0
-dai_katana,machete,5,1,40,75.0,18.9,15.1,4.9,behead:4 blood_loss:23 gut:2 run_through:1,70.0
-dai_katana,sledgehammer,5,1,40,62.5,19.3,13.9,4.1,behead:5 blood_loss:15 gut:4 run_through:1,60.0
-dai_katana,mace,5,3,40,62.5,20.6,11.2,5.1,behead:1 blood_loss:21 gut:1 run_through:1 time:1,60.0
-dai_katana,falchion,5,3,40,62.5,20.6,13.8,4.8,blood_loss:24 run_through:1,55.0
-dai_katana,warhammer,5,4,40,60.0,27.3,13.9,3.9,behead:2 blood_loss:17 gut:4 time:1,55.0
-dai_katana,halberd,5,4,40,55.0,19.8,11.2,6.0,behead:2 blood_loss:14 gut:6,50.0
-dai_katana,laser_sword,5,5,40,77.5,21.1,13.4,5.9,behead:3 blood_loss:25 gut:3,75.0
-laser_sword,fists,5,0,40,92.5,22.2,22.1,3.2,behead:3 blood_loss:28 gut:4 ko:1 time:1,85.0
-laser_sword,rake,5,1,40,72.5,33.5,12.5,4.4,behead:3 blood_loss:21 gut:1 run_through:1 time:3,75.0
-laser_sword,bat,5,1,40,47.5,24.2,10.8,3.5,behead:1 blood_loss:15 gut:1 ko:1 pummel:1,45.0
-laser_sword,club,5,1,40,67.5,28.6,14.4,3.6,behead:5 blood_loss:19 pummel:1 time:2,70.0
-laser_sword,gladius,5,2,40,62.5,22.5,14.3,3.9,behead:1 blood_loss:19 gut:3 ko:1 pummel:1,55.0
-laser_sword,longsword,5,4,40,62.5,21.2,10.6,4.4,behead:2 blood_loss:18 gut:4 ko:1,50.0
-laser_sword,axe,5,3,40,62.5,20.0,14.8,4.1,blood_loss:20 gut:1 ko:1 run_through:3,40.0
-laser_sword,spear,5,3,40,25.0,38.3,4.3,5.6,blood_loss:7 gut:1 time:2,30.0
-laser_sword,machete,5,1,40,67.5,19.9,12.1,4.9,behead:3 blood_loss:19 gut:4 time:1,65.0
-laser_sword,sledgehammer,5,1,40,60.0,22.6,12.8,4.2,behead:2 blood_loss:16 gut:2 run_through:1 time:3,55.0
-laser_sword,mace,5,3,40,70.0,29.7,12.6,4.2,blood_loss:21 gut:1 ko:1 time:5,75.0
-laser_sword,falchion,5,3,40,52.5,22.3,11.8,4.5,behead:2 blood_loss:14 gut:3 ko:1 run_through:1,40.0
-laser_sword,warhammer,5,4,40,47.5,22.8,10.0,4.6,behead:1 blood_loss:14 gut:3 time:1,50.0
-laser_sword,halberd,5,4,40,57.5,22.9,10.7,5.3,behead:4 blood_loss:17 gut:1 run_through:1,60.0
-laser_sword,dai_katana,5,5,40,22.5,21.1,7.6,4.5,behead:1 blood_loss:7 gut:1,20.0
+fists,rake,0,1,40,5.0,39.8,8.2,7.7,ko:2,0.0
+fists,bat,0,1,40,10.0,30.2,7.9,8.5,ko:1 pummel:2 time:1,10.0
+fists,club,0,1,40,11.2,33.5,10.4,8.4,ko:2 pummel:2,12.5
+fists,gladius,0,2,40,2.5,18.6,5.8,8.5,ko:1,0.0
+fists,longsword,0,4,40,7.5,21.4,7.4,8.7,ko:2 pummel:1,5.0
+fists,axe,0,3,40,12.5,21.8,8.7,8.1,ko:4 pummel:1,10.0
+fists,spear,0,3,40,3.8,51.6,2.3,5.8,,2.5
+fists,machete,0,1,40,15.0,22.0,6.9,8.4,ko:3 pummel:3,15.0
+fists,sledgehammer,0,1,40,12.5,25.1,6.7,7.1,ko:3 pummel:1 time:1,20.0
+fists,mace,0,3,40,17.5,27.6,7.5,8.8,ko:4 pummel:1 time:2,25.0
+fists,falchion,0,3,40,2.5,21.2,5.8,9.3,ko:1,0.0
+fists,warhammer,0,4,40,5.0,30.8,6.6,7.7,ko:1 time:1,5.0
+fists,halberd,0,4,40,2.5,31.4,8.9,7.6,ko:1,0.0
+fists,dai_katana,0,5,40,10.0,19.6,7.1,8.2,ko:2 pummel:2,10.0
+fists,laser_sword,0,5,40,7.5,19.8,4.5,10.5,ko:1 pummel:2,0.0
+rake,fists,1,0,40,95.0,39.8,40.1,1.7,blood_loss:1 ko:20 pummel:1 run_through:1 time:15,90.0
+rake,bat,1,1,40,37.5,31.4,19.9,2.4,blood_loss:5 ko:5 time:5,40.0
+rake,club,1,1,40,73.8,43.6,30.6,2.6,blood_loss:4 ko:14 run_through:1 time:10,70.0
+rake,gladius,1,2,40,35.0,25.4,21.5,2.4,blood_loss:3 ko:10 run_through:1,20.0
+rake,longsword,1,4,40,32.5,33.6,14.8,2.8,blood_loss:1 ko:6 time:6,30.0
+rake,axe,1,3,40,27.5,26.3,20.2,2.6,blood_loss:3 ko:5 pummel:1 time:2,30.0
+rake,spear,1,3,40,48.8,46.4,19.3,3.6,blood_loss:6 ko:5 time:8,60.0
+rake,machete,1,1,40,50.0,38.2,21.1,2.8,blood_loss:2 ko:12 run_through:1 time:5,65.0
+rake,sledgehammer,1,1,40,52.5,39.6,21.5,2.2,blood_loss:3 ko:4 time:14,45.0
+rake,mace,1,3,40,57.5,39.2,23.2,2.8,blood_loss:4 ko:9 time:10,55.0
+rake,falchion,1,3,40,47.5,28.9,18.8,3.0,blood_loss:6 ko:12 time:1,45.0
+rake,warhammer,1,4,40,26.2,37.6,16.7,2.8,blood_loss:4 ko:4 time:2,25.0
+rake,halberd,1,4,40,45.0,30.9,18.6,3.1,blood_loss:2 ko:14 time:2,35.0
+rake,dai_katana,1,5,40,20.0,28.3,10.9,2.9,blood_loss:2 ko:2 time:4,15.0
+rake,laser_sword,1,5,40,37.5,35.2,15.9,3.1,blood_loss:6 gut:1 ko:6 time:2,30.0
+bat,fists,1,0,40,90.0,30.2,18.9,3.9,ko:17 pummel:2 skull_crush:6 time:11,90.0
+bat,rake,1,1,40,62.5,31.4,14.8,5.1,ko:13 skull_crush:9 time:3,65.0
+bat,club,1,1,40,65.0,29.6,12.4,3.8,ko:15 pummel:2 skull_crush:7 time:2,75.0
+bat,gladius,1,2,40,60.0,25.7,13.6,3.4,blood_loss:2 ko:8 pummel:2 skull_crush:9 time:3,55.0
+bat,longsword,1,4,40,32.5,24.8,9.0,5.9,blood_loss:3 ko:7 pummel:1 skull_crush:2,35.0
+bat,axe,1,3,40,70.0,23.2,12.3,5.1,ko:17 pummel:1 skull_crush:7 time:3,65.0
+bat,spear,1,3,40,45.0,38.0,9.6,4.9,ko:7 skull_crush:5 time:6,35.0
+bat,machete,1,1,40,57.5,29.6,15.6,4.2,blood_loss:3 gut:1 ko:9 skull_crush:7 time:3,60.0
+bat,sledgehammer,1,1,40,41.2,31.4,11.7,4.3,ko:7 pummel:1 skull_crush:6 time:2,50.0
+bat,mace,1,3,40,45.0,30.4,10.2,4.2,ko:7 skull_crush:5 time:6,60.0
+bat,falchion,1,3,40,75.0,23.0,14.5,5.0,ko:19 pummel:2 skull_crush:8 time:1,70.0
+bat,warhammer,1,4,40,37.5,25.1,8.5,4.3,blood_loss:1 ko:8 pummel:1 skull_crush:4 time:1,45.0
+bat,halberd,1,4,40,37.5,31.5,9.3,5.6,blood_loss:2 ko:5 skull_crush:6 time:2,45.0
+bat,dai_katana,1,5,40,35.0,23.7,8.5,5.8,blood_loss:1 ko:9 skull_crush:4,30.0
+bat,laser_sword,1,5,40,47.5,26.4,11.7,4.7,blood_loss:1 gut:1 ko:8 skull_crush:7 time:2,40.0
+club,fists,1,0,40,88.8,33.5,24.2,2.8,ko:18 pummel:6 skull_crush:5 time:6,90.0
+club,rake,1,1,40,26.2,43.6,12.2,3.2,ko:7 pummel:2 time:1,22.5
+club,bat,1,1,40,35.0,29.6,12.0,2.4,ko:5 skull_crush:2 time:7,45.0
+club,gladius,1,2,40,37.5,25.2,13.0,3.7,ko:11 pummel:1 skull_crush:2 time:1,25.0
+club,longsword,1,4,40,25.0,24.1,10.8,3.6,ko:8 skull_crush:2,40.0
+club,axe,1,3,40,52.5,28.6,15.6,3.1,blood_loss:3 ko:9 skull_crush:8 time:1,55.0
+club,spear,1,3,40,26.2,43.5,11.2,4.7,ko:3 pummel:1 skull_crush:3 time:3,17.5
+club,machete,1,1,40,52.5,30.0,15.1,3.2,blood_loss:2 ko:10 pummel:1 skull_crush:6 time:2,40.0
+club,sledgehammer,1,1,40,35.0,25.7,10.1,3.0,ko:6 pummel:1 skull_crush:6 time:1,30.0
+club,mace,1,3,40,36.2,36.5,12.1,2.8,ko:9 pummel:1 skull_crush:1 time:3,42.5
+club,falchion,1,3,40,46.2,25.3,12.2,2.8,blood_loss:1 ko:9 pummel:2 skull_crush:6,47.5
+club,warhammer,1,4,40,22.5,26.1,8.3,3.6,ko:5 pummel:3 skull_crush:1,20.0
+club,halberd,1,4,40,50.0,26.0,10.9,4.7,ko:10 skull_crush:8 time:2,40.0
+club,dai_katana,1,5,40,27.5,26.9,9.4,4.6,blood_loss:2 ko:6 pummel:1 skull_crush:2,10.0
+club,laser_sword,1,5,40,22.5,30.9,12.6,3.1,blood_loss:2 ko:5 skull_crush:2,25.0
+gladius,fists,2,0,40,97.5,18.6,27.2,3.2,behead:2 blood_loss:33 gut:4,95.0
+gladius,rake,2,1,40,65.0,25.4,14.9,4.1,behead:2 blood_loss:21 gut:2 time:1,50.0
+gladius,bat,2,1,40,40.0,25.7,12.1,2.6,blood_loss:13 ko:2 skull_crush:1,35.0
+gladius,club,2,1,40,62.5,25.2,14.7,3.7,blood_loss:21 gut:2 run_through:1 time:1,50.0
+gladius,longsword,2,4,40,52.5,20.4,12.0,4.2,behead:1 blood_loss:15 gut:3 run_through:2,55.0
+gladius,axe,2,3,40,62.5,20.4,14.1,4.4,behead:2 blood_loss:14 gut:6 ko:2 pummel:1,60.0
+gladius,spear,2,3,40,61.2,33.2,10.4,4.8,behead:2 blood_loss:18 gut:2 run_through:1 time:1,62.5
+gladius,machete,2,1,40,47.5,21.9,12.8,3.3,blood_loss:13 gut:3 ko:1 pummel:2,30.0
+gladius,sledgehammer,2,1,40,50.0,22.9,11.8,4.0,behead:2 blood_loss:13 gut:2 time:3,35.0
+gladius,mace,2,3,40,60.0,32.5,11.6,3.2,blood_loss:18 gut:1 ko:1 run_through:1 time:3,60.0
+gladius,falchion,2,3,40,37.5,20.8,10.8,3.7,blood_loss:12 gut:1 ko:2,35.0
+gladius,warhammer,2,4,40,27.5,20.4,8.7,3.5,blood_loss:9 gut:1 run_through:1,35.0
+gladius,halberd,2,4,40,57.5,26.3,15.2,3.5,blood_loss:17 gut:1 ko:1 pummel:1 run_through:1 time:2,50.0
+gladius,dai_katana,2,5,40,32.5,23.0,9.9,4.0,blood_loss:10 gut:1 pummel:1 time:1,30.0
+gladius,laser_sword,2,5,40,40.0,19.1,11.9,3.5,behead:1 blood_loss:10 gut:1 ko:1 pummel:1 run_through:2,30.0
+longsword,fists,4,0,40,92.5,21.4,27.4,3.2,behead:2 blood_loss:28 gut:4 ko:2 time:1,90.0
+longsword,rake,4,1,40,67.5,33.6,14.9,3.8,blood_loss:22 gut:3 time:2,65.0
+longsword,bat,4,1,40,67.5,24.8,13.2,5.1,behead:5 blood_loss:18 gut:3 time:1,70.0
+longsword,club,4,1,40,75.0,24.1,18.1,4.1,behead:2 blood_loss:21 gut:3 pummel:1 run_through:1 time:2,90.0
+longsword,gladius,4,2,40,47.5,20.4,14.9,4.6,blood_loss:15 gut:2 pummel:1 run_through:1,50.0
+longsword,axe,4,3,40,65.0,20.1,14.3,4.3,behead:3 blood_loss:20 gut:2 pummel:1,65.0
+longsword,spear,4,3,40,65.0,35.8,12.9,4.3,behead:1 blood_loss:17 gut:4 time:4,65.0
+longsword,machete,4,1,40,67.5,18.8,16.2,3.9,behead:2 blood_loss:22 gut:3,70.0
+longsword,sledgehammer,4,1,40,67.5,22.9,18.7,3.4,behead:2 blood_loss:22 gut:2 pummel:1,55.0
+longsword,mace,4,3,40,67.5,23.0,13.6,4.9,behead:1 blood_loss:19 gut:4 ko:1 pummel:1 time:1,55.0
+longsword,falchion,4,3,40,65.0,21.6,15.6,4.4,behead:2 blood_loss:19 gut:2 ko:1 time:2,70.0
+longsword,warhammer,4,4,40,70.0,25.9,12.9,4.3,blood_loss:22 gut:4 pummel:1 time:1,75.0
+longsword,halberd,4,4,40,60.0,23.2,14.7,3.6,behead:4 blood_loss:15 gut:2 run_through:3,55.0
+longsword,dai_katana,4,5,40,46.2,17.8,14.7,3.9,behead:1 blood_loss:14 gut:1 pummel:2,47.5
+longsword,laser_sword,4,5,40,60.0,23.1,15.4,3.9,blood_loss:23 gut:1,50.0
+axe,fists,3,0,40,87.5,21.8,27.4,3.0,behead:2 blood_loss:26 gut:3 ko:2 pummel:1 time:1,85.0
+axe,rake,3,1,40,72.5,26.3,11.6,6.2,behead:4 blood_loss:18 gut:4 ko:1 pummel:1 time:1,75.0
+axe,bat,3,1,40,30.0,23.2,8.8,3.3,blood_loss:7 gut:2 ko:2 time:1,25.0
+axe,club,3,1,40,47.5,28.6,14.0,3.3,behead:1 blood_loss:12 gut:1 ko:2 time:3,50.0
+axe,gladius,3,2,40,37.5,20.4,10.7,4.3,behead:3 blood_loss:10 gut:1 ko:1,35.0
+axe,longsword,3,4,40,35.0,20.1,9.2,6.2,behead:1 blood_loss:9 gut:3 ko:1,35.0
+axe,spear,3,3,40,57.5,34.8,6.9,7.2,blood_loss:19 gut:3 time:1,50.0
+axe,machete,3,1,40,45.0,19.6,11.4,5.2,behead:3 blood_loss:13 gut:1 time:1,50.0
+axe,sledgehammer,3,1,40,62.5,24.0,13.2,4.6,behead:2 blood_loss:17 gut:4 time:2,60.0
+axe,mace,3,3,40,37.5,23.5,9.0,4.6,behead:2 blood_loss:10 gut:1 time:2,35.0
+axe,falchion,3,3,40,35.0,22.2,10.8,4.5,behead:1 blood_loss:12 ko:1,35.0
+axe,warhammer,3,4,40,42.5,24.7,9.0,5.4,behead:3 blood_loss:11 gut:2 time:1,45.0
+axe,halberd,3,4,40,75.0,21.7,14.7,5.6,behead:6 blood_loss:21 gut:2 pummel:1,80.0
+axe,dai_katana,3,5,40,30.0,18.7,9.2,4.7,blood_loss:10 gut:2,35.0
+axe,laser_sword,3,5,40,37.5,19.6,11.1,4.0,behead:1 blood_loss:9 gut:4 ko:1,35.0
+spear,fists,3,0,40,96.2,51.6,36.7,1.0,blood_loss:11 run_through:4 time:22,95.0
+spear,rake,3,1,40,51.2,46.4,21.9,1.4,blood_loss:14 run_through:2 time:4,62.5
+spear,bat,3,1,40,55.0,38.0,17.6,1.7,blood_loss:11 run_through:2 time:9,45.0
+spear,club,3,1,40,73.8,43.5,23.1,1.6,blood_loss:11 ko:1 run_through:8 time:9,65.0
+spear,gladius,3,2,40,38.8,33.2,21.2,1.4,blood_loss:12 ko:1 run_through:1 time:1,40.0
+spear,longsword,3,4,40,35.0,35.8,19.7,1.4,blood_loss:8 run_through:2 time:4,35.0
+spear,axe,3,3,40,42.5,34.8,18.3,1.5,blood_loss:9 run_through:2 time:6,35.0
+spear,machete,3,1,40,46.2,34.4,21.3,1.6,blood_loss:9 run_through:4 time:5,32.5
+spear,sledgehammer,3,1,40,45.0,36.1,20.1,1.4,blood_loss:10 run_through:3 time:5,40.0
+spear,mace,3,3,40,58.8,38.4,19.4,2.0,blood_loss:13 run_through:2 time:8,57.5
+spear,falchion,3,3,40,35.0,35.7,22.6,1.5,blood_loss:8 run_through:4 time:2,40.0
+spear,warhammer,3,4,40,47.5,42.3,19.5,1.2,blood_loss:11 pummel:1 run_through:1 time:6,50.0
+spear,halberd,3,4,40,25.0,24.6,10.8,2.5,blood_loss:8 run_through:2,25.0
+spear,dai_katana,3,5,40,32.5,33.6,18.6,1.6,blood_loss:4 run_through:6 time:3,25.0
+spear,laser_sword,3,5,40,58.8,39.8,16.2,1.7,blood_loss:12 run_through:1 time:9,47.5
+machete,fists,1,0,40,85.0,22.0,21.7,3.0,blood_loss:28 gut:3 ko:1 pummel:1 time:1,85.0
+machete,rake,1,1,40,50.0,38.2,10.2,3.3,behead:1 blood_loss:13 gut:2 time:4,65.0
+machete,bat,1,1,40,42.5,29.6,10.4,4.1,behead:3 blood_loss:8 gut:2 pummel:1 time:3,45.0
+machete,club,1,1,40,47.5,30.0,13.2,3.0,blood_loss:12 gut:3 ko:2 time:2,35.0
+machete,gladius,1,2,40,52.5,21.9,13.1,3.5,behead:1 blood_loss:19 gut:1,35.0
+machete,longsword,1,4,40,32.5,18.8,9.6,4.3,behead:2 blood_loss:8 ko:1 pummel:1 time:1,35.0
+machete,axe,1,3,40,55.0,19.6,11.5,4.5,behead:1 blood_loss:17 gut:2 pummel:1 time:1,60.0
+machete,spear,1,3,40,53.8,34.4,7.4,5.0,behead:2 blood_loss:16 gut:2 time:1,40.0
+machete,sledgehammer,1,1,40,45.0,22.9,11.3,3.7,blood_loss:15 gut:3,50.0
+machete,mace,1,3,40,52.5,25.8,9.8,4.6,behead:1 blood_loss:19 time:1,65.0
+machete,falchion,1,3,40,47.5,21.5,10.2,4.7,blood_loss:16 gut:2 ko:1,45.0
+machete,warhammer,1,4,40,35.0,22.3,9.4,3.8,behead:2 blood_loss:8 gut:1 time:3,30.0
+machete,halberd,1,4,40,40.0,19.0,8.8,5.0,blood_loss:14 gut:1 pummel:1,45.0
+machete,dai_katana,1,5,40,22.5,17.9,10.2,2.9,behead:1 blood_loss:5 ko:1 pummel:2,25.0
+machete,laser_sword,1,5,40,30.0,21.0,11.6,3.3,blood_loss:11 gut:1,20.0
+sledgehammer,fists,1,0,40,87.5,25.1,20.6,3.7,blood_loss:1 ko:21 pummel:2 skull_crush:5 time:6,95.0
+sledgehammer,rake,1,1,40,47.5,39.6,14.1,5.4,ko:13 skull_crush:4 time:2,40.0
+sledgehammer,bat,1,1,40,58.8,31.4,13.9,4.8,ko:16 pummel:1 skull_crush:3 time:3,67.5
+sledgehammer,club,1,1,40,65.0,25.7,14.8,4.5,ko:13 pummel:2 skull_crush:6 time:5,60.0
+sledgehammer,gladius,1,2,40,50.0,22.9,11.9,4.4,ko:16 pummel:1 skull_crush:3,35.0
+sledgehammer,longsword,1,4,40,32.5,22.9,11.4,4.9,ko:9 skull_crush:4,20.0
+sledgehammer,axe,1,3,40,37.5,24.0,13.0,4.2,blood_loss:2 ko:9 skull_crush:4,35.0
+sledgehammer,spear,1,3,40,55.0,36.1,11.2,5.5,ko:12 skull_crush:8 time:2,50.0
+sledgehammer,machete,1,1,40,55.0,22.9,12.3,4.8,gut:1 ko:16 skull_crush:4 time:1,60.0
+sledgehammer,mace,1,3,40,60.0,32.5,16.3,3.8,ko:14 pummel:2 skull_crush:1 time:7,70.0
+sledgehammer,falchion,1,3,40,30.0,29.9,13.9,4.4,ko:5 pummel:2 skull_crush:3 time:2,20.0
+sledgehammer,warhammer,1,4,40,42.5,26.6,11.6,4.7,ko:10 skull_crush:5 time:2,30.0
+sledgehammer,halberd,1,4,40,45.0,26.3,11.7,5.0,ko:12 skull_crush:5 time:1,40.0
+sledgehammer,dai_katana,1,5,40,25.0,21.4,8.2,5.9,ko:7 pummel:1 skull_crush:2,25.0
+sledgehammer,laser_sword,1,5,40,47.5,17.8,9.1,5.1,ko:14 skull_crush:5,45.0
+mace,fists,3,0,40,82.5,27.6,17.6,3.7,ko:13 pummel:2 skull_crush:11 time:7,90.0
+mace,rake,3,1,40,42.5,39.2,9.0,5.0,ko:11 skull_crush:4 time:2,40.0
+mace,bat,3,1,40,55.0,30.4,11.2,4.3,ko:9 skull_crush:8 time:5,70.0
+mace,club,3,1,40,63.8,36.5,13.9,3.7,ko:10 skull_crush:4 time:11,70.0
+mace,gladius,3,2,40,40.0,32.5,13.9,4.5,gut:1 ko:6 pummel:1 skull_crush:3 time:5,40.0
+mace,longsword,3,4,40,32.5,23.0,9.1,4.9,blood_loss:1 ko:6 pummel:3 skull_crush:3,20.0
+mace,axe,3,3,40,62.5,23.5,9.6,6.0,blood_loss:2 gut:1 ko:12 skull_crush:8 time:2,60.0
+mace,spear,3,3,40,41.2,38.4,7.6,5.3,ko:9 pummel:1 skull_crush:1 time:5,40.0
+mace,machete,3,1,40,47.5,25.8,11.0,4.3,blood_loss:1 ko:8 pummel:4 skull_crush:4 time:2,60.0
+mace,sledgehammer,3,1,40,40.0,32.5,11.2,3.3,ko:6 pummel:3 skull_crush:2 time:5,50.0
+mace,falchion,3,3,40,47.5,24.5,12.3,5.0,blood_loss:5 ko:8 skull_crush:6,65.0
+mace,warhammer,3,4,40,17.5,30.2,9.8,3.5,ko:4 skull_crush:3,20.0
+mace,halberd,3,4,40,50.0,30.4,13.4,5.1,blood_loss:1 ko:8 pummel:1 skull_crush:7 time:3,60.0
+mace,dai_katana,3,5,40,37.5,21.8,6.8,6.5,blood_loss:1 ko:6 pummel:1 skull_crush:7,35.0
+mace,laser_sword,3,5,40,36.2,26.8,11.4,5.1,gut:1 ko:4 pummel:1 skull_crush:7 time:1,47.5
+falchion,fists,3,0,40,97.5,21.2,25.8,3.2,behead:2 blood_loss:29 gut:6 ko:1 pummel:1,95.0
+falchion,rake,3,1,40,52.5,28.9,13.9,3.7,behead:1 blood_loss:18 gut:1 pummel:1,50.0
+falchion,bat,3,1,40,25.0,23.0,9.3,3.1,blood_loss:6 gut:1 ko:1 skull_crush:1 time:1,20.0
+falchion,club,3,1,40,53.8,25.3,15.2,3.2,blood_loss:16 gut:2 time:3,55.0
+falchion,gladius,3,2,40,62.5,20.8,14.9,3.8,behead:2 blood_loss:19 gut:1 ko:1 pummel:2,60.0
+falchion,longsword,3,4,40,35.0,21.6,10.5,3.6,blood_loss:8 gut:5 pummel:1,40.0
+falchion,axe,3,3,40,65.0,22.2,14.4,3.8,behead:1 blood_loss:21 gut:1 ko:2 run_through:1,65.0
+falchion,spear,3,3,40,65.0,35.7,12.3,3.9,behead:2 blood_loss:19 gut:2 time:3,70.0
+falchion,machete,3,1,40,52.5,21.5,13.6,4.0,behead:2 blood_loss:14 gut:3 ko:2,50.0
+falchion,sledgehammer,3,1,40,70.0,29.9,16.8,3.3,behead:5 blood_loss:18 gut:2 time:3,60.0
+falchion,mace,3,3,40,52.5,24.5,10.1,4.3,blood_loss:16 gut:2 pummel:1 time:2,70.0
+falchion,warhammer,3,4,40,45.0,23.8,10.7,3.8,blood_loss:12 gut:4 run_through:2,60.0
+falchion,halberd,3,4,40,52.5,21.4,14.2,3.9,behead:2 blood_loss:16 gut:2 ko:1,45.0
+falchion,dai_katana,3,5,40,30.0,17.4,9.4,5.1,behead:1 blood_loss:5 gut:6,30.0
+falchion,laser_sword,3,5,40,42.5,21.3,11.2,4.3,blood_loss:15 gut:1 run_through:1,35.0
+warhammer,fists,4,0,40,95.0,30.8,23.7,3.6,blood_loss:3 ko:23 pummel:1 skull_crush:6 time:5,95.0
+warhammer,rake,4,1,40,73.8,37.6,15.2,6.9,blood_loss:8 gut:2 ko:13 skull_crush:3 time:3,72.5
+warhammer,bat,4,1,40,62.5,25.1,14.6,4.9,blood_loss:1 gut:2 ko:16 skull_crush:3 time:3,70.0
+warhammer,club,4,1,40,77.5,26.1,15.6,4.9,blood_loss:2 gut:1 ko:21 skull_crush:5 time:2,75.0
+warhammer,gladius,4,2,40,72.5,20.4,14.8,6.1,behead:1 blood_loss:6 gut:1 ko:12 pummel:1 skull_crush:7 time:1,80.0
+warhammer,longsword,4,4,40,30.0,25.9,10.7,4.6,blood_loss:1 gut:1 ko:7 skull_crush:3,35.0
+warhammer,axe,4,3,40,57.5,24.7,12.2,5.0,blood_loss:2 ko:13 pummel:1 skull_crush:4 time:3,60.0
+warhammer,spear,4,3,40,52.5,42.3,15.1,6.2,blood_loss:5 gut:2 ko:6 skull_crush:5 time:3,55.0
+warhammer,machete,4,1,40,65.0,22.3,12.3,5.7,blood_loss:2 gut:1 ko:16 pummel:1 skull_crush:5 time:1,60.0
+warhammer,sledgehammer,4,1,40,57.5,26.6,14.9,4.6,blood_loss:4 ko:10 pummel:1 skull_crush:4 time:4,45.0
+warhammer,mace,4,3,40,82.5,30.2,17.8,4.0,behead:1 gut:1 ko:14 pummel:3 skull_crush:5 time:9,85.0
+warhammer,falchion,4,3,40,55.0,23.8,12.2,6.4,behead:1 blood_loss:4 gut:3 ko:10 skull_crush:4,70.0
+warhammer,halberd,4,4,40,56.2,32.1,13.3,6.1,behead:1 blood_loss:3 gut:3 ko:10 pummel:1 skull_crush:1 time:3,57.5
+warhammer,dai_katana,4,5,40,35.0,24.1,9.8,4.9,ko:8 pummel:1 skull_crush:5,35.0
+warhammer,laser_sword,4,5,40,35.0,25.6,13.3,5.6,ko:12 skull_crush:2,40.0
+halberd,fists,4,0,40,97.5,31.4,29.6,3.1,behead:2 blood_loss:23 gut:4 ko:1 pummel:1 run_through:1 time:7,95.0
+halberd,rake,4,1,40,55.0,30.9,13.9,3.9,behead:1 blood_loss:18 gut:1 time:2,45.0
+halberd,bat,4,1,40,62.5,31.5,14.7,3.0,behead:1 blood_loss:15 gut:1 ko:1 run_through:2 time:5,70.0
+halberd,club,4,1,40,50.0,26.0,14.7,4.2,blood_loss:15 run_through:1 time:4,40.0
+halberd,gladius,4,2,40,42.5,26.3,15.3,3.1,behead:1 blood_loss:11 gut:4 run_through:1,35.0
+halberd,longsword,4,4,40,40.0,23.2,13.5,3.6,blood_loss:15 run_through:1,35.0
+halberd,axe,4,3,40,25.0,21.7,13.3,2.2,behead:1 blood_loss:8 gut:1,30.0
+halberd,spear,4,3,40,75.0,24.6,8.4,9.1,behead:1 blood_loss:27 gut:1 time:1,75.0
+halberd,machete,4,1,40,60.0,19.0,12.8,5.5,behead:2 blood_loss:19 gut:3,65.0
+halberd,sledgehammer,4,1,40,55.0,26.3,12.7,4.1,blood_loss:21 time:1,50.0
+halberd,mace,4,3,40,50.0,30.4,13.6,3.4,behead:1 blood_loss:13 gut:1 ko:1 pummel:1 time:3,60.0
+halberd,falchion,4,3,40,47.5,21.4,12.1,4.4,blood_loss:17 gut:1 run_through:1,40.0
+halberd,warhammer,4,4,40,43.8,32.1,12.0,3.5,behead:1 blood_loss:14 gut:1 ko:1,45.0
+halberd,dai_katana,4,5,40,25.0,17.8,11.3,4.0,behead:1 blood_loss:8 time:1,15.0
+halberd,laser_sword,4,5,40,35.0,25.0,13.5,3.2,blood_loss:13 ko:1,35.0
+dai_katana,fists,5,0,40,90.0,19.6,26.1,3.1,behead:3 blood_loss:25 gut:7 run_through:1,90.0
+dai_katana,rake,5,1,40,80.0,28.3,11.2,5.5,behead:4 blood_loss:21 gut:5 run_through:2,75.0
+dai_katana,bat,5,1,40,65.0,23.7,11.9,5.2,behead:3 blood_loss:15 gut:5 skull_crush:1 time:2,60.0
+dai_katana,club,5,1,40,72.5,26.9,13.2,4.6,blood_loss:25 gut:1 time:3,55.0
+dai_katana,gladius,5,2,40,67.5,23.0,12.5,4.8,behead:2 blood_loss:23 gut:2,65.0
+dai_katana,longsword,5,4,40,53.8,17.8,13.0,4.4,behead:4 blood_loss:14 gut:3,55.0
+dai_katana,axe,5,3,40,70.0,18.7,13.9,5.0,behead:3 blood_loss:22 gut:3,75.0
+dai_katana,spear,5,3,40,67.5,33.6,11.2,4.8,blood_loss:18 gut:3 pummel:1 run_through:4 time:1,60.0
+dai_katana,machete,5,1,40,77.5,17.9,16.7,4.3,behead:3 blood_loss:24 gut:4,80.0
+dai_katana,sledgehammer,5,1,40,75.0,21.4,15.0,4.6,behead:3 blood_loss:19 gut:8,75.0
+dai_katana,mace,5,3,40,62.5,21.8,11.6,5.0,behead:3 blood_loss:18 gut:2 time:2,60.0
+dai_katana,falchion,5,3,40,70.0,17.4,12.1,4.8,behead:4 blood_loss:22 gut:2,70.0
+dai_katana,warhammer,5,4,40,65.0,24.1,12.9,3.9,behead:2 blood_loss:17 gut:3 time:4,65.0
+dai_katana,halberd,5,4,40,75.0,17.8,13.7,5.3,behead:4 blood_loss:23 gut:3,65.0
+dai_katana,laser_sword,5,5,40,57.5,22.8,12.8,4.5,behead:1 blood_loss:21 gut:1,45.0
+laser_sword,fists,5,0,40,92.5,19.8,22.3,3.6,behead:3 blood_loss:31 gut:3,85.0
+laser_sword,rake,5,1,40,62.5,35.2,11.2,4.4,blood_loss:22 gut:1 time:2,55.0
+laser_sword,bat,5,1,40,52.5,26.4,12.0,3.4,behead:2 blood_loss:14 ko:2 time:3,45.0
+laser_sword,club,5,1,40,77.5,30.9,16.7,3.3,behead:5 blood_loss:20 gut:2 pummel:1 time:3,80.0
+laser_sword,gladius,5,2,40,60.0,19.1,14.6,4.1,behead:2 blood_loss:20 gut:2,50.0
+laser_sword,longsword,5,4,40,40.0,23.1,12.1,3.4,behead:1 blood_loss:12 gut:1 ko:1 pummel:1,30.0
+laser_sword,axe,5,3,40,62.5,19.6,13.7,4.2,behead:1 blood_loss:19 gut:3 run_through:2,60.0
+laser_sword,spear,5,3,40,41.2,39.8,6.3,4.7,behead:2 blood_loss:8 gut:3 run_through:1 time:1,30.0
+laser_sword,machete,5,1,40,70.0,21.0,13.2,4.3,behead:3 blood_loss:25,60.0
+laser_sword,sledgehammer,5,1,40,52.5,17.8,12.2,4.3,behead:1 blood_loss:16 gut:2 ko:1 time:1,50.0
+laser_sword,mace,5,3,40,63.8,26.8,10.2,4.2,blood_loss:22 ko:1 time:2,75.0
+laser_sword,falchion,5,3,40,57.5,21.3,12.2,4.6,behead:2 blood_loss:19 gut:2,50.0
+laser_sword,warhammer,5,4,40,65.0,25.6,13.0,4.4,behead:2 blood_loss:22 gut:2,70.0
+laser_sword,halberd,5,4,40,65.0,25.0,14.3,3.7,behead:3 blood_loss:19 gut:2 run_through:1 time:1,65.0
+laser_sword,dai_katana,5,5,40,42.5,22.8,9.1,5.1,behead:1 blood_loss:15 gut:1,30.0

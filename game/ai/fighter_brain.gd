@@ -199,6 +199,7 @@ var _rush_t: int = 0  ## closing plan: ticks left of the opening that lets a sho
 var _press_t: int = 0  ## closing plan: ticks left of the press after a rush got inside
 var _away: float = 0.0  ## how fast the (lagged) foe moves away from me, m/s (chase gait)
 var _stam: float = 1.0  ## my stamina this tick
+var _chase_ok: bool = false  ## the chase gait applies: outreached, or the heavier side against a foe who can kite
 var _tp_best: float = 99.0  ## committed thrust: closest the point has come to the target in this drive (m)
 var _tp_pressed: bool = false  ## committed thrust: THRUST is out in this drive
 
@@ -1444,6 +1445,9 @@ func _geometry(me: Dictionary, obs: Dictionary) -> void:
 	_foe_reach = ThrustPlan.reach_of(float(CombatData.weapon(str(obs.get("weapon_id", "fists"))).get("length", 0.3)))
 	_away = ThrustPlan.away_speed(obs.get("pelvis_vel", Vector3.ZERO), _dir)
 	_stam = float(me.get("stamina", 1.0))
+	var load_gap: float = ArmorRead.load_of(me.get("armor", {}) if me.get("armor", {}) is Dictionary else {}) \
+		- ArmorRead.load_of(obs.get("armor", {}) if obs.get("armor", {}) is Dictionary else {})
+	_chase_ok = ThrustPlan.chase_case(_foe_reach - _reach, Tuning.shared().ai_close_margin, load_gap, ArmorRead.KITE_LOAD_GAP)
 	var prev_step: int = _close_step
 	_close_step = ThrustPlan.CLOSE_NONE
 	_press_t = maxi(_press_t - 1, 0)
@@ -1597,9 +1601,10 @@ func _spear_footwork(out: FighterInput) -> void:
 
 
 ## Chase gait (ThrustPlan.chase_gait): the foe is backing off while I am farther than `hold`, so sprint after him.
+## Only where walking after him loses: outreached (he backs off to his reach) or the heavier side (he kites).
 func _chasing(hold: float) -> bool:
 	var tun: Tuning = Tuning.shared()
-	return ThrustPlan.chase_gait(_dist, hold, _away, _stam, tun.ai_chase_away, tun.ai_chase_stamina)
+	return _chase_ok and ThrustPlan.chase_gait(_dist, hold, _away, _stam, tun.ai_chase_away, tun.ai_chase_stamina)
 
 
 ## Lunge toward the foe while winding up or striking when out of comfortable reach (at a sprint after one who backs off).

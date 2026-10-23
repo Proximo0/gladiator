@@ -112,3 +112,10 @@ static func chase_gait(dist: float, hold: float, away: float, stamina: float, mi
 ## weapon never gets inside it, and the time limit goes to the fighter with more blood.
 static func fight_on_bleeding(reach_gap: float, margin: float, my_blood: float, foe_blood: float) -> bool:
 	return reach_gap >= margin and my_blood < foe_blood
+
+
+## True when backing off is the foe's winning move, so the chase gait applies: his reach beats mine by `margin`
+## (`reach_gap` = his reach minus mine), or I carry at least `kite_gap` more armor load (`load_gap` = mine minus his,
+## ArmorLoad) and he can kite me. Between even fighters a foe who steps back is only making room.
+static func chase_case(reach_gap: float, margin: float, load_gap: float, kite_gap: float) -> bool:
+	return reach_gap >= margin or load_gap >= kite_gap

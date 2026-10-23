@@ -1,0 +1,2 @@
+What happened: sim_net_drop's "stops acting" row failed after an AI change: the silent fighter moved at 1.1 m/s with neutral input for seconds; the idle hold spring kept its anchor where the input went quiet, the fighter was then knocked 1.7 m off it, and the spring walked it back
+Rule: an idle position hold re-anchors when the body is knocked past a small slack (Tuning hold_slack); when a sim reads "no input" through a speed, print the fighter's input and hold anchor before blaming noise

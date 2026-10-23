@@ -6,6 +6,9 @@ extends "res://tests/sim/sim_net_soak.gd"
 ##   stall: a 0.5 s hiccup of the client's packets; nothing closes, the stream resumes.
 ## Prints SOAK lines (readable by tools/net_soak.sh) and returns PASS/FAIL rows.
 
+## Results a fight reaches on its own (MatchJudge), which a stall cannot cause.
+const STALL_OK_REASONS: Array = ["blood_loss", "behead", "gut", "run_through", "skull_crush", "pummel", "ko", "mutual"]
+
 var _host_closed: String = ""
 var _client_closed: String = ""
 var _host_closed_tick: int = -1
@@ -87,8 +90,11 @@ func run() -> Array:
 		await _wait_match(30)
 		_client.link = saved
 		await _wait_match(240)
-		rows.append(row("net_drop_stall_survives", _host_closed == "" and _client_closed == "" and not _hm.over,
-			"0.5 s of silence: host \"%s\" client \"%s\" received %d inputs" % [_host_closed, _client_closed, _host.host_driver.inputs.received]))
+		# The bots' fight may end on its own inside the window (a judged result); only the stall must not end anything.
+		var honest: bool = _hm.over and STALL_OK_REASONS.has(str(_hm.result.get("reason", "")))
+		rows.append(row("net_drop_stall_survives", _host_closed == "" and _client_closed == "" and (not _hm.over or honest),
+			"0.5 s of silence: host \"%s\" client \"%s\" received %d inputs; match %s" % [_host_closed, _client_closed,
+				_host.host_driver.inputs.received, str(_hm.result.get("reason", "running")) if _hm.over else "running"]))
 	else:
 		rows.append(row("net_drop_stall_survives", false, "no lobby"))
 	await _teardown()

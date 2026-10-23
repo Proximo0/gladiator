@@ -100,3 +100,10 @@ func test_fight_on_bleeding() -> void:
 	assert_false(ThrustPlan.fight_on_bleeding(1.3, 0.25, 0.7, 0.2), "ahead on blood: resting is fine")
 	assert_false(ThrustPlan.fight_on_bleeding(0.1, 0.25, 0.2, 0.7), "even reach: retreat as usual")
 	assert_false(ThrustPlan.fight_on_bleeding(-1.3, 0.25, 0.2, 0.7), "the longer weapon keeps its retreat")
+
+
+func test_chase_case() -> void:
+	assert_true(ThrustPlan.chase_case(1.3, 0.25, 0.0, 0.4), "outreached")
+	assert_true(ThrustPlan.chase_case(0.0, 0.25, 0.6, 0.4), "the heavier side")
+	assert_false(ThrustPlan.chase_case(0.0, 0.25, 0.0, 0.4), "even fighters")
+	assert_false(ThrustPlan.chase_case(-1.3, 0.25, -0.6, 0.4), "longer and lighter")

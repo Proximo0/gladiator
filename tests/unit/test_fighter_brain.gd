@@ -650,21 +650,32 @@ func test_raises_every_shield_like_the_round_shield() -> void:
 		assert_eq(_offhand_presses(id), round_n, id)
 
 
+## Plate against a naked foe who backs off (he kites): the heavier side sprints after him; between even fighters not.
 func test_chases_a_foe_who_backs_off() -> void:
 	var b := _brain({"preset": "duelist", "commit_ticks": 0})
 	var f: Array = _pair(3.2)
 	(f[1] as Dictionary)["pelvis_vel"] = Vector3(0.0, 0.0, -2.5)  # he walks away from me
+	(f[0] as Dictionary)["armor"] = {"head": "helm_iron", "torso": "cuirass_iron", "upper_arm_l": "bracers_iron", "thigh_l": "greaves_iron"}
 	var sprints: int = 0
 	for i in 60:
 		if b.think(f[0], f[1], DT).has(FighterInput.SPRINT):
 			sprints += 1
 	var b2 := _brain({"preset": "duelist", "commit_ticks": 0})
 	var g: Array = _pair(3.2)
+	(g[0] as Dictionary)["armor"] = (f[0] as Dictionary)["armor"]
 	var still: int = 0
 	for i in 60:
 		if b2.think(g[0], g[1], DT).has(FighterInput.SPRINT):
 			still += 1
 	assert_true(sprints > still + 20, "chase gait: %d sprinting ticks vs %d against a foe who stands" % [sprints, still])
+	var b3 := _brain({"preset": "duelist", "commit_ticks": 0})
+	var h: Array = _pair(3.2)
+	(h[1] as Dictionary)["pelvis_vel"] = Vector3(0.0, 0.0, -2.5)
+	var even: int = 0
+	for i in 60:
+		if b3.think(h[0], h[1], DT).has(FighterInput.SPRINT):
+			even += 1
+	assert_true(even < sprints - 20, "even fighters: a step back is not chased (%d)" % even)
 
 
 ## A club outreached by a spear: the spear's thrust is parried, the club rushes in, and once inside it stays in (no

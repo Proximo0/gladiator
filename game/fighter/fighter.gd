@@ -938,6 +938,10 @@ func _control(delta: float) -> void:
 				_anchor_set = true
 			var hf: float = _t("hold_freq")
 			var off: Vector3 = _anchor - Vector3(pelvis.global_position.x, 0.0, pelvis.global_position.z)
+			if off.length() > _t("hold_slack"):
+				# Knocked off the spot: hold where it landed rather than walk back to the old spot (sim_net_drop).
+				off = off.normalized() * _t("hold_slack")
+				_anchor = Vector3(pelvis.global_position.x, 0.0, pelvis.global_position.z) + off
 			fh += off * (total_mass * hf * hf)
 		else:
 			_anchor_set = false

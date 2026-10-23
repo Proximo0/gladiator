@@ -10,6 +10,7 @@ const ROWS_MOVEMENT: Array = [
 	["move_response", 7.0, 1.0, 20.0, 0.5, "Movement", "How fast the body velocity follows the move input, 1/s."],
 	["turn_rate", 6.0, 1.0, 20.0, 0.5, "Movement", "Max turn rate toward the opponent, rad/s."],
 	["hold_freq", 2.0, 0.0, 6.0, 0.1, "Movement", "Idle position hold stiffness (stops drift), rad/s."],
+	["hold_slack", 0.3, 0.05, 2.0, 0.05, "Movement", "Idle position hold: a body knocked farther than this from its spot re-anchors this far from where it is (it does not walk back), m."],
 ]
 
 var move_speed: float
@@ -18,3 +19,4 @@ var move_accel: float
 var move_response: float
 var turn_rate: float
 var hold_freq: float
+var hold_slack: float
