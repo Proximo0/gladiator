@@ -20,7 +20,7 @@ const CROWD_CHEER_TIER: Array[int] = [3, 6, 6]
 const CROWD_SECTORS: Array[int] = [2, 3, 4]
 ## Few distinct levels keep the draw calls down (one MultiMesh per variant, sector and level).
 const CROWD_TIER_LOD: Array = [[1, 1, 1, 2, 2, 2], [0, 0, 0, 1, 1, 1], [-1, -1, 0, 0, 0, 0]]
-## Sun shadow: 0 no cascade split (one orthographic map), 1 two splits.
+## Sun shadow cascades per tier: 1 is one orthographic map (low), 2 is two parallel splits.
 const SHADOW_SPLITS: Array[int] = [1, 2, 2]
 const SHADOW_DISTANCE: Array[float] = [34.0, 44.0, 52.0]
 const SHADOW_BLUR: Array[float] = [0.0, 1.0, 2.0]
