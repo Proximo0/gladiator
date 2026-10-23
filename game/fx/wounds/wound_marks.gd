@@ -12,8 +12,8 @@ extends RefCounted
 
 enum Kind { GASH, PUNCTURE, BRUISE, SMEAR, RING }
 
-const MAX_CAP: int = 8  ## the shader's loop bound; a part never holds more
-const CAPS: Array[int] = [6, 8, 8]  ## marks per part per graphics level (low, medium, high)
+const MAX_CAP: int = 12  ## the shader's array size and loop bound; a part never holds more
+const CAPS: Array[int] = [10, 8, 8]  ## marks per part per graphics level (low, medium, high); low is Tuning wound_cap_low
 const MIN_WOUND: float = 1.2  ## damage points (cut + pierce, or 0.35 x blunt) below which a hit leaves no mark
 const DRY_TAU: float = 45.0  ## seconds for a mark to get most of the way from fresh to dried
 const TRICKLE_SPEED: float = 0.035  ## m/s a fresh trickle runs down
@@ -65,12 +65,14 @@ var dirty: Dictionary = {}  ## part name -> true when its packed uniforms change
 var evicted: int = 0  ## marks dropped from a full part so far (churn)
 
 
-func _init(level: int = 2) -> void:
-	cap = cap_for(level)
+func _init(level: int = 2, low_cap: int = CAPS[0]) -> void:
+	cap = cap_for(level, low_cap)
 
 
-static func cap_for(level: int) -> int:
-	return mini(CAPS[clampi(level, 0, CAPS.size() - 1)], MAX_CAP)
+## `low_cap` is the low tier's cap (Tuning wound_cap_low); the other tiers use CAPS.
+static func cap_for(level: int, low_cap: int = CAPS[0]) -> int:
+	var lv: int = clampi(level, 0, CAPS.size() - 1)
+	return clampi(low_cap if lv == 0 else CAPS[lv], 1, MAX_CAP)
 
 
 ## Mark kind for a hit: GASH, PUNCTURE, BRUISE, or -1 for none (too weak, or a glancing tap).

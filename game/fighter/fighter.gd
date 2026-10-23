@@ -134,6 +134,7 @@ var _reach_hold: float = 0.0
 var _reach_point: Vector3 = Vector3.ZERO
 var _prop_serial: int = 0
 var _anchor: Vector3 = Vector3.ZERO
+var _lunge_brake: float = 0.0  ## seconds left of the extra acceleration that stops a thrust lunge
 var _anchor_set: bool = false
 ## Cumulative weapon losses and pickups for the match stats (debug_frame "weapon_log").
 ## "rearms_after_disarm" counts pickups made while a weapon knocked out of hand was still not replaced.
@@ -913,6 +914,12 @@ func _control(delta: float) -> void:
 		# On one leg: no walking through a kick, but the hips drive in behind the extending leg.
 		var ku: float = CloseCombat.progress(_close.kick_t, _t("kick_time"))
 		v_des = v_des * 0.2 + fwd * (_t("kick_lunge") * (1.0 if ku > CloseCombat.KICK_CHAMBER and ku < CloseCombat.KICK_HOLD else 0.0))
+	var lunge: float = 0.0
+	if inp.has(THRUST) and inp.has(SPRINT) and move.y > 0.1 and _state == "standing" and not rolling and weapon != null and weapon.shape_kind == "spear":
+		# A spear thrust pressed on the run drives the hips in behind the point (a lunge): more body speed, got faster.
+		lunge = _t("thrust_lunge") * minf(move.y, 1.0)
+		v_des += fwd * lunge
+		_lunge_brake = _t("thrust_lunge_brake")
 	var v_move: Vector3 = v_des  # what the feet plan for (the sway below is the body's, not a step's)
 	if _close.shoving():
 		v_des += fwd * (_t("shove_lunge") * CloseCombat.shove_extend(CloseCombat.progress(_close.shove_t, _t("shove_time"))))
@@ -946,8 +953,18 @@ func _control(delta: float) -> void:
 		else:
 			_anchor_set = false
 		var acc_max: float = _t("roll_accel") if rolling else _t("move_accel") * ArmorLoad.accel_scale(armor_ld, _tun)
+		if lunge > 0.0 or _lunge_brake > 0.0:
+			acc_max += _t("thrust_lunge_accel") * ArmorLoad.accel_scale(armor_ld, _tun)
+		if lunge <= 0.0:
+			_lunge_brake = maxf(_lunge_brake - delta, 0.0)
 		fh = fh.limit_length(acc_max * total_mass * support * (0.5 if _state == "stumbling" else 1.0))
 		pelvis.apply_central_force(Vector3(fh.x, fy, fh.z))
+		if lunge > 0.0:
+			# The hips drive in behind the point and carry the chest with them, or the arm lags the pelvis.
+			var tor: RigidBody3D = parts["torso"]
+			var lag: float = v_des.dot(fwd) - tor.linear_velocity.dot(fwd)
+			var ft: float = clampf(lag * tor.mass * _t("move_response"), 0.0, tor.mass * _t("thrust_lunge_accel") * _t("thrust_lunge_torso"))
+			tor.apply_central_force(fwd * ft * support)
 		if tk < 0.5:
 			_load_feet(fy, fh)
 		if rolling and ru < RollLogic.OPEN_START:

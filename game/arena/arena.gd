@@ -695,7 +695,7 @@ func _art(id: String) -> Mesh:
 ## Portcullis gates with flanking columns and barriers, braziers on the torch posts, cloth standards on the attic masts
 ## and banners on the wall, a weapon rack against the wall behind each spawn, column stumps, statues beside the gates
 ## and behind the imperial box, and the laurel trophy under the box. One MultiMesh per asset; only the big stone
-## pieces cast shadows. Missing assets keep the code stand-ins; the floor pieces' colliders exist either way.
+## pieces cast shadows (the gate columns and stumps not on the low tier). Missing assets keep the code stand-ins; the floor pieces' colliders exist either way.
 func _build_dressing() -> void:
 	var low: bool = GfxQuality.level <= GfxQuality.LOW
 	# Floor pieces (gates, gate columns, racks, barriers, stumps) come from DecorLayout, which also gives their colliders.

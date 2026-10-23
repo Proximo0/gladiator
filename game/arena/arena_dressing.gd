@@ -19,7 +19,7 @@ const PATHS: Dictionary = {
 }
 ## Assets that load their textured copy (TexturedArt). The other dressing keeps the flat files: its stone takes the
 ## arena's travertine tint, which would multiply the stone maps.
-const TEXTURED: PackedStringArray = ["weapon_rack"]
+const TEXTURED: PackedStringArray = ["weapon_rack", "portcullis", "barrier", "laurel_trophy"]
 ## Material names (as Houdini exports them) and what they become here.
 const STONE_MATERIAL: String = "stone"
 const EMBER_MATERIAL: String = "ember"

@@ -30,3 +30,22 @@ day one, next to CI, and refresh it on every worker hand-back.
 ## Refresh (lead, on every hand-back and push)
 Run step 1 again, upload the three files, and `update` each dataset's `source.url` and `updated`. Old assets can be
 deleted once nothing points at them. A routine can do this on a schedule if the session stays up.
+
+## Thread cost (project threads on their own machines)
+`agent_stats.py` sees only the lead's local transcripts. Project threads each run in their own cloud session, and
+each session record (`get_session`) carries `external_metadata.usage` (`cost_usd`, input, output, cache read and
+write tokens), `created_at`/`updated_at`, the served model and status. `list_sessions` carries no usage and does not
+list project threads, so the thread ids come from the board's `workers` rows (`session` field, written by the lead
+when it starts a thread). `tools/thread_costs.py` turns the records into the `threads` and
+`threads_total` datasets (schema in the starter kit's `tools/ops_board/schema.md`).
+
+Daily cost routine (a cloud routine on a cheap model, created by a session that is not device-linked):
+1. Read the board's `workers` dataset (ArtifactData `get datasets/workers`, then Artifact `read` its source path)
+   and collect each row's `session`, plus the coordinator's own session id.
+2. Call `get_session` for each id and write each result, one JSON object per line, to `sessions.jsonl`.
+3. `python3 tools/thread_costs.py sessions.jsonl --out out/` (prints `THREAD_COSTS threads=.. cost_usd=..`).
+4. Upload `out/threads.json` and `out/threads_total.json` as board assets and update `datasets/threads` and
+   `datasets/threads_total` (`source.url`, `updated`) in one ArtifactData batch, as in the ops board refresh.
+A failed `get_session` keeps the thread's previous row out of the file rather than failing the run; the summary
+line's `threads=` count shows it.
+The board's Work tab shows a Thread cost card (`threads-card`, table on `threads` and totals from `threads_total`). It stays hidden until the `threads` dataset exists.
